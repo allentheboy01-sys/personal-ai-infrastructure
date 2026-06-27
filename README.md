@@ -42,3 +42,11 @@ I will document ideas, mistakes, design decisions, and prototypes here.
 ## Philosophy
 
 > Own your digital life. Let any AI work for you.
+
+## Principles
+
+1. Ownership belongs to the user.
+2. AI models are replaceable.
+3. Memory is independent of models.
+4. Infrastructure should outlive AI products.
+5. Privacy comes before convenience.
