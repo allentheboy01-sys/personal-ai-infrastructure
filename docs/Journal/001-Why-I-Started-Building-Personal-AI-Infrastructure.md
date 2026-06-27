@@ -1,15 +1,3 @@
-# Research Log
-
-> This file records raw thoughts, questions, assumptions, failures, and design changes during the development of **Personal AI Infrastructure**.
->
-> It is **not** a specification, proposal, or conclusion.
->
-> Many ideas here may be incorrect and will likely evolve over time.
->
-> The purpose of this document is to preserve the evolution of thinking.
-
----
-
 # 2026-06-27
 
 ## Why did I start thinking about this?
