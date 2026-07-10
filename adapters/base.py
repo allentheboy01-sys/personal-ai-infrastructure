@@ -25,3 +25,11 @@ class Adapter(ABC):
     def scan(self) -> Iterable[ProviderFact]:
         """Read facts from the provider."""
         pass
+
+    @abstractmethod
+    def open(
+        self,
+        fact: ProviderFact,
+    ) -> Iterable[bytes]:
+        """Read a provider object's content as byte chunks."""
+        raise NotImplementedError
