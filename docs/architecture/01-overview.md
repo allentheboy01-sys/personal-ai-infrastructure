@@ -1,73 +1,108 @@
 # 01 - Overview
 
-**Status:** V0.1 Draft
+**Status:** V0.1
 
 ---
 
-## Core Idea
+## Purpose
 
-PDI is a stable World Model for a person's digital life.
+PDI (Personal Digital Infrastructure) builds a stable World Model for a person's digital life.
 
-It does not replace Providers.
+Applications, AI models and storage systems may change.
 
-It does not replace AI.
-
-It creates a unified semantic layer above all Providers.
+The World Model should remain stable.
 
 ---
 
-## System Architecture
+## Data Flow
 
-    User
-      ↓
-    Jarvis / AI Interface
-      ↓
-    PDI
-      ↓
-    World Model
-    Asset / Blob / AssetSource
-      ↓
-    Repository
-      ↓
-    Identity Matcher
-      ↓
-    Sync Engine
-      ↓
-    ProviderFact
-      ↓
-    Adapter
-      ↓
-    Provider
-    Nextcloud / Immich / Git / ...
+```
+Provider
+    │
+    ▼
+Adapter
+    │
+    ▼
+ProviderFact
+    │
+    ▼
+Sync Engine
+    │
+    ▼
+Identity
+    │
+    ▼
+Decision
+    │
+    ▼
+Repository
+    │
+    ▼
+World Model
+```
 
----
-
-## Layer Responsibilities
-
-| Layer | Responsibility |
-|---|---|
-| User | Gives intent |
-| AI Interface | Understands natural language |
-| PDI | Owns the digital world model |
-| World Model | Defines Asset, Blob, AssetSource |
-| Repository | Persists and retrieves world objects |
-| Identity Matcher | Decides whether ProviderFacts map to existing or new Assets |
-| Sync Engine | Detects changes from Providers |
-| ProviderFact | Temporary fact returned by Adapter |
-| Adapter | Talks to Providers |
-| Provider | Owns original application data |
+Each chapter in this document describes one step of the workflow above.
 
 ---
 
-## Core Rule
+## AI Interaction
 
-Every layer removes implementation details from the layer below.
+PDI is independent of any AI system.
 
-Examples:
+AI does not communicate with Providers directly.
 
-- Adapter hides Provider API differences.
-- Sync Engine hides scanning and diff details.
-- Identity Matcher hides identity uncertainty.
-- Repository hides database implementation.
-- World Model hides all Provider-specific structure.
-- AI only sees a unified digital world.
+Instead, AI interacts with the World Model through PDI.
+
+```
+User
+    │
+    ▼
+AI Interface
+    │
+    ▼
+Repository
+    │
+    ▼
+World Model
+```
+
+---
+
+## Architecture Principles
+
+- Providers remain independent.
+- Adapters isolate Provider-specific implementations.
+- ProviderFacts are temporary.
+- Identity makes decisions.
+- Decisions describe changes.
+- Repositories execute changes.
+- The World Model is Provider-independent.
+- AI interacts with the World Model instead of individual Providers.
+
+---
+
+## Reading Order
+
+The Architecture documents follow the same order as the data flow.
+
+```
+01 Overview
+        ↓
+02 Provider
+        ↓
+03 Provider Adapter
+        ↓
+04 Provider Fact
+        ↓
+05 Sync Engine
+        ↓
+06 Identity
+        ↓
+07 Decision
+        ↓
+08 Repository
+        ↓
+09 World Model
+        ↓
+10 Capability
+```
