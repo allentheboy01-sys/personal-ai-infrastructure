@@ -1,677 +1,753 @@
-# PDI Current Context
+# PDI Core 开发上下文（截至 PDI Core MVP V0.1 完成）
 
-> Snapshot of the current development state.
-> Rewritten after every completed milestone.
->
-> This document records only the latest project state.
-> Git history records how the project reached this state.
+我们正在开发 **PDI（Personal Digital Infrastructure）**。
+
+## 一、项目定位（冻结）
+
+PDI 是整个项目本体。
+
+Jarvis 只是第一个 AI Interface。
+
+PDI 去掉 AI 后仍然应该有价值。
+
+AI、Agent、LLM、Jarvis 都是 PDI 的消费者，而不是 PDI 本身。
+
+PDI 的职责：
+
+- 管理数字资产（Digital Assets）
+- 提供统一数据模型（World Model）
+- 保存数字历史
+- 提供统一查询接口
+- Adapter 连接各种 Provider
+
+PDI 不负责：
+
+- AI 推理
+- 大模型 Memory
+- 文件同步（由 Provider 完成）
+- 文件管理 UI（Nextcloud 完成）
+- 图片管理（Immich 完成）
+
+Architecture First 是整个项目最高原则。
+
+任何新增功能都必须保证：
+
+> 可维护、可扩展、一人长期维护。
 
 ---
 
-# Current Stage
+# 二、当前架构（已冻结）
 
-Phase:
-Core Engineering
-
-Version:
-V0.1 Alpha
-
-Current Milestone:
-First Real Sync Completed
-
-Current Goal:
-Implement persistent World Model storage with PostgreSQL.
-
----
-
-# Current Progress
-
-## ✅ Infrastructure
-
-- Ubuntu Server
-- Docker
-- Portainer
-- Nextcloud
-- Redis
-- Python virtual environment
-- Git repository
-- Environment variable configuration
-
-## ✅ Adapter Layer
-
-- Adapter base interface
-- Adapter registry
-- Nextcloud Adapter
-- WebDAV connection
-- WebDAV metadata scan
-- Stable Nextcloud identity through `oc:id`
-- Chunked content reading through `Adapter.open()`
-- Provider-specific normalization into `ProviderFact`
-
-## ✅ Capability Layer
-
-- SHA-256 content hashing
-- Chunk-based hashing without loading the complete file into memory
-
-## ✅ World Model
-
-- Asset
-- Blob
-- AssetSource
-- AssetSource version tag
-- Stable internal UUID identities
-
-## ✅ Decision Model
-
-- Decision
-- Action
-- ActionType
-- RequirementType
-- Content Hash Requirement
-
-## ✅ Identity
-
-- Matcher V0.1
-- ProviderFact validation
-- New Source recognition
-- Existing Source recognition
-- Rename and path-change recognition
-- Immutable Blob history
-- Cross-Provider Blob reuse for new Sources
-- Asset lifecycle continuity for existing Sources
-
-## ✅ Repository
-
-- Repository interface
-- InMemoryRepository
-- Decision execution
-- World Model queries
-- Asset-scoped Blob lookup
-
-## ✅ Sync Engine
-
-- One-time synchronization workflow
-- Requirement handling
-- On-demand content download
-- SHA-256 calculation
-- Re-entry into Matcher after satisfying requirements
-- Decision execution through Repository
-
-## ✅ Testing
-
-Six Matcher scenarios are covered by automated tests:
-
-1. New Source and new Blob
-2. Repeated synchronization with no change
-3. Rename or path change
-4. Content change creating a new Blob
-5. New Source reusing an existing Blob
-6. Existing Source remaining inside its original Asset lifecycle
-
-All current tests pass.
-
-## ✅ Real Integration
-
-The following real pipeline has been successfully executed:
-
-```text
-Nextcloud
-→ Nextcloud Adapter
-→ ProviderFact
-→ Matcher
-→ Content Hash Requirement
-→ Sync Engine
-→ Adapter.open()
-→ SHA-256 Capability
-→ Matcher
-→ Decision
-→ InMemoryRepository
-→ Asset / Blob / AssetSource
 ```
-
-A real Nextcloud root scan successfully imported:
-
-- 6 Assets
-- 6 Blobs
-- 6 AssetSources
-
-Folders are intentionally ignored in V0.1.
-
-## ⏳ In Progress
-
-- Milestone documentation
-- Git commit and GitHub synchronization
-
-## ⬜ Not Started
-
-- PostgreSQL schema
-- PostgreSQLRepository
-- SQLAlchemy models
-- Database migrations
-- Persistent incremental synchronization
-- Sync retry and failure records
-- Additional Providers
-- Relation
-- Event
-- Timeline
-- Collection
-- Query API
-- Rule Engine
-- AI Interface
-
----
-
-# Frozen Architecture
-
-The current V0.1 execution flow is:
-
-```text
 Provider
-→ Adapter
-→ ProviderFact
-→ Sync Engine
-→ Matcher
-→ Decision
-```
-
-The Decision may contain:
-
-```text
-Requirements
-→ fulfilled by Sync Engine and Capabilities
-
-Actions
-→ executed by Repository
-```
-
-The persistent flow will eventually be:
-
-```text
-Provider
-→ Adapter
-→ ProviderFact
-→ Sync Engine
-→ Matcher
-→ Decision
-→ Repository
-→ PostgreSQL
-→ World Model
-```
-
----
-
-# Frozen Domain Model
-
-## Asset
-
-Asset represents the lifetime of one semantic digital object.
-
-Examples:
-
-- A thesis
-- A photograph
-- A message
-- A document
-
-Asset is the smallest semantic unit in V0.1.
-
-Asset is not:
-
-- A folder
-- A collection
-- A project
-- An album
-
-Asset creation rule:
-
-> Create a new Asset when a new Blob cannot be assigned to an existing Asset.
-
-Asset lifecycle rules:
-
-- Asset does not end automatically.
-- Asset is not split in V0.1.
-- Asset merging may be supported later.
-- User-controlled deletion may be supported later.
-
----
-
-## Blob
-
-Blob represents one immutable content snapshot.
-
-Rules:
-
-- Blob is not a file location.
-- Blob is never updated.
-- Any content change creates a new Blob.
-- Blob has its own internal UUID.
-- Content Hash is a fingerprint, not the Blob identity.
-- Two Blobs may have the same Hash while belonging to different Assets.
-- Each Blob belongs to exactly one Asset.
-
-Relationship:
-
-```text
-Asset
-1 → N
-Blob
-```
-
----
-
-## AssetSource
-
-AssetSource represents one current Provider-side existence of a Blob.
-
-Examples:
-
-- One Nextcloud file
-- One Google Drive object
-- One local file
-- One message inside a messaging Provider
-
-Rules:
-
-- AssetSource points to exactly one Blob.
-- AssetSource does not store `asset_id`.
-- Asset membership is derived through Blob.
-- Provider and external ID identify the Source.
-- Path and name are mutable Source properties.
-- Version tag is Provider-specific state.
-- Content changes update the Source to point to another Blob.
-- Rename and move operations do not create a new Blob.
-
-Relationship:
-
-```text
-Blob
-1 ← N
-AssetSource
-```
-
----
-
-# Frozen Adapter Rules
-
-Adapter responsibilities:
-
-- Communicate with one Provider
-- Authenticate with the Provider
-- Scan Provider objects
-- Normalize Provider data
-- Read content on demand
-
-Current Adapter interface:
-
-```text
-connect()
-scan()
-open(fact)
-```
-
-Adapter must not:
-
-- Make Asset identity decisions
-- Write the World Model
-- Execute database operations
-- Contain Repository logic
-
----
-
-# Frozen ProviderFact Rules
-
-ProviderFact is the normalized result of one Provider scan.
-
-ProviderFact is:
-
-- Temporary
-- Produced by Adapter
-- Consumed during one synchronization cycle
-- Never written directly into the World Model database
-
-Top-level fields represent common identity information.
-
-`attributes` contains normalized optional properties.
-
-`raw` contains Provider-specific data and must not be consumed by Matcher.
-
-Current normalized file properties include:
-
-- path
-- size
-- mime type
-- modified time
-- version tag
-- content hash
-
-For Nextcloud:
-
-- `oc:id` is used as stable `external_id`
-- WebDAV `href` remains Provider-specific raw data
-- ETag is normalized as `version_tag`
-- ETag is not treated as content Hash
-
----
-
-# Frozen Identity Rules
-
-Matcher input:
-
-```text
+        │
+        ▼
+Adapter
+        │
+        ▼
 ProviderFact
-+
+        │
+        ▼
+Identity (Matcher)
+        │
+        ▼
+Decision
+        │
+        ▼
 Repository
+        │
+        ▼
+PostgreSQL
 ```
 
-Matcher output:
+目前整个闭环已经真实跑通。
 
-```text
+---
+
+# 三、已经完成（PDI Core MVP V0.1）
+
+## 基础设施
+
+完成：
+
+- Debian Server
+- Docker
+- PostgreSQL
+- Redis
+- Nextcloud
+- Tailscale
+
+服务器稳定运行。
+
+---
+
+## Nextcloud Adapter
+
+完成：
+
+- connect()
+- status()
+- scan()
+- open()
+
+scan() 返回 ProviderFacts。
+
+Provider 自己不做任何业务判断。
+
+---
+
+## ProviderFacts
+
+Identity 输入统一使用：
+
+ProviderFacts
+
+而不是 Provider 自己的数据结构。
+
+ProviderFacts 是 Adapter 与 Identity 的唯一协议。
+
+---
+
+## Identity（Matcher）
+
+目前完成最小版本。
+
+Matcher 输入：
+
+```
+ProviderFact
+```
+
+输出：
+
+```
 Decision
 ```
 
-Matcher responsibilities:
+Decision 包含：
 
-- Validate ProviderFact
-- Query the current World Model
-- Request missing information
-- Decide which World Model actions are required
-
-Matcher must not:
-
-- Call Adapter
-- Download content
-- Calculate Hash
-- Write the database
-- Retry network operations
-
-Current matching rules:
-
-```text
-New Source + new content
-→ CREATE_ASSET
-→ CREATE_BLOB
-→ CREATE_SOURCE
+```
+Action[]
+Requirement[]
 ```
 
-```text
-New Source + existing Blob
-→ CREATE_SOURCE
+Requirement 已实现：
+
 ```
-
-```text
-Existing Source + unchanged state
-→ No Action
-```
-
-```text
-Existing Source + renamed or moved
-→ UPDATE_SOURCE
-```
-
-```text
-Existing Source + new content
-→ CREATE_BLOB
-→ UPDATE_SOURCE
-```
-
-Existing Sources must remain inside their original Asset lifecycle.
-
-A global Hash match must not move an existing Source into another Asset.
-
----
-
-# Frozen Decision Rules
-
-Decision is a structured result produced by Matcher.
-
-Decision contains:
-
-```text
-requirements
-actions
-reason
-confidence
-```
-
-Requirements represent missing information.
-
-Current Requirement:
-
-```text
 CONTENT_HASH
 ```
 
-Actions represent World Model changes.
+如果需要 hash：
 
-Current Actions:
+SyncEngine 会：
 
-```text
+```
+adapter.open()
+
+↓
+
+calculate_sha256()
+
+↓
+
+重新 match()
+```
+
+Identity 不直接读取 Provider。
+
+Identity 不计算 Hash。
+
+---
+
+## SyncEngine
+
+职责：
+
+仅负责调度。
+
+流程：
+
+```
+adapter.connect()
+
+↓
+
+adapter.scan()
+
+↓
+
+matcher.match()
+
+↓
+
+如果需要 hash：
+
+adapter.open()
+
+↓
+
+calculate_sha256()
+
+↓
+
+matcher.match()
+
+↓
+
+repository.execute()
+```
+
+SyncEngine 没有业务逻辑。
+
+只是 Orchestrator。
+
+---
+
+## Repository
+
+Repository 已完成 PostgreSQL 实现。
+
+包括：
+
+- Connection
+- ORM Mapper
+- Query
+- Execute
+- Transaction
+
+---
+
+### Repository 已实现
+
+```
+test_connection()
+
+find_source()
+
+find_blob_by_hash()
+
+find_blob_by_hash_in_asset()
+
+get_blob()
+
+get_asset()
+
+execute()
+```
+
+execute() 已支持：
+
+```
 CREATE_ASSET
+
 CREATE_BLOB
+
 CREATE_SOURCE
-UPDATE_SOURCE
 ```
 
-Decision does not execute itself.
+UPDATE_SOURCE 保留为：
+
+```
+NotImplementedError
+```
+
+等待 V0.2。
 
 ---
 
-# Frozen Repository Rules
+## ORM
 
-Repository is the access and execution interface for the World Model.
+已完成：
 
-Repository is not:
+AssetORM
 
-- A Provider Adapter
-- Identity logic
-- A simple DAO
-- PostgreSQL itself
+BlobORM
 
-Repository responsibilities:
+AssetSourceORM
 
-- Query the current World Model
-- Execute Decisions
-- Store and retrieve domain objects
-- Hide the physical storage implementation
+使用：
 
-Current implementation:
+SQLAlchemy 2.x Typed ORM
 
-```text
-InMemoryRepository
-→ Python dictionaries
+全部采用：
+
+Mapped[]
+
+mapped_column()
+
+---
+
+## 数据库 Schema（冻结）
+
+三张表：
+
+```
+assets
+
+blobs
+
+asset_sources
 ```
 
-Future implementation:
+关系：
 
-```text
+```
+Asset
+
+↓
+
+Blob
+
+↓
+
+AssetSource
+```
+
+ForeignKey 全部正常。
+
+事务正常。
+
+Integration Test 已验证。
+
+---
+
+## execute()
+
+execute() 使用：
+
+```
+match ActionType
+
+↓
+
+_execute_create_asset()
+
+_execute_create_blob()
+
+_execute_create_source()
+```
+
+使用：
+
+```
+session.flush()
+```
+
+保证：
+
+Asset
+
+↓
+
+Blob
+
+↓
+
+Source
+
+按顺序满足 ForeignKey。
+
+最后：
+
+```
+session.commit()
+```
+
+任何失败：
+
+```
+rollback()
+```
+
+保持事务原子性。
+
+---
+
+## Integration Test
+
+已完成：
+
+pytest
+
+真实 PostgreSQL
+
+不是 Mock。
+
+Repository Integration Test 已通过。
+
+测试：
+
+```
+Decision
+
+↓
+
+execute()
+
+↓
+
+PostgreSQL
+
+↓
+
+Repository Query
+
+↓
+
+Domain
+```
+
+全部成功。
+
+---
+
+## Database Layer
+
+新增：
+
+```
+database/
+
+    __init__.py
+
+    postgres.py
+
+    schema.sql
+```
+
+统一：
+
+```
+create_postgres_engine()
+```
+
+负责：
+
+- load_dotenv()
+- 创建 SQLAlchemy Engine
+
+整个项目以后统一使用：
+
+```
+create_postgres_engine()
+```
+
+而不是直接：
+
+```
+sqlalchemy.create_engine()
+```
+
+---
+
+## main.py
+
+目前：
+
+```
+NextcloudAdapter
+
+↓
+
+SyncEngine
+
+↓
+
+Matcher
+
+↓
+
 PostgreSQLRepository
-→ PostgreSQL
 ```
 
-Matcher and Sync Engine must not change when the storage implementation changes.
+已经跑通。
 
----
+运行：
 
-# Frozen Sync Engine Rules
-
-Sync Engine is a workflow coordinator.
-
-It does not make identity decisions.
-
-Current responsibilities:
-
-1. Connect to Adapter
-2. Scan ProviderFacts
-3. Send each Fact to Matcher
-4. Read Decision requirements
-5. Fulfil supported requirements
-6. Return the enriched Fact to Matcher
-7. Execute final actions through Repository
-
-Current public operation:
-
-```text
-sync_once()
+```
+python main.py
 ```
 
-Scheduling, continuous watching and recurring execution do not belong to Sync Engine.
+输出：
 
----
-
-# Error Handling Direction
-
-One failed object must not stop the entire synchronization cycle.
-
-Future errors will be classified as:
-
-```text
-Retryable
-- Network timeout
-- Temporary Provider failure
-- Interrupted content reading
-- Rate limiting
-
-Non-retryable
-- Invalid ProviderFact
-- Missing stable identity
-- Unsupported object type
-- Permanent permission failure
+```
+Sync finished.
 ```
 
-Retry logic belongs to Sync Engine or a surrounding execution layer.
+数据库成功出现真实 Nextcloud 数据。
 
-Matcher does not retry operations.
+验证：
 
-Failed objects must not be silently discarded.
-
-This behavior is not implemented yet.
-
----
-
-# Current Repository Structure
-
-```text
-PDI/
-
-├── adapters/
-│   ├── base.py
-│   ├── registry.py
-│   └── nextcloud/
-├── capability/
-│   └── hash.py
-├── decision/
-│   ├── action.py
-│   ├── decision.py
-│   └── requirement.py
-├── engine/
-│   └── sync_engine.py
-├── identity/
-│   └── matcher.py
-├── models/
-│   ├── asset.py
-│   ├── blob.py
-│   └── asset_source.py
-├── repository/
-│   ├── base.py
-│   └── memory.py
-├── tests/
-│   └── test_matcher.py
-├── docs/
-├── main.py
-└── pyproject.toml
+```
+SELECT provider,path,name
+FROM asset_sources;
 ```
 
----
+结果：
 
-# Current Limitation
-
-The current World Model is stored only in memory.
-
-Therefore:
-
-- Data disappears when the Python process ends.
-- Every `python main.py` run starts from an empty World Model.
-- Persistent incremental synchronization cannot yet be verified.
-- PostgreSQL persistence is the next required milestone.
-
----
-
-# Next Milestone
-
-## PostgreSQL Persistence
-
-Goal:
-
-Replace the in-memory storage implementation with PostgreSQL without modifying:
-
-- Nextcloud Adapter
-- ProviderFact
-- Matcher
-- Decision
-- Sync Engine
-
-Expected outputs:
-
-- PostgreSQL schema
-- SQLAlchemy dependency
-- SQLAlchemy persistence models
-- Database connection configuration
-- PostgreSQLRepository
-- Database initialization or migration process
-- Repository behavior tests
-- Persistent second synchronization producing no duplicate objects
-
-Success condition:
-
-```text
-First run:
-Create Assets, Blobs and Sources
-
-Second unchanged run:
-Create no duplicate Assets, Blobs or Sources
+```
+provider = nextcloud
 ```
 
+说明：
+
+真正完成：
+
+```
+Nextcloud
+
+↓
+
+Adapter
+
+↓
+
+Identity
+
+↓
+
+Repository
+
+↓
+
+PostgreSQL
+```
+
+整个闭环。
+
 ---
 
-# Important Principles
+# 四、目前技术栈
 
-- Architecture First
-- Every abstraction must justify its existence
-- Prefer removing abstractions over adding unnecessary layers
-- Asset represents lifetime
-- Blob is immutable
-- AssetSource represents Provider-side existence
-- ProviderFact is transient
-- Identity decides
-- Decision describes
-- Repository executes
-- Sync Engine coordinates
-- Capability produces missing information
-- Provider-specific details must not leak into Matcher
-- AI must remain replaceable
-- Provider must remain replaceable
-- Database must remain replaceable
-- Git records development history
-- CURRENT_CONTEXT records only the latest snapshot
-- When code and documentation conflict, inspect and verify the repository
+Python 3.13
+
+SQLAlchemy 2.x
+
+PostgreSQL 16
+
+Docker
+
+Nextcloud
+
+pytest
+
+python-dotenv
+
+Redis
+
+requests
+
+psycopg3
 
 ---
 
-# Intentionally Postponed
+# 五、目前项目目录
 
-The following concepts are outside V0.1 Core:
+```
+database/
 
-- Folder modeling
-- Collection
-- Relation
-- Event
-- Timeline
-- Knowledge Graph
-- Merge workflow
-- Conflict resolution
-- OCR
-- EXIF extraction
-- Embeddings
-- AI-generated semantic titles
-- AI Memory
-- Multi-Provider synchronization
+repository/
+
+repository/orm/
+
+decision/
+
+identity/
+
+engine/
+
+adapters/
+
+models/
+
+tests/
+
+docs/
+```
+
+采用 Domain 驱动。
+
+Repository Pattern。
+
+ORM 与 Domain 完全分离。
+
+---
+
+# 六、已经踩过的重要坑（以后不要再踩）
+
+① SQLAlchemy 没有 relationship 时：
+
+session.commit() 不保证插入顺序。
+
+解决：
+
+每个 Action 后：
+
+```
+session.flush()
+```
+
+不是 commit。
+
+flush 保证：
+
+ForeignKey 正确。
+
+---
+
+② Repository 不应该检查业务。
+
+例如：
+
+不要：
+
+```
+if action.asset is None
+```
+
+Repository 信任：
+
+Decision。
+
+以后可使用：
+
+assert。
+
+---
+
+③ 不直接访问 Repository 内部。
+
+以前：
+
+```
+repository.assets
+```
+
+现在：
+
+PostgreSQLRepository 没有：
+
+assets/blobs/sources
+
+统一使用：
+
+Repository API。
+
+---
+
+④ Adapter 不做业务判断。
+
+Identity 决定：
+
+CREATE
+
+MATCH
+
+HASH
+
+等等。
+
+---
+
+⑤ SyncEngine 不包含业务逻辑。
+
+只是：
+
+```
+Adapter
+
+↓
+
+Identity
+
+↓
+
+Repository
+```
+
+调度。
+
+---
+
+⑥ Database Layer
+
+统一：
+
+create_postgres_engine()
+
+不要：
+
+项目里到处：
+
+create_engine()
+
+---
+
+# 七、目前工程质量
+
+已经完成：
+
+- Integration Test
+- Repository Pattern
+- ORM
+- Transaction
+- Database Layer
+
+目前缺少（属于 V0.2）：
+
+- Settings 配置系统
+- Logging
+- Alembic Migration
+- API
+- Web UI
+- 更多 Provider
+
+---
+
+# 八、下一阶段（PDI Core V0.2）
+
+不再搭底层。
+
+开始扩展能力。
+
+优先讨论：
+
+1.
+Settings（统一配置）
+
+2.
+Logging
+
+3.
+Alembic
+
+4.
+API
+
+5.
+Immich Adapter
+
+6.
+WeChat Provider
+
+7.
+Email Provider
+
+8.
+Search
+
+9.
+Event Timeline
+
+10.
+Jarvis Interface
+
+整个开发原则保持：
+
+Architecture First
+
+Small Commit
+
+Integration Test
+
+一步一步推进，不为了未来提前设计。
