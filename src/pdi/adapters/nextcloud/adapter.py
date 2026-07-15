@@ -1,11 +1,10 @@
-import os
 import urllib.parse
 import xml.etree.ElementTree as ET
 from typing import Iterable
 
 import requests
 
-from adapters.base import Adapter, ProviderFact
+from pdi.adapters.base import Adapter, ProviderFact
 
 
 class NextcloudAdapter(Adapter):
@@ -293,36 +292,3 @@ class NextcloudAdapter(Adapter):
         return found.text
 
 
-if __name__ == "__main__":
-    adapter = NextcloudAdapter(
-        base_url=os.environ["NEXTCLOUD_URL"],
-        username=os.environ["NEXTCLOUD_USER"],
-        password=os.environ["NEXTCLOUD_PASSWORD"],
-    )
-
-    adapter.connect()
-
-    for fact in adapter.scan():
-        print(
-            f"[{fact.kind.upper()}] "
-            f"{fact.attributes.get('path')}"
-        )
-
-        print(f"  external_id={fact.external_id}")
-        print(f"  name={fact.name}")
-        print(f"  size={fact.attributes.get('size')}")
-        print(f"  mime={fact.attributes.get('mime_type')}")
-        print(
-            "  version_tag="
-            f"{fact.attributes.get('version_tag')}"
-        )
-        print(
-            "  content_hash="
-            f"{fact.attributes.get('content_hash')}"
-        )
-        print(
-            "  modified="
-            f"{fact.attributes.get('modified_at')}"
-        )
-        print(f"  file_id={fact.raw.get('file_id')}")
-        print()
