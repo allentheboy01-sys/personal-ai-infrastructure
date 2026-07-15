@@ -1,10 +1,12 @@
 import os
+from dotenv import load_dotenv
 
+load_dotenv()
 from adapters.nextcloud.adapter import NextcloudAdapter
 from engine import SyncEngine
 from identity import Matcher
-from repository import InMemoryRepository
-
+from database import create_postgres_engine
+from repository import PostgreSQLRepository
 
 def main() -> None:
     adapter = NextcloudAdapter(
@@ -13,30 +15,23 @@ def main() -> None:
         password=os.environ["NEXTCLOUD_PASSWORD"],
     )
 
-    repository = InMemoryRepository()
+    db_engine = create_postgres_engine()
+
+    repository = PostgreSQLRepository(
+        db_engine,
+    )
+
     matcher = Matcher()
 
-    engine = SyncEngine(
+    sync_engine = SyncEngine(
         adapter=adapter,
         matcher=matcher,
         repository=repository,
     )
 
-    engine.sync_once()
+    sync_engine.sync_once()
 
     print("Sync finished.")
-    print(f"Assets: {len(repository.assets)}")
-    print(f"Blobs: {len(repository.blobs)}")
-    print(f"Sources: {len(repository.sources)}")
-
-    for asset in repository.assets.values():
-        print(f"Asset: {asset}")
-
-    for blob in repository.blobs.values():
-        print(f"Blob: {blob}")
-
-    for source in repository.sources.values():
-        print(f"Source: {source}")
 
 
 if __name__ == "__main__":
