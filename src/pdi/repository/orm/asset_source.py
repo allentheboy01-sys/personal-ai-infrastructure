@@ -4,7 +4,7 @@ from sqlalchemy import ForeignKey, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from repository.orm.base import Base
+from pdi.repository.orm.base import Base
 
 
 class AssetSourceORM(Base):

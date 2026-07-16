@@ -3,13 +3,13 @@ from uuid import UUID
 from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from decision import Action, ActionType, Decision
-from models import Asset, AssetSource, Blob
-from repository.base import Repository
+from pdi.decision import Action, ActionType, Decision
+from pdi.models import Asset, AssetSource, Blob
+from pdi.repository.base import Repository
 
-from repository.orm.asset import AssetORM
-from repository.orm.blob import BlobORM
-from repository.orm.asset_source import AssetSourceORM
+from pdi.repository.orm.asset import AssetORM
+from pdi.repository.orm.blob import BlobORM
+from pdi.repository.orm.asset_source import AssetSourceORM
 
 class PostgreSQLRepository(Repository):
     def __init__(self, engine: Engine) -> None:

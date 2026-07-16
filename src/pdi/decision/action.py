@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from models import Asset, AssetSource, Blob
+from pdi.models import Asset, AssetSource, Blob
 
 
 class ActionType(str, Enum):

@@ -1,12 +1,18 @@
-from database import create_postgres_engine
+from pdi.database import create_postgres_engine
+from pdi.config import Settings
+from pdi.decision import Action, ActionType, Decision
+from pdi.models import Asset, AssetSource, Blob
+from pdi.repository import PostgreSQLRepository
 
-from decision import Action, ActionType, Decision
-from models import Asset, AssetSource, Blob
-from repository import PostgreSQLRepository
+def create_test_engine():
+    settings = Settings()
 
+    return create_postgres_engine(
+        settings.database.url,
+    )
 
 def test_connection():
-    engine = create_postgres_engine()
+    engine = create_test_engine()
     repo = PostgreSQLRepository(engine)
 
     assert repo.test_connection()
@@ -14,7 +20,7 @@ def test_connection():
     engine.dispose()
 
 def test_execute_create_complete_asset_chain() -> None:
-    engine = create_postgres_engine()
+    engine = create_test_engine()
 
     repository = PostgreSQLRepository(engine)
 

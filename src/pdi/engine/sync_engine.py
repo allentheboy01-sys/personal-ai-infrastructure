@@ -1,8 +1,8 @@
-from adapters.base import Adapter
-from capability.hash import calculate_sha256
-from decision import RequirementType
-from identity import Matcher
-from repository import Repository
+from pdi.adapters.base import Adapter
+from pdi.capability.hash import calculate_sha256
+from pdi.decision import RequirementType
+from pdi.identity import Matcher
+from pdi.repository import Repository
 
 
 class SyncEngine:

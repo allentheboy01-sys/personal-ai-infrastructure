@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
-from decision import Decision
-from models import Asset, AssetSource, Blob
+from pdi.decision import Decision
+from pdi.models import Asset, AssetSource, Blob
 
 
 class Repository(ABC):

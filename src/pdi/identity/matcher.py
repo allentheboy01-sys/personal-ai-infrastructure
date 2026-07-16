@@ -1,15 +1,15 @@
 from dataclasses import replace
 from pathlib import Path
 
-from adapters.base import ProviderFact
-from decision import (
+from pdi.adapters.base import ProviderFact
+from pdi.decision import (
     Action,
     ActionType,
     Decision,
     RequirementType,
 )
-from models import Asset, AssetSource, Blob
-from repository import Repository
+from pdi.models import Asset, AssetSource, Blob
+from pdi.repository import Repository
 
 
 class Matcher:

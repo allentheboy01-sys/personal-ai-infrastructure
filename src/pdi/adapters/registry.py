@@ -1,6 +1,6 @@
 from typing import Type
 
-from adapters.base import Adapter
+from pdi.adapters.base import Adapter
 
 
 class AdapterRegistry:

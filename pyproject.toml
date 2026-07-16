@@ -1,3 +1,8 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+
 [project]
 name = "pdi"
 version = "0.1.0"
@@ -10,8 +15,13 @@ dependencies = [
     "SQLAlchemy>=2.0,<3.0",
     "psycopg[binary]>=3.2,<4.0",
     "python-dotenv>=1.1,<2.0",
+    "pydantic-settings>=2.0,<3.0",
 ]
 
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+
 [tool.pytest.ini_options]
-pythonpath = ["."]
 testpaths = ["tests"]

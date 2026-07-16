@@ -1,21 +1,23 @@
-import os
-from dotenv import load_dotenv
+from pdi.adapters.nextcloud.adapter import NextcloudAdapter
+from pdi.config import Settings
+from pdi.database import create_postgres_engine
+from pdi.engine import SyncEngine
+from pdi.identity import Matcher
+from pdi.repository import PostgreSQLRepository
 
-load_dotenv()
-from adapters.nextcloud.adapter import NextcloudAdapter
-from engine import SyncEngine
-from identity import Matcher
-from database import create_postgres_engine
-from repository import PostgreSQLRepository
 
 def main() -> None:
+    settings = Settings()
+
     adapter = NextcloudAdapter(
-        base_url=os.environ["NEXTCLOUD_URL"],
-        username=os.environ["NEXTCLOUD_USER"],
-        password=os.environ["NEXTCLOUD_PASSWORD"],
+        base_url=settings.nextcloud.url,
+        username=settings.nextcloud.user,
+        password=settings.nextcloud.password,
     )
 
-    db_engine = create_postgres_engine()
+    db_engine = create_postgres_engine(
+        settings.database.url,
+    )
 
     repository = PostgreSQLRepository(
         db_engine,

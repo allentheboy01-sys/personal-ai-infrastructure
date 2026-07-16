@@ -1,5 +1,5 @@
-from decision import ActionType, Decision
-from models import Asset, AssetSource, Blob
+from pdi.decision import ActionType, Decision
+from pdi.models import Asset, AssetSource, Blob
 
 from .base import Repository
 

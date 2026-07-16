@@ -1,7 +1,7 @@
-from adapters.base import ProviderFact
-from decision import ActionType
-from identity import Matcher
-from repository import InMemoryRepository
+from pdi.adapters.base import ProviderFact
+from pdi.decision import ActionType
+from pdi.identity import Matcher
+from pdi.repository import InMemoryRepository
 
 
 def test_create_new_asset():
