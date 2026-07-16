@@ -15,12 +15,17 @@ class NextcloudSettings(BaseModel):
     user: str
     password: str
 
+class LoggingSettings(BaseModel):
+    """PDI 日志配置。"""
+
+    level: str = "INFO"
 
 class Settings(BaseSettings):
     """PDI 应用启动所需的统一配置。"""
 
     database: DatabaseSettings
     nextcloud: NextcloudSettings
+    logging: LoggingSettings = LoggingSettings()
 
     model_config = SettingsConfigDict(
         env_file=".env",
