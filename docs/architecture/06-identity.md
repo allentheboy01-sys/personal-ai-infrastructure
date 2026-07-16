@@ -1,184 +1,421 @@
-# 05 - Identity
+# 06 - Identity
 
-**Status:** V0.1 Draft
+## Overview
 
----
+Identity is the core of PDI.
 
-## Purpose
+Providers describe the real world.
 
-Identity decides how new ProviderFacts should affect the PDI World Model.
+PDI describes its own world.
 
-Identity does not classify files.
+Identity is responsible for translating changes in the real world into changes in the PDI world.
 
-Identity reconciles Provider reality with the PDI World Model.
+It is the bridge between Reality and the World Model.
 
----
+```
+Reality
+        │
+        ▼
+ ProviderFact
+        │
+        ▼
+ Identity
+        │
+        ▼
+ Decision
+        │
+        ▼
+ Repository
+        │
+        ▼
+ World Model
+```
 
-## Input
+Identity does **not** store data.
 
-Identity Matcher has two inputs:
+Identity does **not** synchronize files.
 
-1. New ProviderFact
-2. Existing World Model
+Identity only answers one question:
 
-Existing World Model includes:
-
-- Asset
-- Blob
-- AssetSource
-
----
-
-## Output
-
-Identity Matcher does not directly write the database.
-
-It produces a Decision.
-
-The Repository applies that Decision to the database.
-
----
-
-## Flow
-
-    ProviderFact
-        ↓
-    Evidence
-        ↓
-    Decision
-        ↓
-    Repository
-        ↓
-    Asset / Blob / AssetSource
+> **"Given what happened in reality, how should the PDI world change?"**
 
 ---
 
-## Evidence
+# Responsibilities
 
-Evidence is the objective information used to support a decision.
+Identity is responsible for:
 
-Examples:
+- understanding ProviderFacts
+- comparing reality with the current PDI world
+- requesting additional information when necessary
+- generating Decisions
 
-- provider
-- external_id
-- name
-- path
-- size
-- mime_type
-- hash
-- etag
-- modified_at
+Identity is **not** responsible for:
 
-Evidence answers:
-
-> Why did PDI make this decision?
+- reading Providers directly
+- writing databases
+- calculating hashes
+- downloading files
 
 ---
 
-## Decision
+# Inputs
 
-Decision is the result of Identity matching.
+Identity receives two things.
 
-V0.1 decisions:
+## ProviderFact
 
-- update_existing_source
-- reuse_blob
-- create_new_blob
-- create_new_asset
-- uncertain
+The current observation from a Provider.
 
----
+Example:
 
-## V0.1 Policy
+```
+provider = nextcloud
 
-### 1. Source Check
+external_id = 12345
 
-If `provider + external_id` already exists:
+path = /docs/a.md
 
-    update_existing_source
+version_tag = abc123
+```
 
-This means PDI has seen the same Provider object before.
+ProviderFacts describe reality.
 
 ---
 
-### 2. Blob Check
+## Repository
 
-If content hash already exists:
+Identity can query the current PDI world.
 
-    reuse_blob
+For example:
 
-This means PDI has seen the same content before.
+```
+Find Source
 
----
+Find Blob
 
-### 3. New Blob
+Find Asset
+```
 
-If content hash does not exist:
+Identity compares:
 
-    create_new_blob
+```
+Reality
 
-This means PDI has not seen this content before.
+↓
 
----
-
-### 4. Asset Check
-
-If there is not enough evidence to prove that this belongs to an existing Asset:
-
-    create_new_asset
+Current World
+```
 
 ---
 
-### 5. Uncertain
+# Requirements
 
-If evidence suggests similarity but confidence is not high enough:
+Sometimes ProviderFacts are not sufficient.
 
-    uncertain
+Example:
 
-PDI should not automatically merge.
+```
+version_tag changed
+```
+
+Identity cannot determine whether:
+
+- the content changed
+- only metadata changed
+
+Therefore Identity returns:
+
+```
+Requirement
+
+↓
+
+CONTENT_HASH
+```
+
+SyncEngine satisfies the Requirement.
+
+```
+ProviderFact
+
+↓
+
+Identity
+
+↓
+
+Requirement(CONTENT_HASH)
+
+↓
+
+SyncEngine
+
+↓
+
+adapter.open()
+
+↓
+
+SHA256
+
+↓
+
+ProviderFact(content_hash)
+
+↓
+
+Identity
+```
+
+Identity never downloads files.
+
+Identity never computes hashes.
 
 ---
 
-## Core Principle
+# Decisions
 
-V0.1 prefers duplication over incorrect merging.
+Identity never modifies the database.
 
-It is safer to create two Assets than to wrongly merge two unrelated Assets.
+Instead it generates Decisions.
 
----
+A Decision contains Actions.
 
-## What Identity Does Not Do
+Example:
 
-Identity does not:
+```
+CREATE_ASSET
 
-- connect to Providers
-- scan files
-- download content
-- write database directly
-- call AI directly
-- expose user interaction
+CREATE_BLOB
 
----
+CREATE_SOURCE
 
-## Relationship to Other Components
+UPDATE_SOURCE
+```
 
-| Component | Responsibility |
-|---|---|
-| Adapter | Reads ProviderFacts |
-| Sync Engine | Detects changes |
-| Identity Matcher | Produces Evidence and Decision |
-| Repository | Applies Decision to database |
-| World Model | Stores Asset, Blob, AssetSource |
+Repository executes Decisions.
 
 ---
 
-## Future Evolution
+# World State Transition
 
-Future versions may support:
+Identity is not simply matching objects.
 
-- semantic similarity
-- OCR comparison
-- AI-assisted merge suggestions
-- human confirmation workflow
-- split / unmerge decisions
-- decision history
+Identity interprets reality.
+
+It converts real-world changes into world-state transitions.
+
+For example:
+
+Reality:
+
+```
+New file
+```
+
+↓
+
+Decision:
+
+```
+CREATE_ASSET
+
+CREATE_BLOB
+
+CREATE_SOURCE
+```
+
+---
+
+Reality:
+
+```
+File renamed
+```
+
+↓
+
+Decision:
+
+```
+UPDATE_SOURCE
+```
+
+---
+
+Reality:
+
+```
+File moved
+```
+
+↓
+
+Decision:
+
+```
+UPDATE_SOURCE
+```
+
+---
+
+Reality:
+
+```
+File content changed
+```
+
+↓
+
+Decision:
+
+```
+CREATE_BLOB
+
+UPDATE_SOURCE
+```
+
+---
+
+Reality:
+
+```
+Same content copied
+```
+
+↓
+
+Decision:
+
+```
+CREATE_SOURCE
+```
+
+The new Source references the existing Blob.
+
+No new Blob is created.
+
+---
+
+# Identity Rules
+
+Identity always follows these principles.
+
+## Rule 1
+
+Provider defines reality.
+
+PDI never guesses reality.
+
+---
+
+## Rule 2
+
+Identity only generates Decisions.
+
+It never performs Actions.
+
+---
+
+## Rule 3
+
+Repository is trusted as the source of truth.
+
+Identity compares ProviderFacts against the Repository.
+
+---
+
+## Rule 4
+
+Hash is expensive.
+
+Identity always prefers lightweight metadata first.
+
+```
+version_tag
+
+↓
+
+if unchanged
+
+↓
+
+Done
+
+↓
+
+if changed
+
+↓
+
+Request CONTENT_HASH
+```
+
+---
+
+## Rule 5
+
+Hash represents content.
+
+VersionTag represents the Provider's version.
+
+They are different concepts.
+
+Hash answers:
+
+> Has the content changed?
+
+VersionTag answers:
+
+> Does the Provider believe this object changed?
+
+Therefore:
+
+```
+VersionTag changed
+
+↓
+
+Hash unchanged
+
+↓
+
+UPDATE_SOURCE
+```
+
+---
+
+```
+VersionTag changed
+
+↓
+
+Hash changed
+
+↓
+
+CREATE_BLOB
+
++
+
+UPDATE_SOURCE
+```
+
+---
+
+# Identity in PDI
+
+Identity is the most important layer of PDI.
+
+Providers observe reality.
+
+Repository stores the PDI world.
+
+Identity explains reality.
+
+Decision describes how the world should evolve.
+
+Without Identity, PDI would only be a synchronization tool.
+
+With Identity, PDI becomes a persistent digital world model.

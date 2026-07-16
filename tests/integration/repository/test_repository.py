@@ -113,3 +113,110 @@ def test_execute_create_complete_asset_chain() -> None:
     )
 
     engine.dispose()
+
+def test_execute_update_source() -> None:
+    engine = create_test_engine()
+    repository = PostgreSQLRepository(engine)
+
+    asset = Asset(
+        title="Repository Update Test",
+    )
+
+    original_blob = Blob(
+        asset_id=asset.id,
+        hash=f"original-hash-{asset.id}",
+        size=100,
+        mime_type="text/plain",
+    )
+
+    updated_blob = Blob(
+        asset_id=asset.id,
+        hash=f"updated-hash-{asset.id}",
+        size=200,
+        mime_type="text/plain",
+    )
+
+    source = AssetSource(
+        blob_id=original_blob.id,
+        provider="integration-test",
+        external_id=f"update-source-{asset.id}",
+        path="/tests/original.txt",
+        name="original.txt",
+        version_tag="v1",
+        metadata={
+            "state": "original",
+        },
+    )
+
+    create_decision = Decision(
+        actions=[
+            Action(
+                type=ActionType.CREATE_ASSET,
+                asset=asset,
+            ),
+            Action(
+                type=ActionType.CREATE_BLOB,
+                blob=original_blob,
+            ),
+            Action(
+                type=ActionType.CREATE_SOURCE,
+                source=source,
+            ),
+        ],
+    )
+
+    repository.execute(create_decision)
+
+    create_blob_decision = Decision(
+        actions=[
+            Action(
+                type=ActionType.CREATE_BLOB,
+                blob=updated_blob,
+            ),
+        ],
+    )
+
+    repository.execute(create_blob_decision)
+
+    updated_source = AssetSource(
+        id=source.id,
+        blob_id=updated_blob.id,
+        provider=source.provider,
+        external_id=source.external_id,
+        path="/tests/renamed.txt",
+        name="renamed.txt",
+        version_tag="v2",
+        metadata={
+            "state": "updated",
+        },
+    )
+
+    update_decision = Decision(
+        actions=[
+            Action(
+                type=ActionType.UPDATE_SOURCE,
+                source=updated_source,
+            ),
+        ],
+    )
+
+    repository.execute(update_decision)
+
+    stored_source = repository.find_source(
+        provider=source.provider,
+        external_id=source.external_id,
+    )
+
+    assert stored_source is not None
+    assert stored_source.id == source.id
+    assert stored_source.blob_id == updated_blob.id
+    assert stored_source.provider == source.provider
+    assert stored_source.external_id == source.external_id
+    assert stored_source.path == "/tests/renamed.txt"
+    assert stored_source.name == "renamed.txt"
+    assert stored_source.version_tag == "v2"
+    assert stored_source.metadata == {
+        "state": "updated",
+    }
+
+    engine.dispose()

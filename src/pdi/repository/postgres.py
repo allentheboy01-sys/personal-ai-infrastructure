@@ -307,5 +307,29 @@ class PostgreSQLRepository(Repository):
         session: Session,
         action: Action,
     ) -> None:
-        assert action.source is not None, "Source must be provided for UPDATE_SOURCE action."
-        raise NotImplementedError
+        assert action.source is not None, (
+            "Source must be provided for UPDATE_SOURCE action."
+        )
+
+        source = action.source
+
+        source_orm = session.get(
+            AssetSourceORM,
+            UUID(source.id),
+        )
+
+        if source_orm is None:
+            raise ValueError(
+                f"Source not found: {source.id}"
+            )
+
+        if source.blob_id is None:
+            raise ValueError(
+                "UPDATE_SOURCE requires blob_id"
+            )
+
+        source_orm.blob_id = UUID(source.blob_id)
+        source_orm.path = source.path
+        source_orm.name = source.name
+        source_orm.version_tag = source.version_tag
+        source_orm.metadata_ = source.metadata

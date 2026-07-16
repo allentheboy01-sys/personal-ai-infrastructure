@@ -62,16 +62,9 @@ class Matcher:
         )
 
         if content_hash is None:
-            return Decision(
-                actions=[],
-                requirements=[
-                    RequirementType.CONTENT_HASH,
-                ],
-                reason="content_hash_required",
-                confidence=0.0,
-            )
+            return self._content_hash_required()
 
-        # 新 Source 可以在整个 World Model 中查找相同内容。
+        # 新 Source 可以在整个 World Model 中复用相同内容。
         existing_blob = repository.find_blob_by_hash(
             content_hash,
         )
@@ -138,49 +131,63 @@ class Matcher:
             "version_tag",
         )
 
-        # Provider 版本没有变化。
         if source.version_tag == incoming_version_tag:
-            if self._source_state_is_unchanged(
+            return self._match_same_version_source(
                 fact=fact,
                 source=source,
-            ):
-                return Decision(
-                    actions=[],
-                    reason="source_unchanged",
-                    confidence=1.0,
-                )
-
-            updated_source = self._updated_source(
-                source=source,
-                fact=fact,
-                blob_id=source.blob_id,
             )
 
+        return self._match_changed_version_source(
+            fact=fact,
+            source=source,
+            repository=repository,
+        )
+
+    def _match_same_version_source(
+        self,
+        fact: ProviderFact,
+        source: AssetSource,
+    ) -> Decision:
+        if self._source_state_is_unchanged(
+            fact=fact,
+            source=source,
+        ):
             return Decision(
-                actions=[
-                    Action(
-                        type=ActionType.UPDATE_SOURCE,
-                        source=updated_source,
-                    ),
-                ],
-                reason="source_metadata_changed",
+                actions=[],
+                reason="source_unchanged",
                 confidence=1.0,
             )
 
-        # Provider 版本变化，需要真实内容 Hash。
+        updated_source = self._updated_source(
+            source=source,
+            fact=fact,
+            blob_id=source.blob_id,
+        )
+
+        return Decision(
+            actions=[
+                Action(
+                    type=ActionType.UPDATE_SOURCE,
+                    source=updated_source,
+                ),
+            ],
+            reason="source_metadata_changed",
+            confidence=1.0,
+        )
+
+    def _match_changed_version_source(
+        self,
+        fact: ProviderFact,
+        source: AssetSource,
+        repository: Repository,
+    ) -> Decision:
         content_hash = self._get_string_attribute(
             fact,
             "content_hash",
         )
+
         if content_hash is None:
-            return Decision(
-                actions=[],
-                requirements=[
-                    RequirementType.CONTENT_HASH,
-                ],
-                reason="content_hash_required",
-                confidence=0.0,
-            )
+            return self._content_hash_required()
 
         if source.blob_id is None:
             return Decision(
@@ -208,7 +215,7 @@ class Matcher:
             )
 
         # 已有 Source 必须维持原 Asset 生命周期。
-        # 因此只能在当前 Asset 内复用相同 Hash 的 Blob。
+        # 因此只能在当前 Asset 内复用已有 Blob。
         existing_blob_in_asset = (
             repository.find_blob_by_hash_in_asset(
                 content_hash=content_hash,
@@ -262,6 +269,17 @@ class Matcher:
         )
 
     @staticmethod
+    def _content_hash_required() -> Decision:
+        return Decision(
+            actions=[],
+            requirements=[
+                RequirementType.CONTENT_HASH,
+            ],
+            reason="content_hash_required",
+            confidence=0.0,
+        )
+
+    @staticmethod
     def _validate_fact(
         fact: ProviderFact,
     ) -> str | None:
@@ -288,59 +306,94 @@ class Matcher:
 
         return None
 
-    @staticmethod
+    @classmethod
     def _source_state_is_unchanged(
+        cls,
         fact: ProviderFact,
         source: AssetSource,
     ) -> bool:
         return (
-            source.path == fact.attributes.get("path")
+            source.path == cls._get_optional_string_attribute(
+                fact,
+                "path",
+            )
             and source.name == fact.name
             and source.version_tag
-            == fact.attributes.get("version_tag")
+            == cls._get_optional_string_attribute(
+                fact,
+                "version_tag",
+            )
+            and source.metadata
+            == cls._build_source_metadata(fact)
         )
 
-    @staticmethod
+    @classmethod
     def _build_source(
+        cls,
         fact: ProviderFact,
         blob_id: str,
     ) -> AssetSource:
-        path = fact.attributes.get("path")
-        version_tag = fact.attributes.get("version_tag")
-
         return AssetSource(
             blob_id=blob_id,
             provider=fact.provider,
             external_id=fact.external_id,
-            path=path if isinstance(path, str) else None,
-            name=fact.name,
-            version_tag=(
-                version_tag
-                if isinstance(version_tag, str)
-                else None
+            path=cls._get_optional_string_attribute(
+                fact,
+                "path",
             ),
+            name=fact.name,
+            version_tag=cls._get_optional_string_attribute(
+                fact,
+                "version_tag",
+            ),
+            metadata=cls._build_source_metadata(fact),
         )
 
-    @staticmethod
+    @classmethod
     def _updated_source(
+        cls,
         source: AssetSource,
         fact: ProviderFact,
         blob_id: str | None,
     ) -> AssetSource:
-        path = fact.attributes.get("path")
-        version_tag = fact.attributes.get("version_tag")
-
         return replace(
             source,
             blob_id=blob_id,
-            path=path if isinstance(path, str) else None,
-            name=fact.name,
-            version_tag=(
-                version_tag
-                if isinstance(version_tag, str)
-                else None
+            path=cls._get_optional_string_attribute(
+                fact,
+                "path",
             ),
+            name=fact.name,
+            version_tag=cls._get_optional_string_attribute(
+                fact,
+                "version_tag",
+            ),
+            metadata=cls._build_source_metadata(fact),
         )
+
+    @staticmethod
+    def _build_source_metadata(
+        fact: ProviderFact,
+    ) -> dict:
+        """
+        保存 Provider 提供的原始附加信息。
+
+        content_hash 是 PDI 在同步过程中计算出的临时补充信息，
+        不属于 Provider 原始状态，因此不写入 Source metadata。
+        """
+        return dict(fact.raw)
+
+    @staticmethod
+    def _get_optional_string_attribute(
+        fact: ProviderFact,
+        key: str,
+    ) -> str | None:
+        value = fact.attributes.get(key)
+
+        if isinstance(value, str):
+            return value
+
+        return None
 
     @staticmethod
     def _build_blob(

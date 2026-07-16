@@ -1,6 +1,7 @@
 from pdi.adapters.base import ProviderFact
 from pdi.decision import ActionType
 from pdi.identity import Matcher
+from pdi.models import Asset, AssetSource, Blob
 from pdi.repository import InMemoryRepository
 
 
@@ -438,3 +439,123 @@ def test_existing_source_should_not_jump_between_assets():
     assert len(repository.assets) == 2
     assert len(repository.blobs) == 3
     assert len(repository.sources) == 2
+
+def test_new_source_preserves_provider_raw_metadata() -> None:
+    repository = InMemoryRepository()
+    matcher = Matcher()
+
+    fact = ProviderFact(
+        provider="nextcloud",
+        external_id="file-123",
+        kind="file",
+        name="metadata.txt",
+        attributes={
+            "path": "/docs/metadata.txt",
+            "version_tag": "v1",
+            "content_hash": "hash-metadata",
+            "size": 128,
+            "mime_type": "text/plain",
+        },
+        raw={
+            "file_id": "123",
+            "permissions": "RGDNVW",
+        },
+    )
+
+    decision = matcher.match(
+        fact=fact,
+        repository=repository,
+    )
+
+    create_source_action = next(
+        action
+        for action in decision.actions
+        if action.type == ActionType.CREATE_SOURCE
+    )
+
+    assert create_source_action.source is not None
+    assert create_source_action.source.metadata == {
+        "file_id": "123",
+        "permissions": "RGDNVW",
+    }
+
+    # 验证保存的是新字典，而不是和 ProviderFact 共用同一对象。
+    assert create_source_action.source.metadata is not fact.raw
+
+
+def test_same_version_raw_metadata_change_updates_source() -> None:
+    repository = InMemoryRepository()
+    matcher = Matcher()
+
+    asset = Asset(
+        title="Metadata Update Test",
+    )
+
+    blob = Blob(
+        asset_id=asset.id,
+        hash="metadata-update-hash",
+        size=128,
+        mime_type="text/plain",
+    )
+
+    source = AssetSource(
+        blob_id=blob.id,
+        provider="nextcloud",
+        external_id="file-456",
+        path="/docs/metadata.txt",
+        name="metadata.txt",
+        version_tag="v1",
+        metadata={
+            "file_id": "456",
+            "permissions": "RG",
+        },
+    )
+
+    repository.assets[asset.id] = asset
+    repository.blobs[blob.id] = blob
+    repository.sources[source.id] = source
+
+    fact = ProviderFact(
+        provider="nextcloud",
+        external_id="file-456",
+        kind="file",
+        name="metadata.txt",
+        attributes={
+            "path": "/docs/metadata.txt",
+            "version_tag": "v1",
+            "size": 128,
+            "mime_type": "text/plain",
+        },
+        raw={
+            "file_id": "456",
+            "permissions": "RGDNVW",
+        },
+    )
+
+    decision = matcher.match(
+        fact=fact,
+        repository=repository,
+    )
+
+    assert decision.reason == "source_metadata_changed"
+    assert len(decision.actions) == 1
+    assert decision.actions[0].type == ActionType.UPDATE_SOURCE
+
+    updated_source = decision.actions[0].source
+
+    assert updated_source is not None
+    assert updated_source.id == source.id
+    assert updated_source.blob_id == blob.id
+    assert updated_source.path == source.path
+    assert updated_source.name == source.name
+    assert updated_source.version_tag == source.version_tag
+    assert updated_source.metadata == {
+        "file_id": "456",
+        "permissions": "RGDNVW",
+    }
+
+    # Matcher 只生成 Decision，不应直接修改 Repository 中的旧对象。
+    assert repository.sources[source.id].metadata == {
+        "file_id": "456",
+        "permissions": "RG",
+    }
