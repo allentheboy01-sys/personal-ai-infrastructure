@@ -559,3 +559,26 @@ def test_same_version_raw_metadata_change_updates_source() -> None:
         "file_id": "456",
         "permissions": "RG",
     }
+
+def test_deactivate_source() -> None:
+    matcher = Matcher()
+
+    source = AssetSource(
+        blob_id="blob-1",
+        provider="nextcloud",
+        external_id="123",
+        path="/test.txt",
+        name="test.txt",
+        version_tag="v1",
+    )
+
+    decision = matcher.deactivate_source(source)
+
+    assert len(decision.actions) == 1
+
+    action = decision.actions[0]
+
+    assert action.type == ActionType.DEACTIVATE_SOURCE
+    assert action.source is source
+    assert source.is_active is False
+    assert source.deleted_at is not None

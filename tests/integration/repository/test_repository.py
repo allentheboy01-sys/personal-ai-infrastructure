@@ -3,6 +3,8 @@ from pdi.config import Settings
 from pdi.decision import Action, ActionType, Decision
 from pdi.models import Asset, AssetSource, Blob
 from pdi.repository import PostgreSQLRepository
+from datetime import UTC, datetime
+
 
 def create_test_engine():
     settings = Settings()
@@ -218,5 +220,95 @@ def test_execute_update_source() -> None:
     assert stored_source.metadata == {
         "state": "updated",
     }
+
+    engine.dispose()
+
+def test_execute_deactivate_source() -> None:
+    engine = create_test_engine()
+    repository = PostgreSQLRepository(engine)
+
+    asset = Asset(
+        title="Repository Deactivate Test",
+    )
+
+    blob = Blob(
+        asset_id=asset.id,
+        hash=f"deactivate-hash-{asset.id}",
+        size=128,
+        mime_type="text/plain",
+    )
+
+    source = AssetSource(
+        blob_id=blob.id,
+        provider="integration-test",
+        external_id=f"deactivate-source-{asset.id}",
+        path="/tests/deactivate.txt",
+        name="deactivate.txt",
+        version_tag="v1",
+        metadata={
+            "state": "active",
+        },
+    )
+
+    create_decision = Decision(
+        actions=[
+            Action(
+                type=ActionType.CREATE_ASSET,
+                asset=asset,
+            ),
+            Action(
+                type=ActionType.CREATE_BLOB,
+                blob=blob,
+            ),
+            Action(
+                type=ActionType.CREATE_SOURCE,
+                source=source,
+            ),
+        ],
+    )
+
+    repository.execute(create_decision)
+
+    stored_source = repository.find_source(
+        provider=source.provider,
+        external_id=source.external_id,
+    )
+
+    assert stored_source is not None
+    assert stored_source.is_active is True
+    assert stored_source.deleted_at is None
+
+    stored_source.is_active = False
+    stored_source.deleted_at = datetime.now(UTC)
+
+    deactivate_decision = Decision(
+        actions=[
+            Action(
+                type=ActionType.DEACTIVATE_SOURCE,
+                source=stored_source,
+            ),
+        ],
+    )
+
+    repository.execute(deactivate_decision)
+
+    deactivated_source = repository.find_source(
+        provider=source.provider,
+        external_id=source.external_id,
+    )
+
+    assert deactivated_source is not None
+    assert deactivated_source.id == source.id
+    assert deactivated_source.is_active is False
+    assert deactivated_source.deleted_at is not None
+
+    active_sources = repository.list_active_sources(
+        provider=source.provider,
+    )
+
+    assert all(
+        active_source.id != source.id
+        for active_source in active_sources
+    )
 
     engine.dispose()

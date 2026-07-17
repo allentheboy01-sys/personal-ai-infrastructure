@@ -36,6 +36,8 @@ CREATE TABLE asset_sources (
     name TEXT,
     version_tag TEXT,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    deleted_at TIMESTAMPTZ,
 
     CONSTRAINT fk_asset_sources_blob
         FOREIGN KEY (blob_id)

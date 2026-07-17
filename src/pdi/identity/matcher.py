@@ -10,6 +10,7 @@ from pdi.decision import (
 )
 from pdi.models import Asset, AssetSource, Blob
 from pdi.repository import Repository
+from datetime import UTC, datetime
 
 
 class Matcher:
@@ -431,3 +432,19 @@ class Matcher:
             return fact.name.removesuffix(suffix)
 
         return fact.name
+
+    def deactivate_source(
+        self,
+        source: AssetSource,
+    ) -> Decision:
+        source.is_active = False
+        source.deleted_at = datetime.now(UTC)
+
+        return Decision(
+            actions=[
+                Action(
+                    type=ActionType.DEACTIVATE_SOURCE,
+                    source=source,
+                )
+            ]
+        )

@@ -9,6 +9,7 @@ class ActionType(str, Enum):
     CREATE_BLOB = "create_blob"
     CREATE_SOURCE = "create_source"
     UPDATE_SOURCE = "update_source"
+    DEACTIVATE_SOURCE = "deactivate_source"
 
 
 @dataclass

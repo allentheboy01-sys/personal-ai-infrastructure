@@ -15,7 +15,18 @@ class Repository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def find_blob_by_hash(self, content_hash: str) -> Blob | None:
+    def list_active_sources(
+        self,
+        provider: str,
+    ) -> list[AssetSource]:
+        """列出指定 Provider 当前仍处于 active 状态的 Sources。"""
+        raise NotImplementedError
+
+    @abstractmethod
+    def find_blob_by_hash(
+        self,
+        content_hash: str,
+    ) -> Blob | None:
         """根据内容 Hash 查找已有 Blob。"""
         raise NotImplementedError
 
@@ -29,16 +40,25 @@ class Repository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_blob(self, blob_id: str) -> Blob | None:
+    def get_blob(
+        self,
+        blob_id: str,
+    ) -> Blob | None:
         """根据 PDI 内部 ID 查找 Blob。"""
         raise NotImplementedError
 
     @abstractmethod
-    def get_asset(self, asset_id: str) -> Asset | None:
+    def get_asset(
+        self,
+        asset_id: str,
+    ) -> Asset | None:
         """根据 PDI 内部 ID 查找 Asset。"""
         raise NotImplementedError
 
     @abstractmethod
-    def execute(self, decision: Decision) -> None:
+    def execute(
+        self,
+        decision: Decision,
+    ) -> None:
         """执行 Identity 生成的 Decision。"""
         raise NotImplementedError
