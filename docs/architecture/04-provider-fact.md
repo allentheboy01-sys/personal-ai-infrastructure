@@ -1,37 +1,66 @@
-# Provider Fact
+# 04 - Provider Fact
+
+**Status:** Stable for Identity V1
 
 ## Purpose
 
-A ProviderFact is the unified representation of data produced by a Provider Adapter.
+A `ProviderFact` is a normalized observation of one object in Provider reality.
 
-It is the only format accepted by the Sync Engine.
+It is the boundary object passed from a Provider Adapter into PDI Core. It allows Identity and the Sync Engine to operate without understanding Provider-specific APIs or schemas.
 
----
+## Required Meaning
 
-## Responsibilities
+A ProviderFact may carry:
 
-A ProviderFact carries:
+- Provider identity;
+- stable external identifier;
+- object kind;
+- name and path;
+- Provider version tag;
+- size and MIME type;
+- normalized attributes;
+- preserved raw metadata;
+- content hash, when a Requirement has been satisfied.
 
-- Provider identity.
-- External identifier.
-- Provider metadata.
-- Available attributes.
+Not every field must be known during the first match attempt. Missing expensive information may be requested through a `Requirement`.
 
----
+## Invariants
+
+1. A ProviderFact describes Provider reality, not PDI identity.
+2. It must not reference an `Asset`, `Blob`, or `AssetSource` as its own identity.
+3. `provider + external_id` identifies the observed Provider object when the Provider offers a stable identifier.
+4. Path and name are observable properties, not stable identity.
+5. A content hash describes bytes; a version tag describes the Provider's view of change. They are not interchangeable.
+
+## Lifetime
+
+ProviderFacts are temporary synchronization inputs. They are not persisted as World Model entities and do not become database rows directly.
+
+```text
+Provider
+   │
+   ▼
+Adapter
+   │
+   ▼
+ProviderFact
+   │
+   ▼
+Identity
+```
 
 ## Does NOT
 
-A ProviderFact does NOT:
+A ProviderFact does not:
 
-- Exist in the World Model.
-- Represent an Asset.
-- Store semantic relationships.
-- Persist in the database.
+- decide whether an Asset already exists;
+- represent a persistent Source;
+- execute changes;
+- express semantic relationships;
+- prove that content changed when no content hash is available.
 
----
+## Related Documents
 
-## Notes
-
-- ProviderFacts are temporary.
-- They exist only during synchronization.
-- After synchronization, only World Model entities remain.
+- [03 - Provider Adapter](03-provider-adapter.md)
+- [06 - Identity](06-identity.md)
+- [07 - Decision](07-decision.md)
