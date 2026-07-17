@@ -1,102 +1,72 @@
 # 09 - World Model
 
-## Status
+**Status:** Stable for Identity V1
 
-V0.2 Frozen for Create and Update.
+## Purpose
 
-Source deactivation and full-scan reconciliation are not yet implemented.
+The World Model is PDI's persistent, Provider-independent representation of a person's digital life.
 
-## Core Idea
+PDI does not mirror Provider databases. Providers report observations; PDI interprets those observations and maintains its own stable identities, content states, Provider existences, and history.
 
-PDI does not copy Provider databases.
-
-PDI builds and maintains its own persistent World Model from observations made by Providers.
-
-Providers describe their current reality.
-
-PDI interprets that reality and preserves its own understanding and history.
-
-```text
-Provider Reality
-        │
-        ▼
-ProviderFact
-        │
-        ▼
-Identity
-        │
-        ▼
-Decision
-        │
-        ▼
-Repository
-        │
-        ▼
-PDI World Model
-```
+## Independence
 
 The World Model is independent of:
 
-- any single Provider
-- any single database implementation
-- any AI model
-- Jarvis
-- any user interface
+- any single Provider;
+- any single database implementation;
+- any AI model or agent;
+- Jarvis;
+- any user interface;
+- Provider-specific paths, schemas, or APIs.
 
----
+Providers, applications, storage engines, and AI systems may be replaced without redefining the World Model.
 
 ## Core Entities
 
-PDI V0.2 currently contains three core entities:
+Identity V1 uses three persistent domain entities:
 
 ```text
 Asset
   │
-  ▼
-Blob
-  │
-  ▼
-AssetSource
+  ├── Blob
+  │     ▲
+  │     │
+  └── AssetSource
 ```
 
-Their responsibilities are different.
+Their meanings are distinct:
 
 ```text
 Asset       = long-lived semantic identity
-Blob        = one concrete content state
-AssetSource = one Provider-specific existence of that content
+Blob        = one immutable content state
+AssetSource = one Provider-specific existence
 ```
-
----
 
 ## Asset
 
-Asset is the long-lived semantic identity of a digital object.
+An `Asset` is the stable identity of a digital object in PDI.
 
 It answers:
 
-> What is this digital object in the PDI world?
+> What is this object in the PDI world?
 
-Asset is not:
+An Asset is not:
 
-- a file path
-- a Provider record
-- a content hash
-- a physical file
-- a temporary scan result
+- a file path;
+- a Provider record;
+- a content hash;
+- a physical storage location;
+- a temporary scan result.
 
-Examples may include:
+An Asset may survive:
 
-- a document
-- a photograph
-- a video
-- an email
-- a message
-- a Git object
+- renames;
+- moves;
+- Provider changes;
+- content changes;
+- temporary Source disappearance.
 
-An Asset can remain the same while its content changes.
-
-Example:
+One Asset may contain multiple historical Blobs.
 
 ```text
 Asset: Project Proposal
@@ -105,129 +75,26 @@ Asset: Project Proposal
 └── Blob V3
 ```
 
-The Asset represents the continuing identity.
-
-The Blobs represent its content states.
-
----
-
 ## Blob
 
-Blob is an immutable content unit.
+A `Blob` is one immutable content state belonging to an Asset.
 
 It answers:
 
 > What exact content did this Asset have?
 
-Blob is primarily identified by its content hash.
+A Blob is primarily identified by content evidence such as a cryptographic hash.
 
-A Blob may contain:
-
-- document bytes
-- image bytes
-- video bytes
-- message body content
-- other immutable digital content
-
-One Asset may have multiple Blobs over time.
-
-Example:
+When content changes, PDI creates a new Blob rather than mutating the existing Blob.
 
 ```text
-Asset: identity-renamed.txt
-├── Blob V1: SHA-256 A
-└── Blob V2: SHA-256 B
-```
-
-When content changes:
-
-```text
-CREATE_BLOB
-+
-UPDATE_SOURCE
-```
-
-The old Blob remains in the World Model.
-
-This preserves the fact that the Asset previously had that content.
-
-A Blob is not modified in place.
-
----
-
-## AssetSource
-
-AssetSource represents one Provider-specific existence of a Blob.
-
-It answers:
-
-> Where does this content currently exist in the Provider world?
-
-An AssetSource contains information such as:
-
-- provider
-- external_id
-- path
-- name
-- version_tag
-- metadata
-- blob_id
-
-Example:
-
-```text
+Before
 Asset
-└── Blob
-    ├── AssetSource: Nextcloud / identity-renamed.txt
-    └── AssetSource: Nextcloud / identity-copy.txt
-```
+└── Blob V1
+     ▲
+     └── Source
 
-Both Sources may point to the same Blob when the files have identical content.
-
-AssetSource identity is determined by:
-
-```text
-provider + external_id
-```
-
-Path and name are properties, not identity.
-
-Therefore:
-
-```text
-rename
-→ UPDATE_SOURCE
-```
-
-and:
-
-```text
-move
-→ UPDATE_SOURCE
-```
-
-rather than creating a new Source.
-
----
-
-## Current Source and Historical Blob
-
-AssetSource points to the currently confirmed Blob for that Provider object.
-
-Example:
-
-```text
-Before content update:
-
-Asset
-├── Blob V1
-│    ▲
-│    └── Source
-```
-
-After content update:
-
-```text
+After
 Asset
 ├── Blob V1
 └── Blob V2
@@ -235,273 +102,143 @@ Asset
      └── Source
 ```
 
-Blob V1 remains as historical content.
+The old Blob remains part of the Asset's preserved history.
 
-The Source now points to Blob V2.
+Identical content may be shared by multiple Sources without creating duplicate Blobs.
 
-PDI currently preserves historical Blobs but does not yet record a complete temporal history such as:
+## AssetSource
 
-- when each Blob became current
-- when it stopped being current
-- the exact sequence of Source-to-Blob transitions
+An `AssetSource` represents one Provider-specific existence of digital content.
 
-That may later be represented through a timeline, decision log, or source-history model.
+It answers:
 
----
+> Where and under which Provider identity does this object currently exist?
 
-## ProviderFact
+A Source carries Provider-facing state such as:
 
-ProviderFact is a normalized observation produced by an Adapter.
+- `provider`;
+- `external_id`;
+- `path`;
+- `name`;
+- `version_tag`;
+- Provider metadata;
+- current `blob_id`;
+- active state;
+- deletion timestamp.
 
-It represents a snapshot of Provider reality at one moment.
-
-ProviderFact is not part of the persistent World Model.
-
-It does not directly become a database row.
-
-It must pass through Identity.
+Source identity is:
 
 ```text
-Provider
+provider + external_id
+```
+
+Path and name are mutable properties. Rename and move operations update the existing Source.
+
+A Source points to the currently confirmed Blob for that Provider object. When content changes, the Source moves to a new Blob while the previous Blob remains historical.
+
+## Source Lifecycle
+
+Identity V1 supports the following Source lifecycle:
+
+```text
+CREATE_SOURCE
     │
     ▼
-Adapter
+UPDATE_SOURCE
+    │
+    ▼
+DEACTIVATE_SOURCE
+```
+
+A Source is deactivated only after a successful complete scan establishes that its Provider identity was not observed.
+
+Deactivation is a soft-delete operation:
+
+```text
+is_active = false
+deleted_at = timestamp
+```
+
+The Source row is retained. PDI preserves the fact that the Source previously existed.
+
+Source reactivation is not yet defined by Identity V1.
+
+## ProviderFact Boundary
+
+A `ProviderFact` is not part of the World Model.
+
+It is a temporary observation used during synchronization:
+
+```text
+Provider reality
     │
     ▼
 ProviderFact
     │
     ▼
 Identity
-```
-
-ProviderFact contains normalized information such as:
-
-- provider
-- external_id
-- kind
-- name
-- attributes
-- raw Provider metadata
-
-Provider-specific raw information may be preserved in:
-
-```text
-AssetSource.metadata
-```
-
----
-
-## Identity
-
-Identity interprets the difference between:
-
-```text
-current ProviderFact
-```
-
-and:
-
-```text
-current PDI World Model
-```
-
-It generates a Decision.
-
-Identity does not modify the database directly.
-
-Current supported transitions are:
-
-### New Source and new content
-
-```text
-CREATE_ASSET
-CREATE_BLOB
-CREATE_SOURCE
-```
-
-### New Source with existing content
-
-```text
-CREATE_SOURCE
-```
-
-The new Source points to an existing Blob.
-
-### Existing Source unchanged
-
-```text
-No Action
-```
-
-### Existing Source metadata, path, or name changed
-
-```text
-UPDATE_SOURCE
-```
-
-### Existing Source content changed
-
-```text
-CREATE_BLOB
-UPDATE_SOURCE
-```
-
-The Source remains the same identity but points to a new Blob.
-
----
-
-## Sync Engine
-
-SyncEngine is the orchestration layer.
-
-It is responsible for:
-
-- connecting to the Adapter
-- streaming ProviderFacts
-- passing each Fact to Identity
-- satisfying Requirements such as `CONTENT_HASH`
-- executing Decisions through Repository
-- recording synchronization progress
-
-SyncEngine does not decide whether something is:
-
-- a new Asset
-- a new Blob
-- the same Source
-- an updated Source
-
-Those are Identity decisions.
-
-Current flow:
-
-```text
-Adapter.connect()
-        │
-        ▼
-Adapter.scan()
-        │
-        ▼
-ProviderFact
-        │
-        ▼
-Identity.match()
-        │
-        ├── Requirement(CONTENT_HASH)
-        │          │
-        │          ▼
-        │     Adapter.open()
-        │          │
-        │          ▼
-        │     Calculate SHA-256
-        │          │
-        └──────────┘
-        │
-        ▼
+    │
+    ▼
 Decision
-        │
-        ▼
-Repository.execute()
+    │
+    ▼
+World Model
 ```
 
----
+ProviderFacts do not become persistent rows directly. All persistent change must pass through Identity and Decision.
 
-## Repository
+## History Model
 
-Repository is the persistence boundary of the World Model.
+Identity V1 preserves:
 
-It provides Identity with access to the current PDI state and executes Decisions.
+- previous Blobs after content changes;
+- inactive Sources after Provider disappearance;
+- stable Asset identity across Source changes.
 
-Current Repository operations include:
+Identity V1 does not yet preserve a complete temporal event log showing:
 
-- find Source by Provider identity
-- find Blob by hash
-- find Blob by hash within an Asset
-- retrieve Blob
-- retrieve Asset
-- execute Decision transactionally
+- exactly when each Blob became current;
+- exactly when a Source changed from one Blob to another;
+- every Decision that produced a transition;
+- Source reactivation intervals.
 
-Repository does not decide business meaning.
+Those concerns may later be represented by a timeline, event log, or dedicated history model.
 
-It trusts Decisions generated by Identity.
+## Invariants
 
----
+1. Assets represent stable semantic identity.
+2. Blobs represent immutable content states.
+3. Sources represent Provider-specific existence.
+4. Source identity is `provider + external_id`.
+5. Path and name do not define identity.
+6. Content changes create new Blobs.
+7. Existing Blobs are never modified in place.
+8. Identical content may reuse an existing Blob.
+9. Source disappearance causes deactivation, not physical deletion.
+10. Missing objects are inferred only after a successful complete scan.
+11. ProviderFacts are temporary observations, not persistent entities.
+12. Providers do not directly define or mutate the World Model.
+13. AI may consume or propose interpretations, but it does not define core World Model invariants.
 
-## Source Lifecycle
+## Current Boundary
 
-Current implemented Source lifecycle:
+The current World Model does not yet define first-class:
 
-```text
-CREATE_SOURCE
-UPDATE_SOURCE
-```
+- Relations;
+- Tags;
+- Evidence;
+- Collections;
+- life events;
+- complete transition history;
+- semantic merging across different representations;
+- Source reactivation.
 
-Planned next stage:
+These may be introduced only when their abstractions reduce overall system complexity and their invariants are explicitly defined.
 
-```text
-DEACTIVATE_SOURCE
-```
+## Related Documents
 
-A deleted Provider object should not cause the Source record to be physically removed.
-
-Instead, PDI should preserve its historical existence and mark it inactive.
-
-Planned fields include:
-
-```text
-is_active
-deleted_at
-```
-
-This feature requires a complete successful Provider scan followed by reconciliation.
-
-It is not yet implemented in V0.2.
-
----
-
-## Current Boundaries
-
-PDI V0.2 does not yet include:
-
-- recursive Nextcloud folder scanning
-- Source deactivation
-- full-scan reconciliation
-- Source reactivation
-- complete Source-to-Blob temporal history
-- Collection as a first-class entity
-- Metadata as an independent entity
-- abstract life events as Assets
-- automatic semantic merging of different formats
-
-These are future capabilities and should not be assumed by the current World Model.
-
----
-
-## Design Principles
-
-### Asset is semantic identity
-
-Asset survives content changes.
-
-### Blob is immutable content
-
-Content changes create new Blobs.
-
-### Source is Provider existence
-
-Rename and move update Source properties without changing its identity.
-
-### Provider identity is stable
-
-```text
-provider + external_id
-```
-
-defines a Source.
-
-### History is preserved
-
-Old Blobs are retained when the current Source moves to a new Blob.
-
-### World Model is independent
-
-PDI does not mirror a Provider database and does not belong to an AI model.
+- [01 - Architecture Overview](01-overview.md)
+- [04 - Provider Fact](04-provider-fact.md)
+- [06 - Identity](06-identity.md)
+- [08 - Repository](08-repository.md)
+- [11 - Sync Lifecycle](11-sync-lifecycle.md)
