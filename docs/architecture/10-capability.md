@@ -1,69 +1,96 @@
 # 10 - Capability
 
-**Status:** V0.1
-
----
+**Status:** Stable for Identity V1
 
 ## Purpose
 
-A Capability provides reusable operations required by different parts of PDI.
+A Capability is a reusable operation that produces evidence or transformation results without owning business meaning.
 
-Capabilities are invoked only when needed.
-
----
-
-## Why
-
-Some operations should not belong to any single module.
-
-Keeping them independent avoids duplicated logic and unnecessary coupling.
-
----
+Capabilities allow PDI components to request expensive or specialized work without embedding that work inside Identity, Adapters, Repositories, or the Sync Engine.
 
 ## Responsibilities
 
 A Capability is responsible for:
 
-- Performing reusable operations.
-- Returning deterministic results.
-- Remaining independent from business logic.
-
----
-
-## Does NOT
-
-A Capability does NOT:
-
-- Make identity decisions.
-- Access the World Model.
-- Store data.
-- Execute synchronization.
-
----
+- performing one focused reusable operation;
+- accepting explicit inputs;
+- returning explicit results;
+- remaining independent from World Model decisions;
+- being callable only when the orchestration flow requires it.
 
 ## Current Capability
 
-Current implementation:
+Identity V1 currently uses:
 
-- SHA256 Hash
+```text
+SHA-256 content hashing
+```
 
----
+The Sync Engine opens content through the Adapter, passes the stream to the hashing Capability, enriches the `ProviderFact`, and invokes Identity again.
 
-## Future Capability
+## Does NOT
 
-Examples include:
+A Capability does not:
 
-- OCR
-- EXIF Extraction
-- Text Extraction
-- Embedding Generation
-- Thumbnail Generation
-- Audio Transcription
+- decide whether an Asset, Blob, or Source should exist;
+- access Provider APIs unless the caller supplies the required input;
+- query or mutate the World Model;
+- persist results directly;
+- execute Decisions;
+- coordinate synchronization;
+- become a hidden service layer containing unrelated business logic.
 
----
+## Invocation Model
 
-## Notes
+Capabilities are demand-driven.
 
-Any module may request a Capability when required.
+```text
+Identity
+   │
+   ▼
+Requirement
+   │
+   ▼
+Sync Engine
+   │
+   ▼
+Capability
+   │
+   ▼
+Enriched ProviderFact
+```
 
-Capabilities should remain reusable, independent and stateless.
+The component requesting evidence does not need to know the implementation details of the Capability.
+
+## Design Principles
+
+1. A Capability should perform one coherent operation.
+2. Capability output should be deterministic when the underlying operation is deterministic.
+3. Business decisions remain in Identity.
+4. Provider communication remains in Adapters.
+5. Persistence remains in Repositories.
+6. Orchestration remains in the Sync Engine.
+7. A new Capability must reduce duplication or coupling.
+8. Expensive Capabilities should be invoked only when cheaper evidence is insufficient.
+
+## Possible Future Capabilities
+
+Examples may include:
+
+- metadata extraction;
+- EXIF extraction;
+- text extraction;
+- OCR;
+- audio transcription;
+- thumbnail generation;
+- embedding generation;
+- media fingerprinting.
+
+Listing a possible Capability does not make it part of the current architecture. Each addition requires a concrete consumer and a defined contract.
+
+## Related Documents
+
+- [03 - Provider Adapter](03-provider-adapter.md)
+- [05 - Sync Engine](05-sync-engine.md)
+- [06 - Identity](06-identity.md)
+- [11 - Sync Lifecycle](11-sync-lifecycle.md)
