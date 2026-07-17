@@ -1,81 +1,84 @@
 # 05 - Sync Engine
 
-**Status:** V0.1
-
----
+**Status:** Stable for Identity V1
 
 ## Purpose
 
-The Sync Engine coordinates one synchronization cycle between a Provider and the World Model.
+The Sync Engine owns the execution lifecycle of one synchronization session between one Provider Adapter and the PDI World Model.
 
-It connects existing modules without making identity or storage decisions.
-
----
+It coordinates existing components without making identity decisions or implementing storage rules.
 
 ## Responsibilities
 
 The Sync Engine is responsible for:
 
-- Connecting to an Adapter.
-- Receiving ProviderFacts.
-- Sending facts to the Identity Matcher.
-- Reading Decision requirements.
-- Invoking Capabilities when required.
-- Sending executable Decisions to the Repository.
+- connecting to one Adapter;
+- starting and completing one Provider scan;
+- passing each `ProviderFact` to Identity;
+- satisfying declared Requirements through the appropriate Adapter and Capability;
+- returning enriched facts to Identity for another decision pass;
+- executing complete Decisions through the Repository;
+- recording the external identifiers observed during a complete scan;
+- reconciling active Sources that were not observed;
+- emitting synchronization progress and outcome logs.
 
----
+## Session Boundary
 
-## Does NOT
+One synchronization session represents one Provider identity. Facts from multiple Providers must not be mixed in the same run.
 
-The Sync Engine does NOT:
+Missing-object reconciliation is valid only after a complete successful scan. A failed or partial scan must never deactivate Sources merely because they were not observed.
 
-- Make identity decisions.
-- Interpret Provider-specific data.
-- Define World Model entities.
-- Store data directly.
-- Schedule continuous synchronization.
-
----
-
-## Workflow
+## Requirement Loop
 
 ```text
-Adapter
-    │
-    ▼
 ProviderFact
-    │
-    ▼
-Sync Engine
     │
     ▼
 Identity
     │
-    ├── Requirement
-    │       │
-    │       ▼
-    │   Capability
-    │       │
-    └───────┘
+    ├── Decision(actions)
     │
-    ▼
-Decision
-    │
-    ▼
-Repository
+    └── Decision(requirements)
+              │
+              ▼
+       Adapter / Capability
+              │
+              ▼
+       enriched ProviderFact
+              │
+              └──────► Identity
 ```
 
----
+The Sync Engine executes no Decision while unresolved Requirements remain.
 
-## Notes
+## Reconciliation
 
-Current implementation:
+After a complete scan, the Sync Engine compares:
 
-- `sync_once()`
+```text
+active Sources already in PDI
+-
+external identifiers observed in this scan
+=
+missing Sources
+```
 
-Future versions may introduce:
+Each missing Source is passed through the defined deactivation path and persisted as inactive. It is not physically deleted.
 
-- Continuous synchronization
-- Background scheduling
-- Retry mechanisms
-- Parallel synchronization
+## Does NOT
+
+The Sync Engine does not:
+
+- decide whether content represents a new or existing Asset;
+- interpret Provider-specific fields;
+- calculate business meaning;
+- define World Model entities;
+- write storage directly;
+- schedule itself continuously;
+- treat an incomplete scan as authoritative absence.
+
+## Related Documents
+
+- [06 - Identity](06-identity.md)
+- [08 - Repository](08-repository.md)
+- [11 - Sync Lifecycle](11-sync-lifecycle.md)
