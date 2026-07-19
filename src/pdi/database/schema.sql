@@ -1,3 +1,8 @@
+-- Legacy V0.1 bootstrap reference.
+-- New databases must use `alembic upgrade head`.
+-- Keep this reference aligned with the Alembic baseline; do not maintain
+-- it as an independent schema source of truth.
+
 BEGIN;
 
 CREATE TABLE assets (

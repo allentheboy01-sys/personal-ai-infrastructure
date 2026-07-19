@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, Text
+from sqlalchemy import DateTime, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,6 +26,7 @@ class AssetORM(Base):
         JSONB,
         nullable=False,
         default=dict,
+        server_default=text("'{}'::jsonb"),
     )
 
     created_at: Mapped[datetime] = mapped_column(

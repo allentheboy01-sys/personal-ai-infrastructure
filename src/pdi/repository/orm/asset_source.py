@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     Text,
     UniqueConstraint,
+    text,
     true,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
@@ -71,6 +72,7 @@ class AssetSourceORM(Base):
         JSONB,
         nullable=False,
         default=dict,
+        server_default=text("'{}'::jsonb"),
     )
 
     is_active: Mapped[bool] = mapped_column(

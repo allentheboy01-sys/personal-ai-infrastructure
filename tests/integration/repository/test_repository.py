@@ -1,16 +1,16 @@
 from pdi.database import create_postgres_engine
-from pdi.config import Settings
 from pdi.decision import Action, ActionType, Decision
 from pdi.models import Asset, AssetSource, Blob
 from pdi.repository import PostgreSQLRepository
+from tests.integration.database_guard import (
+    require_safe_test_database_url,
+)
 from datetime import UTC, datetime
 
 
 def create_test_engine():
-    settings = Settings()
-
     return create_postgres_engine(
-        settings.database.url,
+        require_safe_test_database_url(),
     )
 
 def test_connection():
