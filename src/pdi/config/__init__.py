@@ -1,5 +1,6 @@
 from .settings import (
     DatabaseSettings,
+    ImmichSettings,
     LoggingSettings,
     NextcloudSettings,
     Settings,
@@ -7,6 +8,7 @@ from .settings import (
 
 __all__ = [
     "DatabaseSettings",
+    "ImmichSettings",
     "LoggingSettings",
     "NextcloudSettings",
     "Settings",

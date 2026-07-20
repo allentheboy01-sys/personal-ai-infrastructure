@@ -50,12 +50,20 @@ Focus:
 - Provider / Adapter framework
 - PostgreSQL integration
 - Nextcloud integration
+- Immich integration
 - Local storage
 - Synchronization
 
 Goal:
 
 Connect existing digital services into one unified infrastructure.
+
+Current implementation:
+
+- Nextcloud and Immich both enter the same ProviderFact-based PDI Core;
+- both Providers use the shared Matcher, SyncEngine, Repository, and World Model;
+- Immich connect, scan, original download, SHA-256 verification, PostgreSQL
+  persistence, and idempotent repeat synchronization have been validated.
 
 ---
 

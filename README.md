@@ -128,6 +128,29 @@ That is expected.
 
 This repository documents the evolution of the project as much as the project itself.
 
+The current implementation has two real Providers:
+
+- Nextcloud
+- Immich
+
+Both Providers use the same PDI Core flow:
+
+```text
+Provider
+→ Adapter
+→ ProviderFact
+→ Matcher
+→ Decision / Requirement
+→ SyncEngine
+→ PostgreSQLRepository
+→ PostgreSQL
+```
+
+For Immich, `connect()`, `scan()`, original-content `open()`, SHA-256
+verification, PostgreSQL persistence, and a second idempotent synchronization
+have been validated against real services. The second synchronization preserves
+the existing Source and Blob identities instead of creating duplicates.
+
 Discussions, criticism, and alternative perspectives are always welcome.
 
 ---
