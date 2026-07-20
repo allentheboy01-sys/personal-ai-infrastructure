@@ -1,8 +1,11 @@
 import os
 from collections.abc import Iterable
+from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 import pytest
-from sqlalchemy import Engine, text
+from sqlalchemy import Connection, Engine, text
 
 from pdi.adapters.base import ProviderFact
 from pdi.adapters.immich import ImmichAdapter
@@ -13,6 +16,25 @@ from pdi.repository import PostgreSQLRepository
 from tests.integration.database_guard import (
     require_safe_test_database_url,
 )
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _alembic_config(connection: Connection) -> Config:
+    config = Config(str(ROOT / "alembic.ini"))
+    config.attributes["connection"] = connection
+    return config
+
+
+def _upgrade_test_database_schema(
+    engine: Engine,
+) -> None:
+    with engine.connect() as connection:
+        command.upgrade(
+            _alembic_config(connection),
+            "head",
+        )
 
 
 def _require_immich_configuration() -> tuple[str, str]:
@@ -56,6 +78,8 @@ def test_immich_sync_is_persisted_and_idempotent(
     engine = create_postgres_engine(database_url)
 
     try:
+        _upgrade_test_database_schema(engine)
+
         adapter = ImmichAdapter(
             base_url=immich_url,
             api_key=api_key,
