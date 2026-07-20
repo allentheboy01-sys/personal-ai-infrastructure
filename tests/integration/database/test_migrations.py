@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from uuid import uuid4
 
@@ -130,6 +131,27 @@ def test_metadata_registration() -> None:
         "blobs",
         "asset_sources",
     }
+
+
+def test_alembic_logging_preserves_existing_loggers(
+    monkeypatch,
+) -> None:
+    logger = logging.getLogger(
+        "pdi.adapters.immich.adapter"
+    )
+    logger.disabled = False
+    monkeypatch.setenv(
+        "DATABASE__URL",
+        "postgresql+psycopg://user:password@localhost/pdi_test",
+    )
+
+    command.upgrade(
+        Config(str(ROOT / "alembic.ini")),
+        "head",
+        sql=True,
+    )
+
+    assert logger.disabled is False
 
 
 def test_empty_database_upgrade_and_schema(

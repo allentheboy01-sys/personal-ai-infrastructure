@@ -15,16 +15,26 @@ class NextcloudSettings(BaseModel):
     user: str
     password: str
 
+
+class ImmichSettings(BaseModel):
+    """Immich Provider 连接配置。"""
+
+    url: str
+    api_key: str
+
+
 class LoggingSettings(BaseModel):
     """PDI 日志配置。"""
 
     level: str = "INFO"
+
 
 class Settings(BaseSettings):
     """PDI 应用启动所需的统一配置。"""
 
     database: DatabaseSettings
     nextcloud: NextcloudSettings
+    immich: ImmichSettings | None = None
     logging: LoggingSettings = LoggingSettings()
 
     model_config = SettingsConfigDict(
