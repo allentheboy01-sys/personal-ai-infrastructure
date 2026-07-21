@@ -1,6 +1,13 @@
 from pdi.database import create_postgres_engine
 from pdi.decision import Action, ActionType, Decision
 from pdi.models import Asset, AssetSource, Blob
+from pdi.query import (
+    AssetDetail,
+    AssetSummary,
+    BlobView,
+    QueryService,
+    SourceView,
+)
 from pdi.repository import PostgreSQLRepository
 from tests.integration.database_guard import (
     require_safe_test_database_url,
@@ -113,6 +120,38 @@ def test_execute_create_complete_asset_chain() -> None:
         )
         == stored_blob
     )
+
+    query_service = QueryService(repository)
+    summaries = query_service.list_assets()
+    summary = next(
+        item
+        for item in summaries
+        if item.id == asset.id
+    )
+    detail = query_service.get_asset(asset.id)
+
+    assert isinstance(summary, AssetSummary)
+    assert summary.title == asset.title
+    assert [
+        item.id
+        for item in summaries
+    ] == sorted(
+        item.id
+        for item in summaries
+    )
+    assert isinstance(detail, AssetDetail)
+    assert detail.id == asset.id
+    assert detail.title == asset.title
+    assert detail.metadata == asset.metadata
+    assert len(detail.blobs) == 1
+    assert isinstance(detail.blobs[0], BlobView)
+    assert detail.blobs[0].id == blob.id
+    assert detail.blobs[0].hash == blob.hash
+    assert len(detail.sources) == 1
+    assert isinstance(detail.sources[0], SourceView)
+    assert detail.sources[0].id == source.id
+    assert detail.sources[0].blob_id == blob.id
+    assert query_service.get_asset(Asset().id) is None
 
     engine.dispose()
 
