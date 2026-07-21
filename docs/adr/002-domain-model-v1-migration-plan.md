@@ -1,12 +1,12 @@
-# ADR-002: PDI Core V0.2 Migration Plan
+# ADR-002: Incremental Migration to Domain Model V1
 
 - **Status:** Accepted
 - **Date:** 2026-07-19
-- **Scope:** Migration from the current V0.1 implementation to the Domain Model V1 defined by ADR-001
+- **Scope:** Incremental migration toward the Domain Model V1 defined by ADR-001
 
 ## Context
 
-PDI Core V0.1 has already achieved a real end-to-end synchronization loop:
+The current PDI Core implementation has already achieved a real end-to-end synchronization loop:
 
 ```text
 Nextcloud
@@ -29,7 +29,7 @@ ADR-001 freezes a clearer Domain Model V1 consisting of:
 - `Relation`
 - `Tag`
 
-V0.2 is therefore a controlled domain-model refactor. It is not a feature release and must not become a rewrite.
+This ADR therefore defines a controlled domain-model migration. It is not a feature release, is not tied to a particular software version, and must not become a rewrite.
 
 ## Decision
 
@@ -41,7 +41,7 @@ The impact analysis may refine file paths and sequencing, but it may not change 
 
 ## Migration goals
 
-V0.2 must:
+The migration must:
 
 1. preserve the existing Nextcloud synchronization loop;
 2. align persisted entities and domain classes with ADR-001;
@@ -52,7 +52,7 @@ V0.2 must:
 
 ## Non-goals
 
-V0.2 does not include:
+This migration does not include:
 
 - a second provider;
 - AI-generated Tags;
@@ -129,7 +129,7 @@ AssetType
   -> matcher implementation
 ```
 
-The existing matcher logic should become or remain the dedicated matcher for the current type. V0.2 must not add Contact, Event, Message, Photo, or Project matchers.
+The existing matcher logic should become or remain the dedicated matcher for the current type. This migration must not add Contact, Event, Message, Photo, or Project matchers.
 
 ### Constraints
 
@@ -162,7 +162,7 @@ For the current file/document type, `state` should initially default to an empty
 - content hash, size, and MIME type remain strongly typed;
 - existing Blob rows must migrate safely with `{}` as state;
 - Blob immutability must be preserved;
-- no Contact, Event, or Message schema is designed in V0.2.
+- no Contact, Event, or Message schema is designed as part of this migration.
 
 ### Validation
 
@@ -173,7 +173,7 @@ For the current file/document type, `state` should initially default to an empty
 
 ### Rollback
 
-Drop the new state column after confirming no V0.2-only data has been written to it.
+Drop the new state column after confirming no migration-only data has been written to it.
 
 ## Step 4: Rename and realign AssetSource as Source
 
@@ -274,7 +274,7 @@ AssetTag
 - Tag is not an Asset;
 - Tag has no Blob, Source, or version history;
 - name uniqueness and normalization rules must be deliberately minimal;
-- V0.2 may use exact canonical-name uniqueness but must not invent alias, embedding, confidence, or merge systems;
+- this migration may use exact canonical-name uniqueness but must not invent alias, embedding, confidence, or merge systems;
 - PDI Core stores and associates Tags but does not decide which Tags AI should generate;
 - no automatic provider-to-Tag import is required unless the existing provider already exposes a validated tag field and the mapping is separately approved.
 
@@ -319,7 +319,7 @@ Relation
 - relation_type
 ```
 
-V0.2 must support only the minimum Relation type required by an approved use case. If no current execution path requires Relations, the table and repository contract may be added without integrating them into SyncEngine.
+The migration must support only the minimum Relation type required by an approved use case. If no current execution path requires Relations, the table and repository contract may be added without integrating them into SyncEngine.
 
 ### Constraints
 
@@ -370,7 +370,7 @@ After all entity migrations are stable, review repository operations so they exp
 
 Update architecture documentation only after implementation behavior is verified.
 
-The final V0.2 report must include:
+The final migration report must include:
 
 - every modified file;
 - every database migration;
@@ -408,7 +408,7 @@ The following behavior is protected throughout the migration:
 
 ### Full rewrite
 
-Rejected because V0.1 already has a real working loop and tested repository behavior. A rewrite would discard validated behavior and make regressions difficult to isolate.
+Rejected because the current implementation already has a real working loop and tested repository behavior. A rewrite would discard validated behavior and make regressions difficult to isolate.
 
 ### Implement all five entities in one change
 
@@ -424,13 +424,13 @@ Rejected because semantic correctness matters more than cosmetic consistency. Tr
 
 ### Add automatic Tag and Relation generation
 
-Rejected because V0.2 is a domain-model refactor, not an AI interpretation release.
+Rejected because this is a domain-model migration, not an AI interpretation release.
 
 ## Consequences
 
 ### Positive
 
-- The working V0.1 loop remains the regression baseline.
+- The current working loop remains the regression baseline.
 - Architectural changes are isolated and reviewable.
 - Database risk is concentrated in explicit migration steps.
 - Future providers can extend AssetType and matcher modules without modifying existing matchers.
@@ -438,14 +438,14 @@ Rejected because V0.2 is a domain-model refactor, not an AI interpretation relea
 
 ### Costs
 
-- V0.2 requires several small reviewed changes rather than one fast rewrite.
+- The migration requires several small reviewed changes rather than one fast rewrite.
 - Transitional compatibility code may temporarily exist.
 - Source ownership migration requires careful database backfill and integration testing.
 - Some domain entities may exist before they are used by a provider or interface.
 
 ## Completion criteria
 
-PDI Core V0.2 is complete only when:
+The Domain Model V1 migration is complete only when:
 
 1. all accepted migration steps have been implemented or explicitly marked as verified no-ops;
 2. the existing Nextcloud end-to-end synchronization loop passes;

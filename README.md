@@ -72,17 +72,43 @@ How can people remain the long-term owners of their digital lives regardless of 
 
 ---
 
-# Current Research
+# Current Implementation
 
-Current work focuses on building the foundations of PDI.
+PDI Core v0.2.0 currently includes:
 
-- Personal Digital Asset Model
-- Metadata & Relationship Model
-- Identity Representation
-- Evidence-based Knowledge Organization
-- Provider / Adapter Architecture
-- Self-hosted Infrastructure
-- Architecture Documentation
+- Provider / Adapter architecture;
+- normalized `ProviderFact` observations;
+- Identity V1 matching and lifecycle decisions;
+- `Asset`, `Blob`, and `AssetSource` World Model entities;
+- PostgreSQL persistence through a Repository boundary;
+- Nextcloud and Immich Provider integrations;
+- SHA-256 content verification on demand;
+- migration, repository, adapter, and real-service integration tests;
+- incremental and idempotent synchronization validated against real services.
+
+Both real Providers use the same stable PDI Core pipeline:
+
+```text
+Provider
+→ Adapter
+→ ProviderFact
+→ SyncEngine
+   ├── Identity / Matcher
+   ├── Requirement → Adapter / Capability
+   └── Decision → Repository
+                         ↓
+                 PostgreSQL World Model
+```
+
+# Future Research
+
+Current and future research directions include:
+
+- metadata and relationship models;
+- evidence-based knowledge organization;
+- semantic retrieval over personal digital assets;
+- long-term digital identity and history;
+- AI interfaces that consume PDI without defining it.
 
 The implementation evolves together with the research.
 
@@ -103,53 +129,30 @@ Several principles guide every design decision in this project.
 
 ---
 
-# Repository
+# Documentation
 
 | Document | Description |
 | -------- | ----------- |
-| Vision | Long-term goals and philosophy |
-| Research | Research questions and ongoing exploration |
-| Architecture | Overall system architecture |
-| Data Model | Digital asset representation |
-| Roadmap | Development milestones |
-| Decisions | Architecture decision records |
+| [Documentation Index](docs/README.md) | Reading order and documentation rules |
+| [Architecture Overview](docs/architecture/01-overview.md) | Current architecture and invariants |
+| [Current Context](docs/context/CURRENT_CONTEXT.md) | Current implementation status and immediate next work |
+| [Architecture Decisions](docs/decisions/README.md) | ADR guidance and decision records |
+| [Roadmap](ROADMAP.md) | Development milestones |
 
 ---
 
 # Current Status
 
-PDI is still in its early stages.
-
-Many ideas are incomplete.
-
-Many assumptions will change.
-
-That is expected.
-
-This repository documents the evolution of the project as much as the project itself.
+PDI remains an early-stage project, but the core ingestion foundation is now real and tested.
 
 The current implementation has two real Providers:
 
 - Nextcloud
 - Immich
 
-Both Providers use the same PDI Core flow:
+For Immich, `connect()`, `scan()`, original-content `open()`, SHA-256 verification, PostgreSQL persistence, incremental synchronization, and idempotent synchronization have been validated against real services.
 
-```text
-Provider
-→ Adapter
-→ ProviderFact
-→ Matcher
-→ Decision / Requirement
-→ SyncEngine
-→ PostgreSQLRepository
-→ PostgreSQL
-```
-
-For Immich, `connect()`, `scan()`, original-content `open()`, SHA-256
-verification, PostgreSQL persistence, and a second idempotent synchronization
-have been validated against real services. The second synchronization preserves
-the existing Source and Blob identities instead of creating duplicates.
+PDI Core v0.2.0 also includes protected `_test` database integration workflows, automatic Alembic migration of empty test databases, and regression coverage that prevents Alembic logging setup from disabling existing PDI loggers.
 
 Discussions, criticism, and alternative perspectives are always welcome.
 
