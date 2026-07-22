@@ -5,13 +5,20 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from pdi.decision import Action, ActionType, Decision
 from pdi.models import Asset, AssetSource, Blob
+from pdi.query.models import (
+    AssetDetail,
+    AssetSummary,
+    BlobView,
+    SourceView,
+)
+from pdi.query.repository import QueryRepository
 from pdi.repository.base import Repository
 from pdi.repository.orm.asset import AssetORM
 from pdi.repository.orm.asset_source import AssetSourceORM
 from pdi.repository.orm.blob import BlobORM
 
 
-class PostgreSQLRepository(Repository):
+class PostgreSQLRepository(Repository, QueryRepository):
     def __init__(
         self,
         engine: Engine,
@@ -53,6 +60,17 @@ class PostgreSQLRepository(Repository):
         )
 
     @staticmethod
+    def _asset_to_summary(
+        asset_orm: AssetORM,
+    ) -> AssetSummary:
+        return AssetSummary(
+            id=str(asset_orm.id),
+            title=asset_orm.title,
+            created_at=asset_orm.created_at,
+            updated_at=asset_orm.updated_at,
+        )
+
+    @staticmethod
     def _blob_to_orm(
         blob: Blob,
     ) -> BlobORM:
@@ -69,6 +87,18 @@ class PostgreSQLRepository(Repository):
         blob_orm: BlobORM,
     ) -> Blob:
         return Blob(
+            id=str(blob_orm.id),
+            asset_id=str(blob_orm.asset_id),
+            hash=blob_orm.hash,
+            size=blob_orm.size,
+            mime_type=blob_orm.mime_type,
+        )
+
+    @staticmethod
+    def _blob_to_view(
+        blob_orm: BlobORM,
+    ) -> BlobView:
+        return BlobView(
             id=str(blob_orm.id),
             asset_id=str(blob_orm.asset_id),
             hash=blob_orm.hash,
@@ -103,6 +133,23 @@ class PostgreSQLRepository(Repository):
         source_orm: AssetSourceORM,
     ) -> AssetSource:
         return AssetSource(
+            id=str(source_orm.id),
+            blob_id=str(source_orm.blob_id),
+            provider=source_orm.provider,
+            external_id=source_orm.external_id,
+            path=source_orm.path,
+            name=source_orm.name,
+            version_tag=source_orm.version_tag,
+            metadata=dict(source_orm.metadata_),
+            is_active=source_orm.is_active,
+            deleted_at=source_orm.deleted_at,
+        )
+
+    @staticmethod
+    def _asset_source_to_view(
+        source_orm: AssetSourceORM,
+    ) -> SourceView:
+        return SourceView(
             id=str(source_orm.id),
             blob_id=str(source_orm.blob_id),
             provider=source_orm.provider,
@@ -252,6 +299,86 @@ class PostgreSQLRepository(Repository):
                 return None
 
             return self._asset_to_domain(asset_orm)
+
+    def list_asset_summaries(
+        self,
+    ) -> tuple[AssetSummary, ...]:
+        with self._session_factory() as session:
+            asset_orms = (
+                session.execute(
+                    select(AssetORM).order_by(
+                        AssetORM.id.asc(),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            return tuple(
+                self._asset_to_summary(asset_orm)
+                for asset_orm in asset_orms
+            )
+
+    def get_asset_detail(
+        self,
+        asset_id: str,
+    ) -> AssetDetail | None:
+        with self._session_factory() as session:
+            asset_orm = session.get(
+                AssetORM,
+                UUID(asset_id),
+            )
+
+            if asset_orm is None:
+                return None
+
+            blob_orms = (
+                session.execute(
+                    select(BlobORM).where(
+                        BlobORM.asset_id == asset_orm.id,
+                    ).order_by(
+                        BlobORM.id.asc(),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            source_orms: list[AssetSourceORM] = []
+
+            if blob_orms:
+                source_orms = list(
+                    session.execute(
+                        select(AssetSourceORM).where(
+                            AssetSourceORM.blob_id.in_(
+                                [
+                                    blob_orm.id
+                                    for blob_orm in blob_orms
+                                ]
+                            )
+                        ).order_by(
+                            AssetSourceORM.id.asc(),
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+
+            return AssetDetail(
+                id=str(asset_orm.id),
+                title=asset_orm.title,
+                metadata=dict(asset_orm.metadata_),
+                created_at=asset_orm.created_at,
+                updated_at=asset_orm.updated_at,
+                blobs=tuple(
+                    self._blob_to_view(blob_orm)
+                    for blob_orm in blob_orms
+                ),
+                sources=tuple(
+                    self._asset_source_to_view(source_orm)
+                    for source_orm in source_orms
+                ),
+            )
 
     def execute(
         self,
