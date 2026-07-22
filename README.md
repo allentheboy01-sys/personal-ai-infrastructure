@@ -1,163 +1,91 @@
-# Personal Digital Infrastructure (PDI)
+# PDI
 
-> **AI systems come and go. People don't.**
+## Personal Digital Infrastructure
 
-Personal Digital Infrastructure (PDI) is a long-term, research-driven open project exploring one fundamental question:
+PDI is a stable, provider-independent infrastructure layer for a person's
+digital life. It turns data held by changing services into durable,
+queryable digital assets that remain under the individual's control.
 
-> **How can a person's digital life remain continuous while AI systems continue to change?**
+Jarvis is the first AI Interface built on top of PDI. It is a consumer of
+PDI, not the project itself.
 
-I believe AI will become one of the most important technologies of this century.
+## Why PDI
 
-But AI can only truly help people if it truly understands the people it serves.
+AI products will change. LLMs will change. The services that hold personal
+photos, documents, and other digital records will change too.
 
-Today, every AI system builds its own memory.
+A person's data has a much longer lifecycle than any one model, application,
+or Provider. If every AI system owns its own isolated memory, changing tools
+means losing continuity.
 
-When people change AI products, they often start over.
+PDI provides the stable foundation beneath those changing systems. It keeps
+personal digital identity and access independent from any particular AI or
+Provider, so future applications can understand the same durable digital
+life without owning it.
 
-The memory belongs to the product—not to the person.
-
-PDI explores an alternative.
-
-Instead of building another AI assistant, it explores the infrastructure that allows every future AI system to understand the same person through a digital life that belongs to the individual.
-
----
-
-# Why
-
-I started this project because I wanted to build an AI that could genuinely understand me.
-
-While exploring existing AI systems, I realized that the real problem was not intelligence.
-
-The real problem was ownership.
-
-Every AI remembers people differently.
-
-Every platform stores a different version of the same person.
-
-There is no persistent digital foundation that truly belongs to the individual.
-
-That realization completely changed the direction of this project.
-
-Instead of asking,
-
-> **"How can we build a better AI?"**
-
-I began asking,
-
-> **"What should exist before AI?"**
-
-PDI is my current answer to that question.
-
----
-
-# Research Questions
-
-PDI currently explores several long-term research questions.
-
-### Reality → Digital Life
-
-How can real-world experiences become meaningful digital representations?
-
-### Digital Representation
-
-How should a person's digital life be represented over decades rather than conversations?
-
-### Shared Understanding
-
-How can different AI systems understand the same person without owning that person's memory?
-
-### Ownership
-
-How can people remain the long-term owners of their digital lives regardless of which applications or AI systems they use?
-
----
-
-# Current Implementation
-
-PDI Core v0.2.0 currently includes:
-
-- Provider / Adapter architecture;
-- normalized `ProviderFact` observations;
-- Identity V1 matching and lifecycle decisions;
-- `Asset`, `Blob`, and `AssetSource` World Model entities;
-- PostgreSQL persistence through a Repository boundary;
-- Nextcloud and Immich Provider integrations;
-- SHA-256 content verification on demand;
-- migration, repository, adapter, and real-service integration tests;
-- incremental and idempotent synchronization validated against real services.
-
-Both real Providers use the same stable PDI Core pipeline:
+## Core Architecture
 
 ```text
-Provider
-→ Adapter
-→ ProviderFact
-→ SyncEngine
-   ├── Identity / Matcher
-   ├── Requirement → Adapter / Capability
-   └── Decision → Repository
-                         ↓
-                 PostgreSQL World Model
+User
+  ↓
+Jarvis
+  ↓
+PDI Core
+  ↓
+Providers
+  ↓
+Storage
 ```
 
-# Future Research
+- **User** — owns the digital life represented by the system.
+- **Jarvis** — the first AI-facing consumer of PDI's public services.
+- **PDI Core** — maintains stable identity, synchronization, and query
+  boundaries independently of any one Provider or AI.
+- **Providers** — existing systems such as Nextcloud and Immich, connected
+  through replaceable Adapters.
+- **Storage** — persists PDI's provider-independent World Model in
+  PostgreSQL.
 
-Current and future research directions include:
+Provider data enters PDI through a shared Write Pipeline. Consumers read the
+result through a separate Read Pipeline. Jarvis reaches that Read Pipeline
+through registered Tools rather than accessing persistence directly.
 
-- metadata and relationship models;
-- evidence-based knowledge organization;
-- semantic retrieval over personal digital assets;
-- long-term digital identity and history;
-- AI interfaces that consume PDI without defining it.
+## Current Status
 
-The implementation evolves together with the research.
+**Current version:** `v0.4.0`
 
-Every architectural decision begins with a research question rather than a technology choice.
+Completed:
 
----
+- Provider Adapter boundary with real Nextcloud and Immich integrations.
+- Unified, incremental, and idempotent Write Pipeline.
+- Stable Read Pipeline returning immutable query models.
+- Jarvis Tool Execution MVP with `list_assets` and `get_asset`.
+- PostgreSQL persistence and Alembic-managed schema.
+- Real PostgreSQL integration coverage.
 
-# Design Principles
+Next:
 
-Several principles guide every design decision in this project.
+- Jarvis HTTP API discussion and architecture definition for `v0.5`.
 
-- AI is replaceable.
-- Personal data is persistent.
-- Infrastructure should outlive individual technologies.
-- Digital memory belongs to people, not AI products.
-- Engineering should serve research, not the other way around.
-- Every assumption is open to discussion.
+## Design Principles
 
----
+- PDI is the infrastructure.
+- Jarvis is one consumer.
+- Providers are replaceable.
+- AI models and interfaces are replaceable.
+- Personal data and identity must outlive individual technologies.
+- PDI does not depend on Jarvis.
+- Consumers use public Application Services, not persistence internals.
+- Architecture comes before implementation.
+- New abstractions must reduce total complexity.
 
-# Documentation
+## Documentation
 
-| Document | Description |
-| -------- | ----------- |
-| [Documentation Index](docs/README.md) | Reading order and documentation rules |
-| [Architecture Overview](docs/architecture/01-overview.md) | Current architecture and invariants |
-| [Current Context](docs/context/CURRENT_CONTEXT.md) | Current implementation status and immediate next work |
-| [Architecture Decisions](docs/decisions/README.md) | ADR guidance and decision records |
-| [Roadmap](ROADMAP.md) | Development milestones |
+- [Roadmap](docs/roadmap/ROADMAP.md) — where the project is going.
+- [Architecture](ARCHITECTURE.md) — how the system is divided and why.
+- [Current Context](docs/context/CURRENT_CONTEXT.md) — the current frozen
+  implementation state.
 
----
+## License
 
-# Current Status
-
-PDI remains an early-stage project, but the core ingestion foundation is now real and tested.
-
-The current implementation has two real Providers:
-
-- Nextcloud
-- Immich
-
-For Immich, `connect()`, `scan()`, original-content `open()`, SHA-256 verification, PostgreSQL persistence, incremental synchronization, and idempotent synchronization have been validated against real services.
-
-PDI Core v0.2.0 also includes protected `_test` database integration workflows, automatic Alembic migration of empty test databases, and regression coverage that prevents Alembic logging setup from disabling existing PDI loggers.
-
-Discussions, criticism, and alternative perspectives are always welcome.
-
----
-
-> **I don't want to build an AI.**
->
-> **I want to build the foundation that allows every future AI to truly understand people.**
+PDI is available under the terms in [LICENSE](LICENSE).

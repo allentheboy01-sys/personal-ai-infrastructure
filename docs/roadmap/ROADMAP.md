@@ -1,122 +1,30 @@
-# Roadmap
+# PDI Roadmap
 
-PDI is a long-term research project.
+The roadmap records delivery order. Architecture and current implementation
+details live in their dedicated documents.
 
-This roadmap describes the expected evolution of the project.
+## Completed
 
-It is intended to guide development rather than predict the future.
+- **v0.1 — Write Pipeline MVP:** Established the provider-independent path
+  from ProviderFact through identity decisions to persistence.
+- **v0.2 — Multi-provider Sync MVP:** Connected Nextcloud and Immich through
+  the same incremental and idempotent PDI Core.
+- **v0.3 — Read Pipeline MVP:** Added stable query services and immutable Read
+  Models for listing and retrieving assets.
+- **v0.4 — Jarvis Tool Execution MVP:** Added the first consumer execution
+  boundary with `list_assets` and `get_asset` Tools.
 
----
+## Current
 
-# Phase 1 — Foundation
+- **v0.5 — Jarvis HTTP API:** Define and implement the first external
+  transport over the existing Tool Execution boundary.
 
-Current Stage
+## Future
 
-Focus:
+- **v0.6 — Content Access:** Define bounded, safe access to asset content.
+- **v0.7 — Retrieval:** Explore search and relationships only after their
+  architecture is explicitly frozen.
+- **v1.0 — Stable Personal Digital Infrastructure:** Stabilize the proven
+  provider, write, read, and consumer contracts for long-term use.
 
-- Research vision
-- Research questions
-- Repository organization
-- High-level architecture
-- Self-hosted infrastructure
-- Documentation
-
-Status:
-
-🟢 In Progress
-
----
-
-# Phase 2 — Data Foundation
-
-Focus:
-
-- Digital asset model
-- Metadata model
-- Relationship model
-- Identity representation
-- Evidence model
-
-Goal:
-
-Establish a unified representation of personal digital life.
-
----
-
-# Phase 3 — Infrastructure
-
-Focus:
-
-- Provider / Adapter framework
-- PostgreSQL integration
-- Nextcloud integration
-- Immich integration
-- Local storage
-- Synchronization
-
-Goal:
-
-Connect existing digital services into one unified infrastructure.
-
-Current implementation:
-
-- Nextcloud and Immich both enter the same ProviderFact-based PDI Core;
-- both Providers use the shared Matcher, SyncEngine, Repository, and World Model;
-- Immich connect, scan, original download, SHA-256 verification, PostgreSQL
-  persistence, and idempotent repeat synchronization have been validated.
-
----
-
-# Phase 4 — Knowledge Layer
-
-Focus:
-
-- Knowledge graph
-- Retrieval
-- Context construction
-- Long-term memory
-- Semantic relationships
-
-Goal:
-
-Allow AI systems to understand a person's digital life instead of isolated files.
-
----
-
-# Phase 5 — AI Integration
-
-Focus:
-
-- AI interface
-- Agent integration
-- Context sharing
-- Task execution
-- Decision support
-
-Goal:
-
-Enable different AI systems to share the same understanding of a person.
-
----
-
-# Phase 6 — Open Research
-
-Future work may include:
-
-- Reality → Digital Life
-- Automatic knowledge organization
-- Human digital representation
-- Personal digital identity
-- Long-term digital evolution
-
-The exact direction will evolve as new research questions emerge.
-
----
-
-# Guiding Principle
-
-PDI is expected to change.
-
-The roadmap is not a fixed plan.
-
-It is a record of how the project evolves through continuous research and engineering.
+Future milestones are directional and remain subject to architecture review.
