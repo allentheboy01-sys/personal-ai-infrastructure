@@ -1,7 +1,8 @@
 from uuid import UUID
 
-from sqlalchemy import Engine, select, text
+from sqlalchemy import Engine, or_, select, text
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.sql.elements import ColumnElement
 
 from pdi.decision import Action, ActionType, Decision
 from pdi.models import Asset, AssetSource, Blob
@@ -12,6 +13,15 @@ from pdi.query.models import (
     SourceView,
 )
 from pdi.query.repository import QueryRepository
+from pdi.query.resources import (
+    ContentSummary,
+    RecentResourcesQuery,
+    ResourceDetail,
+    ResourceSearchQuery,
+    ResourceSourceSummary,
+    ResourceSummary,
+    format_resource_ref,
+)
 from pdi.repository.base import Repository
 from pdi.repository.orm.asset import AssetORM
 from pdi.repository.orm.asset_source import AssetSourceORM
@@ -377,6 +387,311 @@ class PostgreSQLRepository(Repository, QueryRepository):
                 sources=tuple(
                     self._asset_source_to_view(source_orm)
                     for source_orm in source_orms
+                ),
+            )
+
+    @staticmethod
+    def _escape_like(value: str) -> str:
+        return (
+            value.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+
+    @classmethod
+    def _source_filters(
+        cls,
+        *,
+        provider: str | None,
+        mime_type: str | None,
+        path_prefix: str | None,
+    ) -> list[ColumnElement[bool]]:
+        filters = [AssetSourceORM.is_active.is_(True)]
+
+        if provider is not None:
+            filters.append(AssetSourceORM.provider == provider)
+        if mime_type is not None:
+            filters.append(BlobORM.mime_type == mime_type)
+        if path_prefix is not None:
+            escaped_prefix = cls._escape_like(path_prefix)
+            filters.append(
+                AssetSourceORM.path.ilike(
+                    f"{escaped_prefix}%",
+                    escape="\\",
+                )
+            )
+
+        return filters
+
+    @classmethod
+    def _active_source_exists(
+        cls,
+        *,
+        provider: str | None,
+        mime_type: str | None,
+        path_prefix: str | None,
+        search_text: str | None = None,
+    ) -> ColumnElement[bool]:
+        filters = cls._source_filters(
+            provider=provider,
+            mime_type=mime_type,
+            path_prefix=path_prefix,
+        )
+
+        if search_text is not None:
+            escaped_text = cls._escape_like(search_text)
+            pattern = f"%{escaped_text}%"
+            filters.append(
+                or_(
+                    AssetSourceORM.name.ilike(
+                        pattern,
+                        escape="\\",
+                    ),
+                    AssetSourceORM.path.ilike(
+                        pattern,
+                        escape="\\",
+                    ),
+                )
+            )
+
+        return (
+            select(1)
+            .select_from(AssetSourceORM)
+            .join(
+                BlobORM,
+                AssetSourceORM.blob_id == BlobORM.id,
+            )
+            .where(
+                BlobORM.asset_id == AssetORM.id,
+                *filters,
+            )
+            .correlate(AssetORM)
+            .exists()
+        )
+
+    @staticmethod
+    def _resource_source_summary(
+        source_orm: AssetSourceORM,
+        blob_orm: BlobORM,
+    ) -> ResourceSourceSummary:
+        return ResourceSourceSummary(
+            provider=source_orm.provider,
+            location=source_orm.path,
+            name=source_orm.name,
+            mime_type=blob_orm.mime_type,
+            size_bytes=blob_orm.size,
+            is_active=source_orm.is_active,
+        )
+
+    @classmethod
+    def _resource_summary(
+        cls,
+        asset_orm: AssetORM,
+        source_orms: list[AssetSourceORM],
+        blobs_by_id: dict[UUID, BlobORM],
+    ) -> ResourceSummary:
+        ordered_sources = sorted(
+            source_orms,
+            key=lambda source: (
+                source.provider,
+                source.path or "",
+                source.name or "",
+                source.external_id,
+            ),
+        )
+        return ResourceSummary(
+            resource_ref=format_resource_ref(asset_orm.id),
+            resource_type="file",
+            display_name=asset_orm.title,
+            pdi_first_observed_at=asset_orm.created_at,
+            sources=tuple(
+                cls._resource_source_summary(
+                    source,
+                    blobs_by_id[source.blob_id],
+                )
+                for source in ordered_sources
+            ),
+        )
+
+    def _load_resource_summaries(
+        self,
+        session: Session,
+        asset_orms: list[AssetORM],
+    ) -> tuple[ResourceSummary, ...]:
+        if not asset_orms:
+            return ()
+
+        asset_ids = [asset.id for asset in asset_orms]
+        blob_orms = list(
+            session.execute(
+                select(BlobORM).where(
+                    BlobORM.asset_id.in_(asset_ids)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        blobs_by_id = {blob.id: blob for blob in blob_orms}
+        source_orms: list[AssetSourceORM] = []
+
+        if blobs_by_id:
+            source_orms = list(
+                session.execute(
+                    select(AssetSourceORM).where(
+                        AssetSourceORM.blob_id.in_(blobs_by_id),
+                        AssetSourceORM.is_active.is_(True),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        sources_by_asset_id: dict[UUID, list[AssetSourceORM]] = {
+            asset_id: [] for asset_id in asset_ids
+        }
+        for source in source_orms:
+            blob = blobs_by_id[source.blob_id]
+            sources_by_asset_id[blob.asset_id].append(source)
+
+        return tuple(
+            self._resource_summary(
+                asset,
+                sources_by_asset_id[asset.id],
+                blobs_by_id,
+            )
+            for asset in asset_orms
+        )
+
+    def list_recent_resources(
+        self,
+        query: RecentResourcesQuery,
+    ) -> tuple[ResourceSummary, ...]:
+        eligible_source = self._active_source_exists(
+            provider=query.provider,
+            mime_type=query.mime_type,
+            path_prefix=query.path_prefix,
+        )
+        with self._session_factory() as session:
+            asset_orms = list(
+                session.execute(
+                    select(AssetORM)
+                    .where(
+                        AssetORM.created_at >= query.created_since,
+                        eligible_source,
+                    )
+                    .order_by(
+                        AssetORM.created_at.desc(),
+                        AssetORM.id.asc(),
+                    )
+                    .limit(query.limit)
+                )
+                .scalars()
+                .all()
+            )
+            return self._load_resource_summaries(session, asset_orms)
+
+    def search_resources(
+        self,
+        query: ResourceSearchQuery,
+    ) -> tuple[ResourceSummary, ...]:
+        eligible_source = self._active_source_exists(
+            provider=query.provider,
+            mime_type=query.mime_type,
+            path_prefix=query.path_prefix,
+        )
+        matching_source = self._active_source_exists(
+            provider=query.provider,
+            mime_type=query.mime_type,
+            path_prefix=query.path_prefix,
+            search_text=query.query,
+        )
+        title_pattern = f"%{self._escape_like(query.query)}%"
+
+        with self._session_factory() as session:
+            asset_orms = list(
+                session.execute(
+                    select(AssetORM)
+                    .where(
+                        eligible_source,
+                        or_(
+                            AssetORM.title.ilike(
+                                title_pattern,
+                                escape="\\",
+                            ),
+                            matching_source,
+                        ),
+                    )
+                    .order_by(
+                        AssetORM.title.asc(),
+                        AssetORM.id.asc(),
+                    )
+                    .limit(query.limit)
+                )
+                .scalars()
+                .all()
+            )
+            return self._load_resource_summaries(session, asset_orms)
+
+    def get_resource_detail(
+        self,
+        asset_id: str,
+    ) -> ResourceDetail | None:
+        with self._session_factory() as session:
+            asset_orm = session.get(AssetORM, UUID(asset_id))
+
+            if asset_orm is None:
+                return None
+
+            blob_orms = list(
+                session.execute(
+                    select(BlobORM).where(
+                        BlobORM.asset_id == asset_orm.id
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            blobs_by_id = {blob.id: blob for blob in blob_orms}
+            source_orms: list[AssetSourceORM] = []
+
+            if blobs_by_id:
+                source_orms = list(
+                    session.execute(
+                        select(AssetSourceORM).where(
+                            AssetSourceORM.blob_id.in_(blobs_by_id)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+
+            summary = self._resource_summary(
+                asset_orm,
+                source_orms,
+                blobs_by_id,
+            )
+            ordered_blobs = sorted(
+                blob_orms,
+                key=lambda blob: (
+                    blob.hash,
+                    blob.mime_type or "",
+                    blob.size if blob.size is not None else -1,
+                ),
+            )
+
+            return ResourceDetail(
+                resource_ref=summary.resource_ref,
+                resource_type=summary.resource_type,
+                display_name=summary.display_name,
+                pdi_first_observed_at=summary.pdi_first_observed_at,
+                sources=summary.sources,
+                content_variants=tuple(
+                    ContentSummary(
+                        mime_type=blob.mime_type,
+                        size_bytes=blob.size,
+                        checksum=blob.hash,
+                    )
+                    for blob in ordered_blobs
                 ),
             )
 
