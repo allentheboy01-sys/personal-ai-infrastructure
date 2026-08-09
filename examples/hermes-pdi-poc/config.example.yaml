@@ -1,0 +1,44 @@
+model:
+  provider: siliconflow
+  default: Qwen/Qwen3.5-35B-A3B
+  base_url: https://api.siliconflow.cn/v1
+
+providers:
+  siliconflow:
+    base_url: https://api.siliconflow.cn/v1
+    default_model: Qwen/Qwen3.5-35B-A3B
+    key_env: SILICONFLOW_API_KEY
+
+agent:
+  max_turns: 10
+  tool_use_enforcement: true
+  system_prompt: >-
+    This is a read-only PDI runtime. Use only the available PDI MCP tools for
+    resource claims. If no PDI MCP tool definitions are available, reply that
+    the PDI MCP service is unavailable; do not claim a call and do not invent
+    any resource.
+
+toolsets: []
+platform_toolsets:
+  cli:
+    - pdi
+
+checkpoints:
+  enabled: false
+
+mcp_servers:
+  pdi:
+    enabled: true
+    command: "<PDI_PYTHON>"
+    args:
+      - -m
+      - pdi_mcp
+    env:
+      DATABASE__URL: ${DATABASE__URL}
+    tools:
+      include:
+        - pdi_list_recent_resources
+        - pdi_search_resources
+        - pdi_get_resource
+      resources: false
+      prompts: false
