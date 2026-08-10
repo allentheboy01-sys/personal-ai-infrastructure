@@ -1,10 +1,16 @@
+import logging
+import time
 import urllib.parse
 import xml.etree.ElementTree as ET
+from collections import deque
 from typing import Iterable
 
 import requests
 
 from pdi.adapters.base import Adapter, ProviderFact
+
+
+logger = logging.getLogger(__name__)
 
 
 class NextcloudAdapter(Adapter):
@@ -33,8 +39,61 @@ class NextcloudAdapter(Adapter):
         response.raise_for_status()
 
     def scan(self, path: str = "") -> Iterable[ProviderFact]:
-        """扫描指定 Nextcloud 目录中的直接子项。"""
-        return self._propfind(path)
+        """扫描指定 Nextcloud 目录下的完整可见文件树。"""
+        started_at = time.perf_counter()
+        root_path = self._normalize_traversal_path(path)
+        pending_directories = deque([root_path])
+        visited_directories: set[str] = set()
+        facts: list[ProviderFact] = []
+
+        logger.info(
+            "Scanning Nextcloud recursively path=%s",
+            root_path or "/",
+        )
+
+        while pending_directories:
+            current_path = pending_directories.popleft()
+
+            if current_path in visited_directories:
+                continue
+
+            visited_directories.add(current_path)
+
+            for fact in self._propfind(current_path):
+                facts.append(fact)
+
+                if fact.kind != "folder":
+                    continue
+
+                directory_path = fact.attributes.get("path")
+
+                if not isinstance(directory_path, str):
+                    raise ValueError(
+                        "Nextcloud folder does not contain a valid path"
+                    )
+
+                normalized_path = self._normalize_traversal_path(
+                    directory_path
+                )
+
+                if not normalized_path:
+                    raise ValueError(
+                        "Nextcloud child folder has an empty path"
+                    )
+
+                if normalized_path not in visited_directories:
+                    pending_directories.append(normalized_path)
+
+        duration = time.perf_counter() - started_at
+
+        logger.info(
+            "Nextcloud scan finished directories=%d facts=%d duration=%.2fs",
+            len(visited_directories),
+            len(facts),
+            duration,
+        )
+
+        return facts
 
     def open(
         self,
@@ -75,7 +134,11 @@ class NextcloudAdapter(Adapter):
 
     def _propfind(self, path: str) -> list[ProviderFact]:
         """向 Nextcloud WebDAV 发送 PROPFIND 请求。"""
-        encoded_path = urllib.parse.quote(path.strip("/"))
+        normalized_path = self._normalize_traversal_path(path)
+        encoded_path = urllib.parse.quote(
+            normalized_path,
+            safe="/",
+        )
 
         url = (
             f"{self.base_url}"
@@ -117,11 +180,15 @@ class NextcloudAdapter(Adapter):
 
         response.raise_for_status()
 
-        return self._parse_webdav_response(response.text)
+        return self._parse_webdav_response(
+            response.text,
+            current_path=normalized_path,
+        )
 
     def _parse_webdav_response(
         self,
         xml_text: str,
+        current_path: str,
     ) -> list[ProviderFact]:
         """把 Nextcloud WebDAV XML 转换成统一的 ProviderFact。"""
         namespace = {
@@ -140,10 +207,22 @@ class NextcloudAdapter(Adapter):
                 namespace,
             )
 
+            if not isinstance(href, str) or not href:
+                raise ValueError(
+                    "Nextcloud WebDAV response contains an invalid href"
+                )
+
             path = self._clean_href(href)
 
-            # PROPFIND Depth=1 通常也会返回被扫描目录本身。
-            if path == "":
+            if not isinstance(path, str):
+                raise ValueError(
+                    "Nextcloud WebDAV response contains an invalid path"
+                )
+
+            # 每次 Depth=1 PROPFIND 通常都会返回当前 collection 自身。
+            if self._normalize_traversal_path(
+                path
+            ) == self._normalize_traversal_path(current_path):
                 continue
 
             prop = item.find(
@@ -152,7 +231,9 @@ class NextcloudAdapter(Adapter):
             )
 
             if prop is None:
-                continue
+                raise ValueError(
+                    "Nextcloud WebDAV response does not contain properties"
+                )
 
             resource_type = prop.find(
                 "d:resourcetype",
@@ -173,6 +254,11 @@ class NextcloudAdapter(Adapter):
                 "oc:id",
                 namespace,
             )
+
+            if not oc_id:
+                raise ValueError(
+                    "Nextcloud WebDAV response does not contain oc:id"
+                )
 
             file_id = self._get_text(
                 prop,
@@ -255,6 +341,11 @@ class NextcloudAdapter(Adapter):
 
         return facts
 
+    @staticmethod
+    def _normalize_traversal_path(path: str) -> str:
+        """Normalize a WebDAV path only for traversal bookkeeping."""
+        return path.strip("/")
+
     def _clean_href(
         self,
         href: str | None,
@@ -290,5 +381,3 @@ class NextcloudAdapter(Adapter):
             return None
 
         return found.text
-
-

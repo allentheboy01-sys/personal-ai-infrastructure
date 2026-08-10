@@ -1,4 +1,6 @@
+import argparse
 import logging
+from collections.abc import Sequence
 
 from pdi.adapters.base import Adapter
 from pdi.adapters.immich import ImmichAdapter
@@ -14,7 +16,64 @@ from pdi.repository import PostgreSQLRepository
 logger = logging.getLogger(__name__)
 
 
-def main() -> None:
+def _parse_args(
+    argv: Sequence[str] | None,
+) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Synchronize configured PDI providers.",
+    )
+    parser.add_argument(
+        "--provider",
+        choices=("nextcloud", "immich"),
+        help=(
+            "Synchronize only one provider. "
+            "Without this option, all configured providers are synchronized."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def _build_adapters(
+    settings: Settings,
+    selected_provider: str | None,
+) -> list[Adapter]:
+    adapters: list[Adapter] = []
+
+    if selected_provider in {None, "nextcloud"}:
+        adapters.append(
+            NextcloudAdapter(
+                base_url=settings.nextcloud.url,
+                username=settings.nextcloud.user,
+                password=settings.nextcloud.password,
+            )
+        )
+
+    if selected_provider in {None, "immich"}:
+        if settings.immich is None:
+            if selected_provider == "immich":
+                raise RuntimeError(
+                    "--provider immich requires IMMICH__URL "
+                    "and IMMICH__API_KEY"
+                )
+
+            logger.info(
+                "Immich is not configured; skipping provider"
+            )
+        else:
+            adapters.append(
+                ImmichAdapter(
+                    base_url=settings.immich.url,
+                    api_key=settings.immich.api_key,
+                )
+            )
+
+    return adapters
+
+
+def main(
+    argv: Sequence[str] | None = None,
+) -> None:
+    args = _parse_args(argv)
     settings = Settings()
 
     configure_logging(
@@ -23,25 +82,10 @@ def main() -> None:
 
     logger.info("PDI starting")
 
-    adapters: list[Adapter] = [
-        NextcloudAdapter(
-            base_url=settings.nextcloud.url,
-            username=settings.nextcloud.user,
-            password=settings.nextcloud.password,
-        ),
-    ]
-
-    if settings.immich is not None:
-        adapters.append(
-            ImmichAdapter(
-                base_url=settings.immich.url,
-                api_key=settings.immich.api_key,
-            )
-        )
-    else:
-        logger.info(
-            "Immich is not configured; skipping provider"
-        )
+    adapters = _build_adapters(
+        settings,
+        selected_provider=args.provider,
+    )
 
     db_engine = create_postgres_engine(
         settings.database.url,
