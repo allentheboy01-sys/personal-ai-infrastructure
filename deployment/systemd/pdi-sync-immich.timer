@@ -1,0 +1,10 @@
+[Unit]
+Description=Run PDI Immich synchronization daily
+
+[Timer]
+OnCalendar=*-*-* 05:15:00
+Persistent=true
+Unit=pdi-sync-immich.service
+
+[Install]
+WantedBy=timers.target

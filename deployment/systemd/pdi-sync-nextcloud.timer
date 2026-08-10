@@ -1,0 +1,10 @@
+[Unit]
+Description=Run PDI Nextcloud synchronization daily
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+Persistent=true
+Unit=pdi-sync-nextcloud.service
+
+[Install]
+WantedBy=timers.target
