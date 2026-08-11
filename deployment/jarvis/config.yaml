@@ -1,0 +1,44 @@
+model:
+  provider: deepseek-v4
+  default: deepseek-v4-flash
+  base_url: https://api.deepseek.com/v1
+
+providers:
+  deepseek-v4:
+    name: DeepSeek V4
+    base_url: https://api.deepseek.com/v1
+    default_model: deepseek-v4-flash
+    key_env: DEEPSEEK_API_KEY
+
+agent:
+  max_turns: 10
+  tool_use_enforcement: true
+  system_prompt: >-
+    This is a read-only PDI runtime. Use only the available PDI MCP tools for
+    resource claims. If no PDI MCP tool definitions are available, reply that
+    the PDI MCP service is unavailable; do not claim a call and do not invent
+    any resource.
+
+toolsets: []
+platform_toolsets:
+  cli:
+    - pdi
+
+checkpoints:
+  enabled: false
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+
+mcp_servers:
+  pdi:
+    enabled: true
+    command: /home/harry/.hermes/profiles/pdi-server/bin/pdi-mcp
+    tools:
+      include:
+        - pdi_list_recent_resources
+        - pdi_search_resources
+        - pdi_get_resource
+      resources: false
+      prompts: false

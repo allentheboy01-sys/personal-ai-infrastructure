@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+umask 077
+
+readonly JARVIS_ENV=/etc/pdi/jarvis.env
+readonly HERMES=/home/harry/.hermes/hermes-agent/venv/bin/hermes
+
+if [ ! -r "$JARVIS_ENV" ]; then
+    echo "jarvis: cannot read $JARVIS_ENV" >&2
+    exit 1
+fi
+
+set -a
+# shellcheck disable=SC1091
+. "$JARVIS_ENV"
+set +a
+
+if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
+    echo "jarvis: DEEPSEEK_API_KEY is not configured" >&2
+    exit 1
+fi
+
+if [ ! -x "$HERMES" ]; then
+    echo "jarvis: Hermes runtime is not installed" >&2
+    exit 1
+fi
+
+exec env -i \
+    HOME="${HOME:-/home/harry}" \
+    USER="${USER:-harry}" \
+    LOGNAME="${LOGNAME:-harry}" \
+    SHELL="${SHELL:-/bin/bash}" \
+    PATH=/home/harry/.local/bin:/usr/local/bin:/usr/bin:/bin \
+    TERM="${TERM:-xterm-256color}" \
+    LANG="${LANG:-C.UTF-8}" \
+    DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
+    "$HERMES" --profile pdi-server "$@"
