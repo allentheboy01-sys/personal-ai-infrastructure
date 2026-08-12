@@ -1,6 +1,7 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import Engine, or_, select, text
+from sqlalchemy import Engine, case, func, or_, select, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -16,10 +17,19 @@ from pdi.query.repository import QueryRepository
 from pdi.query.resources import (
     ContentSummary,
     RecentResourcesQuery,
+    RESOURCE_TIME_BASIS,
+    ResourceAggregationBucket,
+    ResourceAggregationQuery,
+    ResourceAggregationResult,
     ResourceDetail,
+    ResourceFilters,
+    ResourceGroupBy,
+    ResourceListPageQuery,
     ResourceSearchQuery,
+    ResourceSearchPageQuery,
     ResourceSourceSummary,
     ResourceSummary,
+    ResourceTimeRange,
     format_resource_ref,
 )
 from pdi.repository.base import Repository
@@ -404,6 +414,7 @@ class PostgreSQLRepository(Repository, QueryRepository):
         *,
         provider: str | None,
         mime_type: str | None,
+        mime_category: str | None,
         path_prefix: str | None,
     ) -> list[ColumnElement[bool]]:
         filters = [AssetSourceORM.is_active.is_(True)]
@@ -412,6 +423,10 @@ class PostgreSQLRepository(Repository, QueryRepository):
             filters.append(AssetSourceORM.provider == provider)
         if mime_type is not None:
             filters.append(BlobORM.mime_type == mime_type)
+        if mime_category is not None:
+            filters.append(
+                cls._mime_category_expression() == mime_category
+            )
         if path_prefix is not None:
             escaped_prefix = cls._escape_like(path_prefix)
             filters.append(
@@ -423,18 +438,39 @@ class PostgreSQLRepository(Repository, QueryRepository):
 
         return filters
 
+    @staticmethod
+    def _mime_category_expression():
+        return case(
+            (
+                or_(
+                    BlobORM.mime_type.is_(None),
+                    BlobORM.mime_type == "",
+                ),
+                "unknown",
+            ),
+            (
+                func.strpos(BlobORM.mime_type, "/") > 0,
+                func.lower(
+                    func.split_part(BlobORM.mime_type, "/", 1)
+                ),
+            ),
+            else_="other",
+        )
+
     @classmethod
     def _active_source_exists(
         cls,
         *,
         provider: str | None,
         mime_type: str | None,
+        mime_category: str | None,
         path_prefix: str | None,
         search_text: str | None = None,
     ) -> ColumnElement[bool]:
         filters = cls._source_filters(
             provider=provider,
             mime_type=mime_type,
+            mime_category=mime_category,
             path_prefix=path_prefix,
         )
 
@@ -562,21 +598,70 @@ class PostgreSQLRepository(Repository, QueryRepository):
             for asset in asset_orms
         )
 
-    def list_recent_resources(
-        self,
-        query: RecentResourcesQuery,
-    ) -> tuple[ResourceSummary, ...]:
-        eligible_source = self._active_source_exists(
-            provider=query.provider,
-            mime_type=query.mime_type,
-            path_prefix=query.path_prefix,
+    @staticmethod
+    def _asset_time_filters(
+        *,
+        observed_from,
+        observed_to,
+        snapshot_to=None,
+    ) -> list[ColumnElement[bool]]:
+        filters: list[ColumnElement[bool]] = []
+        if observed_from is not None:
+            filters.append(AssetORM.created_at >= observed_from)
+        if observed_to is not None:
+            filters.append(AssetORM.created_at < observed_to)
+        if snapshot_to is not None:
+            filters.append(AssetORM.created_at < snapshot_to)
+        return filters
+
+    @classmethod
+    def _eligible_source_for_filters(
+        cls,
+        filters: ResourceFilters,
+        *,
+        search_text: str | None = None,
+    ) -> ColumnElement[bool]:
+        return cls._active_source_exists(
+            provider=filters.provider,
+            mime_type=filters.mime_type,
+            mime_category=filters.mime_category,
+            path_prefix=filters.path_prefix,
+            search_text=search_text,
         )
+
+    def list_resource_page(
+        self,
+        query: ResourceListPageQuery,
+    ) -> tuple[ResourceSummary, ...]:
+        eligible_source = self._eligible_source_for_filters(
+            query.filters
+        )
+        filters = self._asset_time_filters(
+            observed_from=query.time_range.observed_from,
+            observed_to=query.time_range.observed_to,
+            snapshot_to=query.snapshot_to,
+        )
+        if query.after_observed_at is not None:
+            if query.after_asset_id is None:
+                raise ValueError(
+                    "Recent page position requires asset identity"
+                )
+            filters.append(
+                or_(
+                    AssetORM.created_at < query.after_observed_at,
+                    (
+                        (AssetORM.created_at == query.after_observed_at)
+                        & (AssetORM.id > UUID(query.after_asset_id))
+                    ),
+                )
+            )
+
         with self._session_factory() as session:
             asset_orms = list(
                 session.execute(
                     select(AssetORM)
                     .where(
-                        AssetORM.created_at >= query.created_since,
+                        *filters,
                         eligible_source,
                     )
                     .order_by(
@@ -590,28 +675,44 @@ class PostgreSQLRepository(Repository, QueryRepository):
             )
             return self._load_resource_summaries(session, asset_orms)
 
-    def search_resources(
+    def search_resource_page(
         self,
-        query: ResourceSearchQuery,
+        query: ResourceSearchPageQuery,
     ) -> tuple[ResourceSummary, ...]:
-        eligible_source = self._active_source_exists(
-            provider=query.provider,
-            mime_type=query.mime_type,
-            path_prefix=query.path_prefix,
+        eligible_source = self._eligible_source_for_filters(
+            query.filters
         )
-        matching_source = self._active_source_exists(
-            provider=query.provider,
-            mime_type=query.mime_type,
-            path_prefix=query.path_prefix,
+        matching_source = self._eligible_source_for_filters(
+            query.filters,
             search_text=query.query,
         )
         title_pattern = f"%{self._escape_like(query.query)}%"
+        filters = self._asset_time_filters(
+            observed_from=query.time_range.observed_from,
+            observed_to=query.time_range.observed_to,
+            snapshot_to=query.snapshot_to,
+        )
+        if query.after_title is not None:
+            if query.after_asset_id is None:
+                raise ValueError(
+                    "Search page position requires asset identity"
+                )
+            filters.append(
+                or_(
+                    AssetORM.title > query.after_title,
+                    (
+                        (AssetORM.title == query.after_title)
+                        & (AssetORM.id > UUID(query.after_asset_id))
+                    ),
+                )
+            )
 
         with self._session_factory() as session:
             asset_orms = list(
                 session.execute(
                     select(AssetORM)
                     .where(
+                        *filters,
                         eligible_source,
                         or_(
                             AssetORM.title.ilike(
@@ -631,6 +732,193 @@ class PostgreSQLRepository(Repository, QueryRepository):
                 .all()
             )
             return self._load_resource_summaries(session, asset_orms)
+
+    def aggregate_resources(
+        self,
+        query: ResourceAggregationQuery,
+    ) -> ResourceAggregationResult:
+        source_filters = self._source_filters(
+            provider=query.filters.provider,
+            mime_type=query.filters.mime_type,
+            mime_category=query.filters.mime_category,
+            path_prefix=query.filters.path_prefix,
+        )
+        time_filters = self._asset_time_filters(
+            observed_from=query.time_range.observed_from,
+            observed_to=query.time_range.observed_to,
+        )
+
+        with self._session_factory() as session:
+            if query.group_by is None:
+                eligible_assets = (
+                    select(AssetORM.id.label("asset_id"))
+                    .select_from(AssetORM)
+                    .join(BlobORM, BlobORM.asset_id == AssetORM.id)
+                    .join(
+                        AssetSourceORM,
+                        AssetSourceORM.blob_id == BlobORM.id,
+                    )
+                    .where(*time_filters, *source_filters)
+                    .distinct()
+                    .subquery()
+                )
+                total_count = session.execute(
+                    select(func.count()).select_from(eligible_assets)
+                ).scalar_one()
+                return ResourceAggregationResult(
+                    time_basis=RESOURCE_TIME_BASIS,
+                    time_range=query.time_range,
+                    applied_filters=query.filters,
+                    group_by=None,
+                    total_count=total_count,
+                    buckets=(),
+                    buckets_truncated=False,
+                )
+
+            bucket_expression = self._aggregation_bucket_expression(
+                query.group_by
+            )
+            resource_buckets = (
+                select(
+                    AssetORM.id.label("asset_id"),
+                    bucket_expression.label("bucket"),
+                )
+                .select_from(AssetORM)
+                .join(BlobORM, BlobORM.asset_id == AssetORM.id)
+                .join(
+                    AssetSourceORM,
+                    AssetSourceORM.blob_id == BlobORM.id,
+                )
+                .where(*time_filters, *source_filters)
+                .distinct()
+                .subquery()
+            )
+            total_count_query = (
+                select(
+                    func.count(
+                        func.distinct(resource_buckets.c.asset_id)
+                    )
+                )
+                .select_from(resource_buckets)
+                .correlate(None)
+                .scalar_subquery()
+            )
+            bucket_count = func.count().label("bucket_count")
+            statement = (
+                select(
+                    resource_buckets.c.bucket,
+                    bucket_count,
+                    total_count_query.label("total_count"),
+                )
+                .group_by(resource_buckets.c.bucket)
+            )
+            if query.group_by is ResourceGroupBy.DAY:
+                statement = statement.order_by(
+                    resource_buckets.c.bucket.asc()
+                )
+            else:
+                statement = statement.order_by(
+                    bucket_count.desc(),
+                    resource_buckets.c.bucket.asc(),
+                )
+            rows = session.execute(
+                statement.limit(query.bucket_limit + 1)
+            ).all()
+
+            buckets_truncated = len(rows) > query.bucket_limit
+            visible_rows = rows[: query.bucket_limit]
+            total_count = 0 if not rows else rows[0].total_count
+            return ResourceAggregationResult(
+                time_basis=RESOURCE_TIME_BASIS,
+                time_range=query.time_range,
+                applied_filters=query.filters,
+                group_by=query.group_by,
+                total_count=total_count,
+                buckets=tuple(
+                    ResourceAggregationBucket(
+                        key=row.bucket,
+                        count=row.bucket_count,
+                    )
+                    for row in visible_rows
+                ),
+                buckets_truncated=buckets_truncated,
+            )
+
+    @classmethod
+    def _aggregation_bucket_expression(
+        cls,
+        group_by: ResourceGroupBy,
+    ):
+        if group_by is ResourceGroupBy.PROVIDER:
+            return AssetSourceORM.provider
+        if group_by is ResourceGroupBy.DAY:
+            return func.to_char(
+                func.timezone("UTC", AssetORM.created_at),
+                "YYYY-MM-DD",
+            )
+        if group_by is ResourceGroupBy.MIME_TYPE:
+            return case(
+                (
+                    or_(
+                        BlobORM.mime_type.is_(None),
+                        BlobORM.mime_type == "",
+                    ),
+                    "unknown",
+                ),
+                else_=BlobORM.mime_type,
+            )
+        if group_by is ResourceGroupBy.MIME_CATEGORY:
+            return cls._mime_category_expression()
+        raise ValueError(f"Unsupported group_by: {group_by}")
+
+    def list_recent_resources(
+        self,
+        query: RecentResourcesQuery,
+    ) -> tuple[ResourceSummary, ...]:
+        return self.list_resource_page(
+            ResourceListPageQuery(
+                time_range=ResourceTimeRange(
+                    observed_from=query.created_since,
+                    observed_to=None,
+                ),
+                filters=ResourceFilters(
+                    provider=query.provider,
+                    resource_type=query.resource_type,
+                    mime_type=query.mime_type,
+                    mime_category=None,
+                    path_prefix=query.path_prefix,
+                ),
+                snapshot_to=datetime.max.replace(tzinfo=UTC),
+                after_observed_at=None,
+                after_asset_id=None,
+                limit=query.limit,
+            )
+        )
+
+    def search_resources(
+        self,
+        query: ResourceSearchQuery,
+    ) -> tuple[ResourceSummary, ...]:
+        return self.search_resource_page(
+            ResourceSearchPageQuery(
+                query=query.query,
+                time_range=ResourceTimeRange(
+                    observed_from=None,
+                    observed_to=None,
+                ),
+                filters=ResourceFilters(
+                    provider=query.provider,
+                    resource_type=query.resource_type,
+                    mime_type=query.mime_type,
+                    mime_category=None,
+                    path_prefix=query.path_prefix,
+                ),
+                snapshot_to=datetime.max.replace(tzinfo=UTC),
+                after_title=None,
+                after_asset_id=None,
+                limit=query.limit,
+            )
+        )
 
     def get_resource_detail(
         self,

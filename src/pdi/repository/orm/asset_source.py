@@ -5,6 +5,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Text,
     UniqueConstraint,
     text,
@@ -86,3 +87,10 @@ class AssetSourceORM(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
+
+Index(
+    "ix_asset_sources_active_blob_id",
+    AssetSourceORM.blob_id,
+    postgresql_where=AssetSourceORM.is_active.is_(True),
+)

@@ -3,8 +3,12 @@ from typing import Protocol
 from .models import AssetDetail, AssetSummary
 from .resources import (
     RecentResourcesQuery,
+    ResourceAggregationQuery,
+    ResourceAggregationResult,
     ResourceDetail,
+    ResourceListPageQuery,
     ResourceSearchQuery,
+    ResourceSearchPageQuery,
     ResourceSummary,
 )
 
@@ -44,4 +48,25 @@ class QueryRepository(Protocol):
         asset_id: str,
     ) -> ResourceDetail | None:
         """Return one detached Resource projection."""
+        ...
+
+    def aggregate_resources(
+        self,
+        query: ResourceAggregationQuery,
+    ) -> ResourceAggregationResult:
+        """Count and optionally group active Resource projections."""
+        ...
+
+    def list_resource_page(
+        self,
+        query: ResourceListPageQuery,
+    ) -> tuple[ResourceSummary, ...]:
+        """Return one keyset page, including an optional lookahead row."""
+        ...
+
+    def search_resource_page(
+        self,
+        query: ResourceSearchPageQuery,
+    ) -> tuple[ResourceSummary, ...]:
+        """Return one lexical search keyset page."""
         ...

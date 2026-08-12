@@ -40,5 +40,6 @@ mcp_servers:
         - pdi_list_recent_resources
         - pdi_search_resources
         - pdi_get_resource
+        - pdi_aggregate_resources
       resources: false
       prompts: false

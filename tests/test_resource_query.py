@@ -9,10 +9,10 @@ from pdi.query import (
     InvalidQueryError,
     InvalidResourceRefError,
     QueryService,
-    RecentResourcesQuery,
     ResourceDetail,
+    ResourceListPageQuery,
     ResourceNotFoundError,
-    ResourceSearchQuery,
+    ResourceSearchPageQuery,
     ResourceSourceSummary,
     ResourceSummary,
     format_resource_ref,
@@ -28,20 +28,20 @@ class StubResourceRepository:
     ) -> None:
         self.summary = summary
         self.detail = detail
-        self.recent_queries: list[RecentResourcesQuery] = []
-        self.search_queries: list[ResourceSearchQuery] = []
+        self.recent_queries: list[ResourceListPageQuery] = []
+        self.search_queries: list[ResourceSearchPageQuery] = []
         self.detail_ids: list[str] = []
 
-    def list_recent_resources(
+    def list_resource_page(
         self,
-        query: RecentResourcesQuery,
+        query: ResourceListPageQuery,
     ) -> tuple[ResourceSummary, ...]:
         self.recent_queries.append(query)
         return (self.summary,)
 
-    def search_resources(
+    def search_resource_page(
         self,
-        query: ResourceSearchQuery,
+        query: ResourceSearchPageQuery,
     ) -> tuple[ResourceSummary, ...]:
         self.search_queries.append(query)
         return (self.summary,)
@@ -171,16 +171,17 @@ def test_query_service_builds_validated_queries() -> None:
         path_prefix="/photos",
         limit=20,
     ) == (summary,)
-    assert repository.recent_queries == [
-        RecentResourcesQuery(
-            created_since=now - timedelta(days=7),
-            provider="immich",
-            resource_type="file",
-            mime_type="image/jpeg",
-            path_prefix="/photos",
-            limit=20,
-        )
-    ]
+    recent_query = repository.recent_queries[0]
+    assert recent_query.time_range.observed_from == (
+        now - timedelta(days=7)
+    )
+    assert recent_query.time_range.observed_to is None
+    assert recent_query.filters.provider == "immich"
+    assert recent_query.filters.resource_type == "file"
+    assert recent_query.filters.mime_type == "image/jpeg"
+    assert recent_query.filters.path_prefix == "/photos"
+    assert recent_query.snapshot_to == now
+    assert recent_query.limit == 21
 
     assert service.search_resources(
         query=" one ",

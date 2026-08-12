@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, Text, text
+from sqlalchemy import DateTime, Index, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,3 +38,10 @@ class AssetORM(Base):
         DateTime(timezone=True),
         nullable=False,
     )
+
+
+Index(
+    "ix_assets_created_at_id",
+    AssetORM.created_at.desc(),
+    AssetORM.id.asc(),
+)

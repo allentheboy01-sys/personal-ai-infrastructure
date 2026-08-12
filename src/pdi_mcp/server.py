@@ -1,10 +1,12 @@
 from collections.abc import Callable
+from datetime import datetime
 
 from mcp.server import MCPServer
 
-from pdi.query import QueryError, QueryService
+from pdi.query import InvalidQueryError, QueryError, QueryService
 
 from .serialization import (
+    serialize_resource_aggregation,
     serialize_resource_detail,
     serialize_resource_summary,
 )
@@ -30,6 +32,24 @@ def _query_call(operation: Callable[[], ToolResult]) -> ToolResult:
         return _error_result(error)
 
 
+def _datetime_argument(
+    value: str | None,
+    name: str,
+) -> datetime | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidQueryError(
+            f"{name} must be an ISO 8601 datetime"
+        )
+    try:
+        return datetime.fromisoformat(value.strip())
+    except ValueError as error:
+        raise InvalidQueryError(
+            f"{name} must be an ISO 8601 datetime"
+        ) from error
+
+
 def create_server(query_service: QueryService) -> MCPServer:
     server = MCPServer(
         name="pdi-personal-retrieval",
@@ -42,12 +62,16 @@ def create_server(query_service: QueryService) -> MCPServer:
 
     @server.tool(structured_output=True)
     def pdi_list_recent_resources(
-        days: int = 30,
+        days: int | None = None,
         provider: str | None = None,
         resource_type: str | None = None,
         mime_type: str | None = None,
         path_prefix: str | None = None,
         limit: int = 50,
+        observed_from: str | None = None,
+        observed_to: str | None = None,
+        cursor: str | None = None,
+        mime_category: str | None = None,
     ) -> ToolResult:
         """List resources recently first identified by PDI.
 
@@ -57,20 +81,31 @@ def create_server(query_service: QueryService) -> MCPServer:
         """
 
         def operation() -> ToolResult:
-            resources = query_service.list_recent_resources(
+            page = query_service.list_resource_page(
                 days=days,
+                observed_from=_datetime_argument(
+                    observed_from,
+                    "observed_from",
+                ),
+                observed_to=_datetime_argument(
+                    observed_to,
+                    "observed_to",
+                ),
                 provider=provider,
                 resource_type=resource_type,
                 mime_type=mime_type,
+                mime_category=mime_category,
                 path_prefix=path_prefix,
                 limit=limit,
+                cursor=cursor,
             )
             return {
                 "ok": True,
                 "resources": [
                     serialize_resource_summary(resource)
-                    for resource in resources
+                    for resource in page.resources
                 ],
+                "next_cursor": page.next_cursor,
             }
 
         return _query_call(operation)
@@ -83,24 +118,81 @@ def create_server(query_service: QueryService) -> MCPServer:
         mime_type: str | None = None,
         path_prefix: str | None = None,
         limit: int = 50,
+        observed_from: str | None = None,
+        observed_to: str | None = None,
+        cursor: str | None = None,
+        mime_category: str | None = None,
     ) -> ToolResult:
         """Search PDI resource title, source name, and source path metadata."""
 
         def operation() -> ToolResult:
-            resources = query_service.search_resources(
+            page = query_service.search_resource_page(
                 query=query,
+                observed_from=_datetime_argument(
+                    observed_from,
+                    "observed_from",
+                ),
+                observed_to=_datetime_argument(
+                    observed_to,
+                    "observed_to",
+                ),
                 provider=provider,
                 resource_type=resource_type,
                 mime_type=mime_type,
+                mime_category=mime_category,
                 path_prefix=path_prefix,
                 limit=limit,
+                cursor=cursor,
             )
             return {
                 "ok": True,
                 "resources": [
                     serialize_resource_summary(resource)
-                    for resource in resources
+                    for resource in page.resources
                 ],
+                "next_cursor": page.next_cursor,
+            }
+
+        return _query_call(operation)
+
+    @server.tool(structured_output=True)
+    def pdi_aggregate_resources(
+        group_by: str | None = None,
+        observed_from: str | None = None,
+        observed_to: str | None = None,
+        provider: str | None = None,
+        resource_type: str | None = None,
+        mime_type: str | None = None,
+        mime_category: str | None = None,
+        path_prefix: str | None = None,
+    ) -> ToolResult:
+        """Count or group Resources by PDI first-observed time.
+
+        This aggregation describes when PDI first recognized Resources. It
+        does not describe capture, upload, user creation, provider creation,
+        or provider modification time.
+        """
+
+        def operation() -> ToolResult:
+            result = query_service.aggregate_resources(
+                group_by=group_by,
+                observed_from=_datetime_argument(
+                    observed_from,
+                    "observed_from",
+                ),
+                observed_to=_datetime_argument(
+                    observed_to,
+                    "observed_to",
+                ),
+                provider=provider,
+                resource_type=resource_type,
+                mime_type=mime_type,
+                mime_category=mime_category,
+                path_prefix=path_prefix,
+            )
+            return {
+                "ok": True,
+                **serialize_resource_aggregation(result),
             }
 
         return _query_call(operation)

@@ -26,6 +26,7 @@ import pdi.repository.orm.blob
 
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_SQL = ROOT / "src/pdi/database/schema.sql"
+QUERY_V0_2_REVISION = "1c7b2f9e4a6d"
 
 
 def _alembic_config(connection) -> Config:
@@ -174,6 +175,60 @@ def test_empty_database_upgrade_and_schema(
                 "SELECT version_num "
                 "FROM alembic_version"
             )
+        ).scalar_one() == QUERY_V0_2_REVISION
+
+
+def test_query_v0_2_indexes_upgrade_reflection_and_downgrade(
+    migration_engine: Engine,
+) -> None:
+    _run_alembic(
+        migration_engine,
+        command.upgrade,
+        "head",
+    )
+
+    with migration_engine.connect() as connection:
+        inspector = inspect(connection)
+        asset_indexes = {
+            index["name"]: index
+            for index in inspector.get_indexes("assets")
+        }
+        source_indexes = {
+            index["name"]: index
+            for index in inspector.get_indexes("asset_sources")
+        }
+        asset_index = asset_indexes["ix_assets_created_at_id"]
+        source_index = source_indexes[
+            "ix_asset_sources_active_blob_id"
+        ]
+
+        assert asset_index["column_names"] == ["created_at", "id"]
+        assert asset_index["unique"] is False
+        assert "desc" in asset_index["column_sorting"]["created_at"]
+        assert source_index["column_names"] == ["blob_id"]
+        assert source_index["unique"] is False
+        assert source_index["dialect_options"][
+            "postgresql_where"
+        ] is not None
+
+    _run_alembic(
+        migration_engine,
+        command.downgrade,
+        BASELINE_REVISION,
+    )
+
+    with migration_engine.connect() as connection:
+        inspector = inspect(connection)
+        assert "ix_assets_created_at_id" not in {
+            index["name"]
+            for index in inspector.get_indexes("assets")
+        }
+        assert "ix_asset_sources_active_blob_id" not in {
+            index["name"]
+            for index in inspector.get_indexes("asset_sources")
+        }
+        assert connection.execute(
+            text("SELECT version_num FROM alembic_version")
         ).scalar_one() == BASELINE_REVISION
 
 
