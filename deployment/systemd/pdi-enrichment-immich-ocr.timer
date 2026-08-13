@@ -1,0 +1,10 @@
+[Unit]
+Description=Run PDI Immich OCR observation enrichment daily
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+Unit=pdi-enrichment-immich-ocr.service
+
+[Install]
+WantedBy=timers.target

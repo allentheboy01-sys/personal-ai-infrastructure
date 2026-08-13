@@ -1,0 +1,15 @@
+[Unit]
+Description=PDI Immich OCR observation enrichment
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=harry
+WorkingDirectory=/srv/projects/PDI
+EnvironmentFile=/etc/pdi/pdi.env
+ExecStart=/usr/bin/flock --exclusive --wait 3600 /run/lock/pdi-sync.lock /srv/projects/PDI/.venv/bin/python -m pdi.enrichment --extractor immich-ocr --batch-size 20000
+TimeoutStartSec=2h
+UMask=0077
+StandardOutput=journal
+StandardError=journal
