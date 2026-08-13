@@ -22,11 +22,13 @@ from tests.integration.database_guard import (
 import pdi.repository.orm.asset
 import pdi.repository.orm.asset_source
 import pdi.repository.orm.blob
+import pdi.repository.orm.observation
 
 
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_SQL = ROOT / "src/pdi/database/schema.sql"
 QUERY_V0_2_REVISION = "1c7b2f9e4a6d"
+OBSERVATION_V0_1_REVISION = "8f3a1d2c4b5e"
 
 
 def _alembic_config(connection) -> Config:
@@ -49,6 +51,8 @@ def _run_alembic(
 
 def _drop_test_schema(engine: Engine) -> None:
     with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS resource_enrichments"))
+        connection.execute(text("DROP TABLE IF EXISTS resource_statements"))
         connection.execute(
             text("DROP TABLE IF EXISTS asset_sources")
         )
@@ -131,6 +135,8 @@ def test_metadata_registration() -> None:
         "assets",
         "blobs",
         "asset_sources",
+        "resource_statements",
+        "resource_enrichments",
     }
 
 
@@ -175,7 +181,7 @@ def test_empty_database_upgrade_and_schema(
                 "SELECT version_num "
                 "FROM alembic_version"
             )
-        ).scalar_one() == QUERY_V0_2_REVISION
+        ).scalar_one() == OBSERVATION_V0_1_REVISION
 
 
 def test_query_v0_2_indexes_upgrade_reflection_and_downgrade(
@@ -230,6 +236,99 @@ def test_query_v0_2_indexes_upgrade_reflection_and_downgrade(
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one() == BASELINE_REVISION
+
+
+def test_observation_schema_constraints_indexes_and_downgrade(
+    migration_engine: Engine,
+) -> None:
+    _run_alembic(migration_engine, command.upgrade, "head")
+
+    with migration_engine.connect() as connection:
+        inspector = inspect(connection)
+        assert {
+            "resource_statements",
+            "resource_enrichments",
+        }.issubset(inspector.get_table_names())
+        statement_checks = {
+            check["name"]
+            for check in inspector.get_check_constraints(
+                "resource_statements"
+            )
+        }
+        assert statement_checks == {
+            "ck_resource_statements_confidence",
+            "ck_resource_statements_exactly_one_value",
+            "ck_resource_statements_generator_name_nonempty",
+            "ck_resource_statements_generator_type_nonempty",
+            "ck_resource_statements_generator_version_nonempty",
+            "ck_resource_statements_predicate_nonempty",
+            "ck_resource_statements_source_kind",
+            "ck_resource_statements_source_kind_nonempty",
+            "ck_resource_statements_source_locator_nonempty",
+            "ck_resource_statements_value_discriminator",
+            "ck_resource_statements_value_type",
+        }
+        enrichment_checks = {
+            check["name"]
+            for check in inspector.get_check_constraints(
+                "resource_enrichments"
+            )
+        }
+        assert enrichment_checks == {
+            "ck_resource_enrichments_fingerprint_nonempty",
+            "ck_resource_enrichments_name_nonempty",
+            "ck_resource_enrichments_status",
+            "ck_resource_enrichments_type_nonempty",
+            "ck_resource_enrichments_version_nonempty",
+        }
+        statement_fks = {
+            foreign_key["name"]: foreign_key["options"].get(
+                "ondelete"
+            )
+            for foreign_key in inspector.get_foreign_keys(
+                "resource_statements"
+            )
+        }
+        assert statement_fks == {
+            "fk_resource_statements_resource_value_asset": "RESTRICT",
+            "fk_resource_statements_subject_asset": "RESTRICT",
+        }
+        assert {
+            foreign_key["name"]: foreign_key["options"].get(
+                "ondelete"
+            )
+            for foreign_key in inspector.get_foreign_keys(
+                "resource_enrichments"
+            )
+        } == {"fk_resource_enrichments_subject_asset": "RESTRICT"}
+        indexes = {
+            index["name"]: index
+            for index in inspector.get_indexes("resource_statements")
+        }
+        assert {
+            "ix_resource_statements_current_subject_predicate",
+            "ix_resource_statements_current_generator",
+            "ix_resource_statements_subject_history",
+        }.issubset(indexes)
+        assert indexes[
+            "ix_resource_statements_current_subject_predicate"
+        ]["dialect_options"]["postgresql_where"] is not None
+        assert indexes[
+            "ix_resource_statements_current_generator"
+        ]["dialect_options"]["postgresql_where"] is not None
+
+    _run_alembic(
+        migration_engine,
+        command.downgrade,
+        QUERY_V0_2_REVISION,
+    )
+    with migration_engine.connect() as connection:
+        tables = set(inspect(connection).get_table_names())
+        assert "resource_statements" not in tables
+        assert "resource_enrichments" not in tables
+        assert connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one() == QUERY_V0_2_REVISION
 
 
 def test_upgrade_downgrade_upgrade(

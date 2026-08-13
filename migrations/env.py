@@ -9,6 +9,7 @@ from pdi.repository.orm.base import Base
 import pdi.repository.orm.asset
 import pdi.repository.orm.asset_source
 import pdi.repository.orm.blob
+import pdi.repository.orm.observation
 
 
 config = context.config
@@ -25,6 +26,8 @@ _EXPECTED_TABLES = {
     "assets",
     "blobs",
     "asset_sources",
+    "resource_statements",
+    "resource_enrichments",
 }
 
 if set(target_metadata.tables) != _EXPECTED_TABLES:

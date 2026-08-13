@@ -4,18 +4,20 @@ from datetime import datetime
 from mcp.server import MCPServer
 
 from pdi.query import InvalidQueryError, QueryError, QueryService
+from pdi.observation import ObservationError, ObservationService
 
 from .serialization import (
     serialize_resource_aggregation,
     serialize_resource_detail,
     serialize_resource_summary,
+    serialize_statement,
 )
 
 
 ToolResult = dict[str, object]
 
 
-def _error_result(error: QueryError) -> ToolResult:
+def _error_result(error: QueryError | ObservationError) -> ToolResult:
     return {
         "ok": False,
         "error": {
@@ -28,7 +30,7 @@ def _error_result(error: QueryError) -> ToolResult:
 def _query_call(operation: Callable[[], ToolResult]) -> ToolResult:
     try:
         return operation()
-    except QueryError as error:
+    except (QueryError, ObservationError) as error:
         return _error_result(error)
 
 
@@ -50,7 +52,10 @@ def _datetime_argument(
         ) from error
 
 
-def create_server(query_service: QueryService) -> MCPServer:
+def create_server(
+    query_service: QueryService,
+    observation_service: ObservationService | None = None,
+) -> MCPServer:
     server = MCPServer(
         name="pdi-personal-retrieval",
         instructions=(
@@ -206,6 +211,38 @@ def create_server(query_service: QueryService) -> MCPServer:
             return {
                 "ok": True,
                 "resource": serialize_resource_detail(resource),
+            }
+
+        return _query_call(operation)
+
+    @server.tool(structured_output=True)
+    def pdi_get_resource_observations(
+        resource_ref: str,
+        predicate: str | None = None,
+    ) -> ToolResult:
+        """Get current typed observations for one PDI Resource.
+
+        Observations are provenance-bearing claims made by a named generator;
+        they are not a single universal truth or PDI first-observed time.
+        """
+
+        def operation() -> ToolResult:
+            if observation_service is None:
+                raise ObservationError(
+                    "Observation service is unavailable"
+                )
+            statements = observation_service.get_resource_statements(
+                resource_ref,
+                predicate=predicate,
+                include_history=False,
+                limit=100,
+            )
+            return {
+                "ok": True,
+                "observations": [
+                    serialize_statement(statement)
+                    for statement in statements
+                ],
             }
 
         return _query_call(operation)

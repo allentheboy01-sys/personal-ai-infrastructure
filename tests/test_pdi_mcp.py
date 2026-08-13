@@ -20,6 +20,14 @@ from pdi.query import (
     parse_resource_ref,
 )
 from pdi_mcp import create_server
+from pdi.observation import (
+    Evidence,
+    EvidenceSourceKind,
+    GeneratorIdentity,
+    ObservationService,
+    StatementValueType,
+    StatementView,
+)
 
 
 class RecordingRepository:
@@ -105,6 +113,46 @@ class RecordingRepository:
         if asset_id == self.asset_id:
             return self.detail
         return None
+
+
+class RecordingObservationRepository:
+    def __init__(self, resource_ref: str) -> None:
+        self.resource_ref = resource_ref
+        self.predicate = None
+
+    def get_resource_statements(
+        self,
+        resource_ref,
+        *,
+        predicate,
+        include_history,
+        limit,
+    ):
+        self.predicate = predicate
+        assert include_history is False
+        assert limit == 100
+        if resource_ref != self.resource_ref:
+            return None
+        return (
+            StatementView(
+                subject_resource_ref=resource_ref,
+                predicate="media.captured_at",
+                value_type=StatementValueType.DATETIME,
+                value=datetime(2020, 1, 1, tzinfo=UTC),
+                generator=GeneratorIdentity(
+                    "deterministic_extractor",
+                    "immich_metadata",
+                    "1",
+                ),
+                evidence=Evidence(
+                    EvidenceSourceKind.PROVIDER_METADATA,
+                    "asset_source.metadata.exif.dateTimeOriginal",
+                ),
+                confidence=None,
+                created_at=datetime(2026, 8, 13, tzinfo=UTC),
+                is_current=True,
+            ),
+        )
 
 
 def test_mcp_tools_convert_arguments_and_serialize_dtos() -> None:
@@ -297,6 +345,7 @@ def test_mcp_aggregation_is_the_only_new_tool_and_serializes_semantics() -> None
             "pdi_search_resources",
             "pdi_get_resource",
             "pdi_aggregate_resources",
+            "pdi_get_resource_observations",
         }
         payload = grouped.structured_content
         assert payload is not None
@@ -324,3 +373,64 @@ def test_mcp_aggregation_is_the_only_new_tool_and_serializes_semantics() -> None
         )
 
     asyncio.run(exercise())
+
+
+def test_observation_tool_is_the_only_v0_1_addition_and_does_not_leak_ids() -> None:
+    query_repository = RecordingRepository()
+    observation_repository = RecordingObservationRepository(
+        query_repository.resource_ref
+    )
+    server = create_server(
+        QueryService(query_repository),
+        ObservationService(observation_repository),
+    )
+
+    async def exercise() -> None:
+        async with Client(server) as client:
+            tools = (await client.list_tools()).tools
+            result = await client.call_tool(
+                "pdi_get_resource_observations",
+                {
+                    "resource_ref": query_repository.resource_ref,
+                    "predicate": "media.captured_at",
+                },
+            )
+            invalid = await client.call_tool(
+                "pdi_get_resource_observations",
+                {
+                    "resource_ref": query_repository.resource_ref,
+                    "predicate": "unknown.predicate",
+                },
+            )
+
+        assert len(tools) == 5
+        assert result.structured_content == {
+            "ok": True,
+            "observations": [{
+                "subject_resource_ref": query_repository.resource_ref,
+                "predicate": "media.captured_at",
+                "value_type": "datetime",
+                "value": "2020-01-01T00:00:00+00:00",
+                "generator_type": "deterministic_extractor",
+                "generator_name": "immich_metadata",
+                "generator_version": "1",
+                "source_kind": "provider_metadata",
+                "source_locator": (
+                    "asset_source.metadata.exif.dateTimeOriginal"
+                ),
+                "confidence": None,
+                "created_at": "2026-08-13T00:00:00+00:00",
+            }],
+        }
+        assert invalid.structured_content["error"]["code"] == (
+            "invalid_observation"
+        )
+        observation = result.structured_content["observations"][0]
+        for internal in (
+            "asset_id", "statement_id", "blob_id", "source_id",
+            "external_id", "metadata", "raw",
+        ):
+            assert internal not in observation
+
+    asyncio.run(exercise())
+    assert observation_repository.predicate == "media.captured_at"

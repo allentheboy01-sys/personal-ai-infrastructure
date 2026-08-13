@@ -6,6 +6,7 @@ from pdi.query import (
     ResourceSourceSummary,
     ResourceSummary,
 )
+from pdi.observation import StatementValueType, StatementView
 
 
 def _serialize_filters(filters: ResourceFilters) -> dict[str, object]:
@@ -105,4 +106,23 @@ def serialize_resource_aggregation(
             for bucket in result.buckets
         ],
         "buckets_truncated": result.buckets_truncated,
+    }
+
+
+def serialize_statement(statement: StatementView) -> dict[str, object]:
+    value: object = statement.value
+    if statement.value_type is StatementValueType.DATETIME:
+        value = statement.value.isoformat()
+    return {
+        "subject_resource_ref": statement.subject_resource_ref,
+        "predicate": statement.predicate,
+        "value_type": statement.value_type.value,
+        "value": value,
+        "generator_type": statement.generator.generator_type,
+        "generator_name": statement.generator.generator_name,
+        "generator_version": statement.generator.generator_version,
+        "source_kind": statement.evidence.source_kind.value,
+        "source_locator": statement.evidence.source_locator,
+        "confidence": statement.confidence,
+        "created_at": statement.created_at.isoformat(),
     }
