@@ -4,6 +4,7 @@ from .settings import (
     LoggingSettings,
     NextcloudSettings,
     Settings,
+    load_immich_settings,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "LoggingSettings",
     "NextcloudSettings",
     "Settings",
+    "load_immich_settings",
 ]

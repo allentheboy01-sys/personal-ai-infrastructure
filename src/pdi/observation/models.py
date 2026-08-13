@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 import math
@@ -246,10 +246,13 @@ class EnrichmentSource:
     source_id: str
     provider: str
     metadata: FrozenMetadata
+    provider_locator: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         _non_empty(self.source_id, "source_id")
         _non_empty(self.provider, "provider")
+        if self.provider_locator is not None:
+            _non_empty(self.provider_locator, "provider_locator")
         object.__setattr__(self, "metadata", _freeze(dict(self.metadata)))
 
 

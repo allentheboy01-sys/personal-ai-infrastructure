@@ -58,6 +58,19 @@ class _DatabaseOnlySettings(BaseSettings):
     )
 
 
+class _ImmichOnlySettings(BaseSettings):
+    """Immich enrichment commands' minimum Provider configuration."""
+
+    immich: ImmichSettings
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_nested_delimiter="__",
+        extra="ignore",
+    )
+
+
 def load_database_url() -> str:
     """读取数据库 URL，不要求 Provider 配置。"""
 
@@ -66,4 +79,16 @@ def load_database_url() -> str:
     except ValidationError:
         raise RuntimeError(
             "DATABASE__URL is required for database operations"
+        ) from None
+
+
+def load_immich_settings() -> ImmichSettings:
+    """Read only the Immich settings required by enrichment."""
+
+    try:
+        return _ImmichOnlySettings().immich
+    except ValidationError:
+        raise RuntimeError(
+            "IMMICH__URL and IMMICH__API_KEY are required for "
+            "Immich OCR enrichment"
         ) from None

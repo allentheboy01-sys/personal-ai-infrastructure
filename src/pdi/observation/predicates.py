@@ -12,6 +12,7 @@ MEDIA_LATITUDE = "media.latitude"
 MEDIA_LONGITUDE = "media.longitude"
 MEDIA_CAMERA_MAKE = "media.camera_make"
 MEDIA_CAMERA_MODEL = "media.camera_model"
+MEDIA_OCR_TEXT = "media.ocr_text"
 
 
 PREDICATES = MappingProxyType(
@@ -38,6 +39,11 @@ PREDICATES = MappingProxyType(
         ),
         MEDIA_CAMERA_MODEL: PredicateDefinition(
             name=MEDIA_CAMERA_MODEL,
+            value_type=StatementValueType.STRING,
+            cardinality=PredicateCardinality.SINGLE,
+        ),
+        MEDIA_OCR_TEXT: PredicateDefinition(
+            name=MEDIA_OCR_TEXT,
             value_type=StatementValueType.STRING,
             cardinality=PredicateCardinality.SINGLE,
         ),

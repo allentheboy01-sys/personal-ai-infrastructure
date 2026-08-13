@@ -231,15 +231,34 @@ class PostgreSQLObservationRepository:
     def list_enrichment_resources(self, *, provider: str) -> tuple[EnrichmentResource, ...]:
         with self._session_factory() as session:
             rows = session.execute(
-                select(AssetORM.id, AssetSourceORM.id, AssetSourceORM.provider, AssetSourceORM.metadata_)
+                select(
+                    AssetORM.id,
+                    AssetSourceORM.id,
+                    AssetSourceORM.provider,
+                    AssetSourceORM.metadata_,
+                    AssetSourceORM.external_id,
+                )
                 .join(BlobORM, BlobORM.asset_id == AssetORM.id)
                 .join(AssetSourceORM, AssetSourceORM.blob_id == BlobORM.id)
                 .where(AssetSourceORM.provider == provider, AssetSourceORM.is_active.is_(True))
                 .order_by(AssetORM.id, AssetSourceORM.id)
             ).all()
             grouped: dict[UUID, list[EnrichmentSource]] = {}
-            for asset_id, source_id, source_provider, metadata in rows:
-                grouped.setdefault(asset_id, []).append(EnrichmentSource(str(source_id), source_provider, dict(metadata)))
+            for (
+                asset_id,
+                source_id,
+                source_provider,
+                metadata,
+                provider_locator,
+            ) in rows:
+                grouped.setdefault(asset_id, []).append(
+                    EnrichmentSource(
+                        str(source_id),
+                        source_provider,
+                        dict(metadata),
+                        provider_locator,
+                    )
+                )
             return tuple(EnrichmentResource(format_resource_ref(asset_id), tuple(sources)) for asset_id, sources in grouped.items())
 
     def get_resource_statements(self, resource_ref: str, *, predicate: str | None, include_history: bool, limit: int) -> tuple[StatementView, ...] | None:

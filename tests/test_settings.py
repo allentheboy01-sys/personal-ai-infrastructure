@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from pdi.config import Settings
+from pdi.config import Settings, load_immich_settings
 
 
 def _set_required_environment(monkeypatch) -> None:
@@ -66,3 +66,31 @@ def test_settings_rejects_partial_immich_configuration(
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_load_immich_settings_does_not_require_other_configuration(
+    monkeypatch,
+) -> None:
+    for name in (
+        "DATABASE__URL",
+        "NEXTCLOUD__URL",
+        "NEXTCLOUD__USER",
+        "NEXTCLOUD__PASSWORD",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("IMMICH__URL", "https://immich.example")
+    monkeypatch.setenv("IMMICH__API_KEY", "immich-api-key")
+
+    settings = load_immich_settings()
+
+    assert settings.url == "https://immich.example"
+    assert settings.api_key == "immich-api-key"
+
+
+def test_load_immich_settings_fails_clearly_when_missing(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("IMMICH__URL", raising=False)
+    monkeypatch.delenv("IMMICH__API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="IMMICH__URL.*IMMICH__API_KEY"):
+        load_immich_settings()

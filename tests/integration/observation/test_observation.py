@@ -140,6 +140,114 @@ def test_publish_idempotency_history_zero_and_generator_isolation(context) -> No
     assert current_count == 2
 
 
+def test_ocr_statement_lifecycle_and_internal_locator_discovery(context) -> None:
+    engine, repository, ids = context
+    asset_id = ids[1]
+    resource_ref = format_resource_ref(asset_id)
+    generator = GeneratorIdentity(
+        "provider_native_ml",
+        "immich_ocr",
+        "1",
+    )
+
+    discovered = {
+        resource.resource_ref: resource
+        for resource in repository.list_enrichment_resources(
+            provider="immich"
+        )
+    }
+    source = discovered[resource_ref].sources[0]
+    assert source.provider_locator is not None
+    assert source.provider_locator.startswith("observation-")
+
+    initial = _batch(
+        asset_id,
+        "first OCR text",
+        generator=generator,
+        fingerprint="1" * 64,
+        predicate="media.ocr_text",
+    )
+    assert repository.publish(initial, completed_at=NOW).statement_writes == 1
+    unchanged = repository.publish(
+        initial,
+        completed_at=NOW + timedelta(seconds=1),
+    )
+    assert (unchanged.statement_writes, unchanged.deactivated_statements) == (
+        0,
+        0,
+    )
+
+    changed = _batch(
+        asset_id,
+        "second OCR text",
+        generator=generator,
+        fingerprint="2" * 64,
+        predicate="media.ocr_text",
+    )
+    result = repository.publish(
+        changed,
+        completed_at=NOW + timedelta(seconds=2),
+    )
+    assert (result.statement_writes, result.deactivated_statements) == (1, 1)
+
+    zero = _batch(
+        asset_id,
+        None,
+        generator=generator,
+        fingerprint="3" * 64,
+        predicate="media.ocr_text",
+    )
+    result = repository.publish(
+        zero,
+        completed_at=NOW + timedelta(seconds=3),
+    )
+    assert (result.statement_writes, result.deactivated_statements) == (0, 1)
+    assert repository.get_enrichment_state(
+        resource_ref,
+        generator,
+    ).status == "completed"
+
+    isolated = GeneratorIdentity(
+        "provider_native_ml",
+        "other_ocr",
+        "1",
+    )
+    repository.publish(
+        _batch(
+            asset_id,
+            "isolated",
+            generator=isolated,
+            fingerprint="4" * 64,
+            predicate="media.ocr_text",
+        ),
+        completed_at=NOW + timedelta(seconds=4),
+    )
+    with engine.connect() as connection:
+        history = connection.execute(
+            text(
+                "SELECT string_value,is_current FROM resource_statements "
+                "WHERE subject_asset_id=:id "
+                "AND generator_type='provider_native_ml' "
+                "AND generator_name='immich_ocr' "
+                "ORDER BY created_at"
+            ),
+            {"id": asset_id},
+        ).all()
+        isolated_current = connection.execute(
+            text(
+                "SELECT count(*) FROM resource_statements "
+                "WHERE subject_asset_id=:id "
+                "AND generator_name='other_ocr' AND is_current"
+            ),
+            {"id": asset_id},
+        ).scalar_one()
+    assert history == [
+        ("first OCR text", False),
+        ("second OCR text", False),
+    ]
+    assert isolated_current == 1
+
+
 def test_state_discovery_zero_result_stale_retry_and_safe_errors(context) -> None:
     engine, repository, ids = context
     resource_ref = format_resource_ref(ids[1])
@@ -160,8 +268,22 @@ def test_state_discovery_zero_result_stale_retry_and_safe_errors(context) -> Non
     assert state.status == "failed" and state.error_code == "safe_error" and len(state.error_message) == 512
 
 
-def test_worker_is_bounded_and_second_run_skips_unchanged(context) -> None:
-    _, repository, _ = context
+def test_worker_is_bounded_and_second_run_skips_unchanged(
+    context,
+    monkeypatch,
+) -> None:
+    _, repository, ids = context
+    owned_refs = {format_resource_ref(asset_id) for asset_id in ids}
+    resources = repository.list_enrichment_resources(provider="immich")
+    monkeypatch.setattr(
+        repository,
+        "list_enrichment_resources",
+        lambda *, provider: tuple(
+            resource
+            for resource in resources
+            if resource.resource_ref in owned_refs
+        ),
+    )
     extractor = ImmichMetadataExtractor()
     worker = EnrichmentWorker(repository, extractor, clock=lambda: NOW + timedelta(days=1))
     first = worker.run_once(batch_size=1)

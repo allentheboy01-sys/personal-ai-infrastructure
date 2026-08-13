@@ -44,13 +44,16 @@ def test_mcp_observation_tool_reads_real_postgresql_without_internal_ids() -> No
     repository = PostgreSQLObservationRepository(engine)
     repository.publish(ObservationBatch(
         resource_ref,
-        GeneratorIdentity("deterministic_extractor", "mcp_test", "1"),
-        ("media.camera_make",),
+        GeneratorIdentity("provider_native_ml", "immich_ocr", "1"),
+        ("media.ocr_text",),
         "1" * 64,
         (StatementDraft(
-            "media.camera_make",
-            TypedStatementValue(StatementValueType.STRING, "Apple"),
-            Evidence(EvidenceSourceKind.PROVIDER_METADATA, "asset_source.metadata.exif.make"),
+            "media.ocr_text",
+            TypedStatementValue(StatementValueType.STRING, "a" * 8192),
+            Evidence(
+                EvidenceSourceKind.PROVIDER_METADATA,
+                "immich.api.asset_ocr",
+            ),
         ),),
     ), completed_at=now)
 
@@ -59,13 +62,22 @@ def test_mcp_observation_tool_reads_real_postgresql_without_internal_ids() -> No
             tools = (await client.list_tools()).tools
             result = await client.call_tool(
                 "pdi_get_resource_observations",
-                {"resource_ref": resource_ref},
+                {
+                    "resource_ref": resource_ref,
+                    "predicate": "media.ocr_text",
+                },
             )
         assert len(tools) == 5
-        assert result.structured_content["observations"][0]["value"] == "Apple"
+        observation = result.structured_content["observations"][0]
+        assert observation["predicate"] == "media.ocr_text"
+        assert observation["value"] == "a" * 8192
+        assert len(observation["value"].encode("utf-8")) == 8192
+        assert observation["source_locator"] == "immich.api.asset_ocr"
         payload = str(result.structured_content)
         assert str(asset_id) not in payload.replace(resource_ref, "")
-        assert "external_id" not in payload and "raw" not in payload
+        assert "external_id" not in payload
+        assert "provider_locator" not in payload
+        assert "raw" not in payload
 
     try:
         asyncio.run(exercise())

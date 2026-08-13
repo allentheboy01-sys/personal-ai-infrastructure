@@ -46,6 +46,9 @@ def _draft(
 def test_predicate_registry_is_frozen_and_unknown_rejected() -> None:
     assert isinstance(PREDICATES, MappingProxyType)
     assert get_predicate("media.captured_at").value_type == "datetime"
+    ocr = get_predicate("media.ocr_text")
+    assert ocr.value_type == "string"
+    assert ocr.cardinality == "single"
     with pytest.raises(ObservationValidationError):
         get_predicate("media.future_guess")
     with pytest.raises(TypeError):
@@ -127,9 +130,12 @@ def test_dtos_and_nested_metadata_are_runtime_immutable() -> None:
         source_id=str(uuid4()),
         provider="immich",
         metadata={"exif": {"nested": [1, {"value": 2}]}},
+        provider_locator="provider-asset-id",
     )
     assert source.metadata["exif"]["nested"] == (1, {"value": 2})
     with pytest.raises(TypeError):
         source.metadata["exif"]["nested"][1]["value"] = 3
     with pytest.raises(FrozenInstanceError):
         source.provider = "nextcloud"
+    assert source.provider_locator == "provider-asset-id"
+    assert "provider-asset-id" not in repr(source)

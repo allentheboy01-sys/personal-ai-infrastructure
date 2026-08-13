@@ -1,11 +1,13 @@
 import argparse
 from collections.abc import Sequence
 
-from pdi.config.settings import load_database_url
+from pdi.config.settings import load_database_url, load_immich_settings
 from pdi.database import create_postgres_engine
 from pdi.observation import (
     EnrichmentWorker,
     ImmichMetadataExtractor,
+    ImmichOCRExtractor,
+    ImmichOCRReader,
     PostgreSQLObservationRepository,
 )
 
@@ -13,6 +15,15 @@ from pdi.observation import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run one bounded PDI enrichment batch."
+    )
+    parser.add_argument(
+        "--extractor",
+        choices=("immich-metadata", "immich-ocr"),
+        default="immich-metadata",
+        help=(
+            "Extractor to run; defaults to immich-metadata so existing "
+            "scheduled metadata enrichment is unchanged."
+        ),
     )
     parser.add_argument(
         "--batch-size",
@@ -29,9 +40,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("--batch-size must be positive")
     engine = create_postgres_engine(load_database_url())
     try:
+        extractor = ImmichMetadataExtractor()
+        if args.extractor == "immich-ocr":
+            extractor = ImmichOCRExtractor(
+                ImmichOCRReader(load_immich_settings())
+            )
         worker = EnrichmentWorker(
             PostgreSQLObservationRepository(engine),
-            ImmichMetadataExtractor(),
+            extractor,
         )
         result = worker.run_once(batch_size=args.batch_size)
         print(
