@@ -1,0 +1,10 @@
+[Unit]
+Description=Run PDI Immich metadata observation enrichment daily
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+Persistent=true
+Unit=pdi-enrichment-immich.service
+
+[Install]
+WantedBy=timers.target
