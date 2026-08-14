@@ -32,13 +32,21 @@ from pdi.query.resources import (
     ResourceTimeRange,
     format_resource_ref,
 )
+from pdi.retrieval import (
+    RetrievalMappingError,
+    RetrievalMappingRepository,
+)
 from pdi.repository.base import Repository
 from pdi.repository.orm.asset import AssetORM
 from pdi.repository.orm.asset_source import AssetSourceORM
 from pdi.repository.orm.blob import BlobORM
 
 
-class PostgreSQLRepository(Repository, QueryRepository):
+class PostgreSQLRepository(
+    Repository,
+    QueryRepository,
+    RetrievalMappingRepository,
+):
     def __init__(
         self,
         engine: Engine,
@@ -597,6 +605,66 @@ class PostgreSQLRepository(Repository, QueryRepository):
             )
             for asset in asset_orms
         )
+
+    def map_active_resources(
+        self,
+        *,
+        provider: str,
+        provider_locators: tuple[str, ...],
+    ) -> dict[str, tuple[ResourceSummary, ...]]:
+        unique_locators = tuple(dict.fromkeys(provider_locators))
+        if not unique_locators:
+            return {}
+
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(AssetSourceORM, BlobORM, AssetORM)
+                .select_from(AssetSourceORM)
+                .outerjoin(
+                    BlobORM,
+                    AssetSourceORM.blob_id == BlobORM.id,
+                )
+                .outerjoin(
+                    AssetORM,
+                    BlobORM.asset_id == AssetORM.id,
+                )
+                .where(
+                    AssetSourceORM.provider == provider,
+                    AssetSourceORM.external_id.in_(unique_locators),
+                    AssetSourceORM.is_active.is_(True),
+                )
+            ).all()
+
+            assets_by_id: dict[UUID, AssetORM] = {}
+            asset_ids_by_locator: dict[str, list[UUID]] = {}
+            for source_orm, blob_orm, asset_orm in rows:
+                if blob_orm is None or asset_orm is None:
+                    raise RetrievalMappingError(
+                        "Active Provider source has a broken PDI mapping"
+                    )
+                assets_by_id[asset_orm.id] = asset_orm
+                asset_ids_by_locator.setdefault(
+                    source_orm.external_id,
+                    [],
+                ).append(asset_orm.id)
+
+            summaries = self._load_resource_summaries(
+                session,
+                list(assets_by_id.values()),
+            )
+            summaries_by_asset_id = {
+                UUID(summary.resource_ref.removeprefix("pdi:resource:")):
+                summary
+                for summary in summaries
+            }
+
+            return {
+                locator: tuple(
+                    summaries_by_asset_id[asset_id]
+                    for asset_id in asset_ids
+                )
+                for locator, asset_ids in asset_ids_by_locator.items()
+            }
 
     @staticmethod
     def _asset_time_filters(

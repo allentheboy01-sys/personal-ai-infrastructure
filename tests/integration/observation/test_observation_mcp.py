@@ -67,7 +67,7 @@ def test_mcp_observation_tool_reads_real_postgresql_without_internal_ids() -> No
                     "predicate": "media.ocr_text",
                 },
             )
-        assert len(tools) == 5
+        assert len(tools) == 6
         observation = result.structured_content["observations"][0]
         assert observation["predicate"] == "media.ocr_text"
         assert observation["value"] == "a" * 8192

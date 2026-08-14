@@ -28,6 +28,10 @@ from pdi.observation import (
     StatementValueType,
     StatementView,
 )
+from pdi.retrieval import (
+    ResourceRetrievalHit,
+    ResourceRetrievalResult,
+)
 
 
 class RecordingRepository:
@@ -315,6 +319,27 @@ def test_recent_tool_description_protects_time_semantics() -> None:
     asyncio.run(inspect_tools())
 
 
+def test_search_and_retrieval_descriptions_define_distinct_intent() -> None:
+    server = create_server(QueryService(RecordingRepository()))
+
+    async def inspect_tools() -> None:
+        async with Client(server) as client:
+            tools = (await client.list_tools()).tools
+
+        descriptions = {
+            tool.name: tool.description or ""
+            for tool in tools
+        }
+        search = descriptions["pdi_search_resources"]
+        retrieval = descriptions["pdi_retrieve_resources"]
+        assert "filename, title, source path, metadata" in search
+        assert "automatic fallback" in search
+        assert "resource content or visual concepts" in retrieval
+        assert "do not automatically follow it" in retrieval
+
+    asyncio.run(inspect_tools())
+
+
 def test_mcp_aggregation_is_the_only_new_tool_and_serializes_semantics() -> None:
     repository = RecordingRepository()
     server = create_server(QueryService(repository))
@@ -346,6 +371,7 @@ def test_mcp_aggregation_is_the_only_new_tool_and_serializes_semantics() -> None
             "pdi_get_resource",
             "pdi_aggregate_resources",
             "pdi_get_resource_observations",
+            "pdi_retrieve_resources",
         }
         payload = grouped.structured_content
         assert payload is not None
@@ -403,7 +429,7 @@ def test_observation_tool_is_the_only_v0_1_addition_and_does_not_leak_ids() -> N
                 },
             )
 
-        assert len(tools) == 5
+        assert len(tools) == 6
         assert result.structured_content == {
             "ok": True,
             "observations": [{
@@ -434,3 +460,129 @@ def test_observation_tool_is_the_only_v0_1_addition_and_does_not_leak_ids() -> N
 
     asyncio.run(exercise())
     assert observation_repository.predicate == "media.captured_at"
+
+
+def test_retrieval_tool_serializes_public_resources_without_leakage() -> None:
+    query_repository = RecordingRepository()
+
+    class RecordingRetrievalService:
+        def __init__(self) -> None:
+            self.call = None
+
+        def retrieve_resources(self, *, query, provider, limit):
+            self.call = (query, provider, limit)
+            return ResourceRetrievalResult(
+                hits=(ResourceRetrievalHit(
+                    resource=query_repository.summary,
+                    rank=2,
+                    provider="immich",
+                    retrieval_kind="semantic",
+                ),),
+                provider="immich",
+                retrieval_kind="semantic",
+                unmapped_hit_count=1,
+            )
+
+    retrieval_service = RecordingRetrievalService()
+    server = create_server(
+        QueryService(query_repository),
+        retrieval_service=retrieval_service,
+    )
+
+    async def exercise() -> None:
+        async with Client(server) as client:
+            tools = (await client.list_tools()).tools
+            result = await client.call_tool(
+                "pdi_retrieve_resources",
+                {
+                    "query": "seaside",
+                    "provider": "immich",
+                    "limit": 4,
+                },
+            )
+
+        assert len(tools) == 6
+        assert result.structured_content == {
+            "ok": True,
+            "provider": "immich",
+            "retrieval_kind": "semantic",
+            "hits": [{
+                "rank": 2,
+                "provider": "immich",
+                "retrieval_kind": "semantic",
+                "resource": {
+                    "resource_ref": query_repository.resource_ref,
+                    "resource_type": "file",
+                    "display_name": "CURRENT_CONTEXT.md",
+                    "pdi_first_observed_at": (
+                        "2026-07-31T12:00:00+00:00"
+                    ),
+                    "sources": [{
+                        "provider": "immich",
+                        "location": "/library/CURRENT_CONTEXT.md",
+                        "name": "CURRENT_CONTEXT.md",
+                        "mime_type": "text/markdown",
+                        "size_bytes": 4096,
+                        "is_active": True,
+                    }],
+                },
+            }],
+            "unmapped_hit_count": 1,
+        }
+        encoded = json.dumps(result.structured_content)
+        for private_name in (
+            "provider_locator",
+            "external_id",
+            "asset_id",
+            "blob_id",
+            "source_id",
+            "embedding",
+            "provider_score",
+            "metadata",
+            "raw",
+        ):
+            assert private_name not in encoded
+
+    asyncio.run(exercise())
+    assert retrieval_service.call == ("seaside", "immich", 4)
+
+
+def test_retrieval_tool_reports_unavailable_configuration() -> None:
+    server = create_server(QueryService(RecordingRepository()))
+
+    async def exercise() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "pdi_retrieve_resources",
+                {"query": "photo", "provider": "immich"},
+            )
+        assert result.structured_content["error"]["code"] == (
+            "provider_capability_unavailable"
+        )
+
+    asyncio.run(exercise())
+
+
+def test_unsupported_retrieval_provider_is_rejected_by_mcp_schema() -> None:
+    query_repository = RecordingRepository()
+
+    class RetrievalServiceMustNotRun:
+        def retrieve_resources(self, **kwargs):
+            raise AssertionError("MCP schema should reject the provider")
+
+    server = create_server(
+        QueryService(query_repository),
+        retrieval_service=RetrievalServiceMustNotRun(),
+    )
+
+    async def exercise() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "pdi_retrieve_resources",
+                {"query": "photo", "provider": "nextcloud"},
+            )
+
+        assert result.is_error is True
+        assert result.structured_content is None
+
+    asyncio.run(exercise())

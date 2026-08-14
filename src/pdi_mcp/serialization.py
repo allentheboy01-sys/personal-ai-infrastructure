@@ -7,6 +7,7 @@ from pdi.query import (
     ResourceSummary,
 )
 from pdi.observation import StatementValueType, StatementView
+from pdi.retrieval import ResourceRetrievalResult
 
 
 def _serialize_filters(filters: ResourceFilters) -> dict[str, object]:
@@ -44,6 +45,25 @@ def serialize_resource_summary(
             serialize_source(source)
             for source in resource.sources
         ],
+    }
+
+
+def serialize_retrieval_result(
+    result: ResourceRetrievalResult,
+) -> dict[str, object]:
+    return {
+        "provider": result.provider,
+        "retrieval_kind": result.retrieval_kind,
+        "hits": [
+            {
+                "rank": hit.rank,
+                "provider": hit.provider,
+                "retrieval_kind": hit.retrieval_kind,
+                "resource": serialize_resource_summary(hit.resource),
+            }
+            for hit in result.hits
+        ],
+        "unmapped_hit_count": result.unmapped_hit_count,
     }
 
 

@@ -42,5 +42,6 @@ mcp_servers:
         - pdi_get_resource
         - pdi_aggregate_resources
         - pdi_get_resource_observations
+        - pdi_retrieve_resources
       resources: false
       prompts: false

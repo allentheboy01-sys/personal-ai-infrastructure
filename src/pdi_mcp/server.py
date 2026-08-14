@@ -1,14 +1,21 @@
 from collections.abc import Callable
 from datetime import datetime
+from typing import Literal
 
 from mcp.server import MCPServer
 
 from pdi.query import InvalidQueryError, QueryError, QueryService
 from pdi.observation import ObservationError, ObservationService
+from pdi.retrieval import (
+    ProviderCapabilityUnavailableError,
+    RetrievalError,
+    RetrievalService,
+)
 
 from .serialization import (
     serialize_resource_aggregation,
     serialize_resource_detail,
+    serialize_retrieval_result,
     serialize_resource_summary,
     serialize_statement,
 )
@@ -17,7 +24,9 @@ from .serialization import (
 ToolResult = dict[str, object]
 
 
-def _error_result(error: QueryError | ObservationError) -> ToolResult:
+def _error_result(
+    error: QueryError | ObservationError | RetrievalError,
+) -> ToolResult:
     return {
         "ok": False,
         "error": {
@@ -30,7 +39,7 @@ def _error_result(error: QueryError | ObservationError) -> ToolResult:
 def _query_call(operation: Callable[[], ToolResult]) -> ToolResult:
     try:
         return operation()
-    except (QueryError, ObservationError) as error:
+    except (QueryError, ObservationError, RetrievalError) as error:
         return _error_result(error)
 
 
@@ -55,6 +64,7 @@ def _datetime_argument(
 def create_server(
     query_service: QueryService,
     observation_service: ObservationService | None = None,
+    retrieval_service: RetrievalService | None = None,
 ) -> MCPServer:
     server = MCPServer(
         name="pdi-personal-retrieval",
@@ -128,7 +138,12 @@ def create_server(
         cursor: str | None = None,
         mime_category: str | None = None,
     ) -> ToolResult:
-        """Search PDI resource title, source name, and source path metadata."""
+        """Deterministically search PDI metadata and structured filters.
+
+        Use for explicit filename, title, source path, metadata, or filter
+        intent. After successful semantic retrieval, do not use this as an
+        automatic fallback unless the user also requested metadata search.
+        """
 
         def operation() -> ToolResult:
             page = query_service.search_resource_page(
@@ -198,6 +213,38 @@ def create_server(
             return {
                 "ok": True,
                 **serialize_resource_aggregation(result),
+            }
+
+        return _query_call(operation)
+
+    @server.tool(structured_output=True)
+    def pdi_retrieve_resources(
+        query: str,
+        provider: Literal["immich"],
+        limit: int = 20,
+    ) -> ToolResult:
+        """Use provider-native semantic retrieval to find PDI Resources.
+
+        Use when the user describes resource content or visual concepts such
+        as objects, scenes, environments, or document-like images. Results
+        preserve provider ranking. A successful retrieval normally satisfies
+        semantic-search intent; do not automatically follow it with metadata
+        search unless the user requested both. V0.1 supports Immich only.
+        """
+
+        def operation() -> ToolResult:
+            if retrieval_service is None:
+                raise ProviderCapabilityUnavailableError(
+                    "Provider retrieval service is unavailable"
+                )
+            result = retrieval_service.retrieve_resources(
+                query=query,
+                provider=provider,
+                limit=limit,
+            )
+            return {
+                "ok": True,
+                **serialize_retrieval_result(result),
             }
 
         return _query_call(operation)

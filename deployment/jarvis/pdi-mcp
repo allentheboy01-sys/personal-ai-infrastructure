@@ -14,8 +14,10 @@ set -a
 . "$PDI_ENV"
 set +a
 
-if [ -z "${DATABASE__URL:-}" ]; then
-    echo "pdi-mcp: DATABASE__URL is not configured" >&2
+if [ -z "${DATABASE__URL:-}" ] || \
+   [ -z "${IMMICH__URL:-}" ] || \
+   [ -z "${IMMICH__API_KEY:-}" ]; then
+    echo "pdi-mcp: database or Immich configuration is missing" >&2
     exit 1
 fi
 
@@ -32,4 +34,6 @@ exec env -i \
     PATH=/usr/local/bin:/usr/bin:/bin \
     LANG="${LANG:-C.UTF-8}" \
     DATABASE__URL="$DATABASE__URL" \
+    IMMICH__URL="$IMMICH__URL" \
+    IMMICH__API_KEY="$IMMICH__API_KEY" \
     "$PDI_PYTHON" -m pdi_mcp
