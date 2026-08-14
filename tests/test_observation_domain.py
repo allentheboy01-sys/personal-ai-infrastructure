@@ -49,6 +49,9 @@ def test_predicate_registry_is_frozen_and_unknown_rejected() -> None:
     ocr = get_predicate("media.ocr_text")
     assert ocr.value_type == "string"
     assert ocr.cardinality == "single"
+    document_excerpt = get_predicate("document.text_excerpt")
+    assert document_excerpt.value_type == "string"
+    assert document_excerpt.cardinality == "single"
     with pytest.raises(ObservationValidationError):
         get_predicate("media.future_guess")
     with pytest.raises(TypeError):

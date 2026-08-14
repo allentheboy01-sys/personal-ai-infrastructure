@@ -13,6 +13,7 @@ MEDIA_LONGITUDE = "media.longitude"
 MEDIA_CAMERA_MAKE = "media.camera_make"
 MEDIA_CAMERA_MODEL = "media.camera_model"
 MEDIA_OCR_TEXT = "media.ocr_text"
+DOCUMENT_TEXT_EXCERPT = "document.text_excerpt"
 
 
 PREDICATES = MappingProxyType(
@@ -44,6 +45,11 @@ PREDICATES = MappingProxyType(
         ),
         MEDIA_OCR_TEXT: PredicateDefinition(
             name=MEDIA_OCR_TEXT,
+            value_type=StatementValueType.STRING,
+            cardinality=PredicateCardinality.SINGLE,
+        ),
+        DOCUMENT_TEXT_EXCERPT: PredicateDefinition(
+            name=DOCUMENT_TEXT_EXCERPT,
             value_type=StatementValueType.STRING,
             cardinality=PredicateCardinality.SINGLE,
         ),

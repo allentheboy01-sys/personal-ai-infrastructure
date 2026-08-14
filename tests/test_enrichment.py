@@ -15,13 +15,22 @@ class FakeEngine:
 
 class FakeWorker:
     calls: list[tuple[object, object, int]] = []
+    providers: list[str] = []
 
-    def __init__(self, repository, extractor) -> None:
+    def __init__(
+        self,
+        repository,
+        extractor,
+        *,
+        provider="immich",
+    ) -> None:
         self.repository = repository
         self.extractor = extractor
+        self.provider = provider
 
     def run_once(self, *, batch_size: int):
         self.calls.append((self.repository, self.extractor, batch_size))
+        self.providers.append(self.provider)
         return SimpleNamespace(
             discovered=1,
             processed=1,
@@ -35,6 +44,7 @@ class FakeWorker:
 @pytest.fixture
 def composition(monkeypatch):
     FakeWorker.calls.clear()
+    FakeWorker.providers.clear()
     engine = FakeEngine()
     repository = object()
     monkeypatch.setattr(enrichment, "load_database_url", lambda: "db-url")
@@ -76,6 +86,7 @@ def test_default_composition_remains_metadata_only(
 
     assert enrichment.main(["--batch-size", "7"]) == 0
     assert FakeWorker.calls == [(repository, metadata_extractor, 7)]
+    assert FakeWorker.providers == ["immich"]
     assert engine.disposed is True
 
 
@@ -115,6 +126,7 @@ def test_explicit_ocr_selector_builds_reader_and_extractor(
         ["--extractor", "immich-ocr", "--batch-size", "11"]
     ) == 0
     assert FakeWorker.calls == [(repository, extractor, 11)]
+    assert FakeWorker.providers == ["immich"]
     assert engine.disposed is True
 
 
@@ -131,6 +143,61 @@ def test_ocr_configuration_failure_still_disposes_engine(
     with pytest.raises(RuntimeError, match="settings missing"):
         enrichment.main(["--extractor", "immich-ocr"])
     assert FakeWorker.calls == []
+    assert engine.disposed is True
+
+
+def test_nextcloud_text_selector_reuses_settings_and_provider_worker(
+    monkeypatch,
+    composition,
+) -> None:
+    engine, repository = composition
+    settings = SimpleNamespace(
+        url="https://nextcloud.invalid",
+        user="user",
+        password="password",
+    )
+    adapter = object()
+    reader = object()
+    extractor = object()
+    monkeypatch.setattr(
+        enrichment,
+        "load_nextcloud_settings",
+        lambda: settings,
+    )
+    monkeypatch.setattr(
+        enrichment,
+        "NextcloudAdapter",
+        lambda url, user, password: (
+            adapter
+            if (url, user, password)
+            == (settings.url, settings.user, settings.password)
+            else pytest.fail("wrong Nextcloud settings")
+        ),
+    )
+    monkeypatch.setattr(
+        enrichment,
+        "NextcloudContentReader",
+        lambda configured_adapter: (
+            reader
+            if configured_adapter is adapter
+            else pytest.fail("wrong Nextcloud adapter")
+        ),
+    )
+    monkeypatch.setattr(
+        enrichment,
+        "NextcloudTextExtractor",
+        lambda configured_reader: (
+            extractor
+            if configured_reader is reader
+            else pytest.fail("wrong Nextcloud reader")
+        ),
+    )
+
+    assert enrichment.main(
+        ["--extractor", "nextcloud-text", "--batch-size", "13"]
+    ) == 0
+    assert FakeWorker.calls == [(repository, extractor, 13)]
+    assert FakeWorker.providers == ["nextcloud"]
     assert engine.disposed is True
 
 

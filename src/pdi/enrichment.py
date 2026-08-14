@@ -1,13 +1,20 @@
 import argparse
 from collections.abc import Sequence
 
-from pdi.config.settings import load_database_url, load_immich_settings
+from pdi.adapters.nextcloud.adapter import NextcloudAdapter
+from pdi.config.settings import (
+    load_database_url,
+    load_immich_settings,
+    load_nextcloud_settings,
+)
 from pdi.database import create_postgres_engine
 from pdi.observation import (
     EnrichmentWorker,
     ImmichMetadataExtractor,
     ImmichOCRExtractor,
     ImmichOCRReader,
+    NextcloudContentReader,
+    NextcloudTextExtractor,
     PostgreSQLObservationRepository,
 )
 
@@ -18,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--extractor",
-        choices=("immich-metadata", "immich-ocr"),
+        choices=("immich-metadata", "immich-ocr", "nextcloud-text"),
         default="immich-metadata",
         help=(
             "Extractor to run; defaults to immich-metadata so existing "
@@ -40,15 +47,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("--batch-size must be positive")
     engine = create_postgres_engine(load_database_url())
     try:
-        extractor = ImmichMetadataExtractor()
-        if args.extractor == "immich-ocr":
+        provider = "immich"
+        if args.extractor == "immich-metadata":
+            extractor = ImmichMetadataExtractor()
+        elif args.extractor == "immich-ocr":
             extractor = ImmichOCRExtractor(
                 ImmichOCRReader(load_immich_settings())
             )
-        worker = EnrichmentWorker(
-            PostgreSQLObservationRepository(engine),
-            extractor,
-        )
+        else:
+            settings = load_nextcloud_settings()
+            adapter = NextcloudAdapter(
+                settings.url,
+                settings.user,
+                settings.password,
+            )
+            extractor = NextcloudTextExtractor(
+                NextcloudContentReader(adapter)
+            )
+            provider = "nextcloud"
+        repository = PostgreSQLObservationRepository(engine)
+        if provider == "immich":
+            worker = EnrichmentWorker(repository, extractor)
+        else:
+            worker = EnrichmentWorker(
+                repository,
+                extractor,
+                provider=provider,
+            )
         result = worker.run_once(batch_size=args.batch_size)
         print(
             "Enrichment finished: "

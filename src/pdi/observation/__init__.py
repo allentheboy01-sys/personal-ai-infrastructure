@@ -25,6 +25,14 @@ from .models import (
 from .predicates import PREDICATES, get_predicate
 from .extractor import ImmichMetadataExtractor
 from .ocr import ImmichOCRExtractor, ImmichOCRReader, OCRRegion
+from .nextcloud_text import (
+    MAX_DECODED_CHARACTERS,
+    MAX_SOURCE_BYTES,
+    MAX_STORED_TEXT_BYTES,
+    TRUNCATION_MARKER,
+    NextcloudContentReader,
+    NextcloudTextExtractor,
+)
 from .postgres import PostgreSQLObservationRepository
 from .service import EnrichmentWorker, ObservationService
 
@@ -58,4 +66,10 @@ __all__ = [
     "OCRRegion",
     "ObservationService",
     "PostgreSQLObservationRepository",
+    "MAX_DECODED_CHARACTERS",
+    "MAX_SOURCE_BYTES",
+    "MAX_STORED_TEXT_BYTES",
+    "TRUNCATION_MARKER",
+    "NextcloudContentReader",
+    "NextcloudTextExtractor",
 ]

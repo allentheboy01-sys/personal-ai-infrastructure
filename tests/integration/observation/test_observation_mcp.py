@@ -12,6 +12,7 @@ from pdi.observation import (
     Evidence,
     EvidenceSourceKind,
     GeneratorIdentity,
+    MAX_STORED_TEXT_BYTES,
     ObservationBatch,
     PostgreSQLObservationRepository,
     StatementDraft,
@@ -56,6 +57,27 @@ def test_mcp_observation_tool_reads_real_postgresql_without_internal_ids() -> No
             ),
         ),),
     ), completed_at=now)
+    repository.publish(ObservationBatch(
+        resource_ref,
+        GeneratorIdentity(
+            "deterministic_extractor",
+            "nextcloud_text",
+            "1",
+        ),
+        ("document.text_excerpt",),
+        "2" * 64,
+        (StatementDraft(
+            "document.text_excerpt",
+            TypedStatementValue(
+                StatementValueType.STRING,
+                "d" * MAX_STORED_TEXT_BYTES,
+            ),
+            Evidence(
+                EvidenceSourceKind.RESOURCE_CONTENT,
+                "nextcloud.webdav.content",
+            ),
+        ),),
+    ), completed_at=now)
 
     async def exercise() -> None:
         async with Client(create_runtime_server(database_url)) as client:
@@ -65,6 +87,13 @@ def test_mcp_observation_tool_reads_real_postgresql_without_internal_ids() -> No
                 {
                     "resource_ref": resource_ref,
                     "predicate": "media.ocr_text",
+                },
+            )
+            document_result = await client.call_tool(
+                "pdi_get_resource_observations",
+                {
+                    "resource_ref": resource_ref,
+                    "predicate": "document.text_excerpt",
                 },
             )
         assert len(tools) == 6
@@ -78,6 +107,30 @@ def test_mcp_observation_tool_reads_real_postgresql_without_internal_ids() -> No
         assert "external_id" not in payload
         assert "provider_locator" not in payload
         assert "raw" not in payload
+        document = document_result.structured_content[
+            "observations"
+        ][0]
+        assert document["predicate"] == "document.text_excerpt"
+        assert len(document["value"].encode("utf-8")) == (
+            MAX_STORED_TEXT_BYTES
+        )
+        assert document["generator_type"] == "deterministic_extractor"
+        assert document["generator_name"] == "nextcloud_text"
+        assert document["generator_version"] == "1"
+        assert document["source_kind"] == "resource_content"
+        assert document["source_locator"] == (
+            "nextcloud.webdav.content"
+        )
+        document_payload = str(document_result.structured_content)
+        for internal in (
+            "href",
+            "source_id",
+            "external_id",
+            "blob_id",
+            "provider_locator",
+            "raw",
+        ):
+            assert internal not in document_payload
 
     try:
         asyncio.run(exercise())

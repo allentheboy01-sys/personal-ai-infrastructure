@@ -28,14 +28,26 @@ class ObservationService:
 class EnrichmentWorker:
     DEFAULT_STALE_AFTER = timedelta(minutes=30)
 
-    def __init__(self, repository: ObservationRepository, extractor, *, clock: Callable[[], datetime] | None = None, stale_after: timedelta = DEFAULT_STALE_AFTER) -> None:
+    def __init__(self, repository: ObservationRepository, extractor, *, provider: str = "immich", clock: Callable[[], datetime] | None = None, stale_after: timedelta = DEFAULT_STALE_AFTER) -> None:
         self._repository = repository; self._extractor = extractor
+        if not isinstance(provider, str) or not provider.strip():
+            raise ValueError("provider must be non-empty")
+        self._provider = provider
         self._clock = clock or (lambda: datetime.now(UTC)); self._stale_after = stale_after
 
     def run_once(self, *, batch_size: int) -> WorkerResult:
         if type(batch_size) is not int or batch_size < 1:
             raise ValueError("batch_size must be positive")
-        resources = self._repository.list_enrichment_resources(provider="immich")
+        resources = self._repository.list_enrichment_resources(
+            provider=self._provider
+        )
+        is_eligible = getattr(self._extractor, "is_eligible", None)
+        if callable(is_eligible):
+            resources = tuple(
+                resource
+                for resource in resources
+                if is_eligible(resource)
+            )
         processed = skipped = failed = writes = deactivated = 0
         for resource in resources[:batch_size]:
             try:

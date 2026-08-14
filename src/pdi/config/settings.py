@@ -71,6 +71,19 @@ class _ImmichOnlySettings(BaseSettings):
     )
 
 
+class _NextcloudOnlySettings(BaseSettings):
+    """Nextcloud enrichment commands' minimum Provider configuration."""
+
+    nextcloud: NextcloudSettings
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_nested_delimiter="__",
+        extra="ignore",
+    )
+
+
 def load_database_url() -> str:
     """读取数据库 URL，不要求 Provider 配置。"""
 
@@ -91,4 +104,17 @@ def load_immich_settings() -> ImmichSettings:
         raise RuntimeError(
             "IMMICH__URL and IMMICH__API_KEY are required for "
             "Immich OCR enrichment"
+        ) from None
+
+
+def load_nextcloud_settings() -> NextcloudSettings:
+    """Read only the Nextcloud settings required by enrichment."""
+
+    try:
+        return _NextcloudOnlySettings().nextcloud
+    except ValidationError:
+        raise RuntimeError(
+            "NEXTCLOUD__URL, NEXTCLOUD__USER, and "
+            "NEXTCLOUD__PASSWORD are required for Nextcloud text "
+            "enrichment"
         ) from None

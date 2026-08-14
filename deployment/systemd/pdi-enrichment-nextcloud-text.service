@@ -1,0 +1,15 @@
+[Unit]
+Description=PDI Nextcloud text observation enrichment
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=harry
+WorkingDirectory=/srv/projects/PDI
+EnvironmentFile=/etc/pdi/pdi.env
+ExecStart=/usr/bin/flock --exclusive --wait 3600 /run/lock/pdi-sync.lock /srv/projects/PDI/.venv/bin/python -m pdi.enrichment --extractor nextcloud-text --batch-size 100
+TimeoutStartSec=2h
+UMask=0077
+StandardOutput=journal
+StandardError=journal

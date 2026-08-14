@@ -247,6 +247,12 @@ class EnrichmentSource:
     provider: str
     metadata: FrozenMetadata
     provider_locator: str | None = field(default=None, repr=False)
+    blob_sha256: str | None = field(default=None, repr=False)
+    size: int | None = field(default=None, repr=False)
+    mime_type: str | None = field(default=None, repr=False)
+    path: str | None = field(default=None, repr=False)
+    name: str | None = field(default=None, repr=False)
+    version_tag: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         _non_empty(self.source_id, "source_id")

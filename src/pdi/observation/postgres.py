@@ -237,6 +237,12 @@ class PostgreSQLObservationRepository:
                     AssetSourceORM.provider,
                     AssetSourceORM.metadata_,
                     AssetSourceORM.external_id,
+                    BlobORM.hash,
+                    BlobORM.size,
+                    BlobORM.mime_type,
+                    AssetSourceORM.path,
+                    AssetSourceORM.name,
+                    AssetSourceORM.version_tag,
                 )
                 .join(BlobORM, BlobORM.asset_id == AssetORM.id)
                 .join(AssetSourceORM, AssetSourceORM.blob_id == BlobORM.id)
@@ -250,6 +256,12 @@ class PostgreSQLObservationRepository:
                 source_provider,
                 metadata,
                 provider_locator,
+                blob_sha256,
+                size,
+                mime_type,
+                path,
+                name,
+                version_tag,
             ) in rows:
                 grouped.setdefault(asset_id, []).append(
                     EnrichmentSource(
@@ -257,6 +269,12 @@ class PostgreSQLObservationRepository:
                         source_provider,
                         dict(metadata),
                         provider_locator,
+                        blob_sha256,
+                        size,
+                        mime_type,
+                        path,
+                        name,
+                        version_tag,
                     )
                 )
             return tuple(EnrichmentResource(format_resource_ref(asset_id), tuple(sources)) for asset_id, sources in grouped.items())
