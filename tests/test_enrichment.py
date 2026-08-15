@@ -16,6 +16,7 @@ class FakeEngine:
 class FakeWorker:
     calls: list[tuple[object, object, int]] = []
     providers: list[str] = []
+    failed_generators: set[str] = set()
 
     def __init__(
         self,
@@ -31,12 +32,18 @@ class FakeWorker:
     def run_once(self, *, batch_size: int):
         self.calls.append((self.repository, self.extractor, batch_size))
         self.providers.append(self.provider)
+        generator_name = getattr(
+            getattr(self.extractor, "generator", None),
+            "generator_name",
+            None,
+        )
+        failed = int(generator_name in self.failed_generators)
         return SimpleNamespace(
             discovered=1,
-            processed=1,
+            processed=1 - failed,
             skipped=0,
-            failed=0,
-            statement_writes=1,
+            failed=failed,
+            statement_writes=1 - failed,
             deactivated_statements=0,
         )
 
@@ -45,6 +52,7 @@ class FakeWorker:
 def composition(monkeypatch):
     FakeWorker.calls.clear()
     FakeWorker.providers.clear()
+    FakeWorker.failed_generators.clear()
     engine = FakeEngine()
     repository = object()
     monkeypatch.setattr(enrichment, "load_database_url", lambda: "db-url")
@@ -198,6 +206,77 @@ def test_nextcloud_text_selector_reuses_settings_and_provider_worker(
     ) == 0
     assert FakeWorker.calls == [(repository, extractor, 13)]
     assert FakeWorker.providers == ["nextcloud"]
+    assert engine.disposed is True
+
+
+def test_nextcloud_documents_runs_three_independent_generators(
+    monkeypatch,
+    composition,
+) -> None:
+    engine, repository = composition
+    settings = SimpleNamespace(
+        url="https://nextcloud.invalid",
+        user="user",
+        password="password",
+    )
+    adapter = object()
+    reader = object()
+    extractors = [
+        SimpleNamespace(
+            generator=SimpleNamespace(generator_name=name)
+        )
+        for name in ("nextcloud_pdf", "nextcloud_odt", "nextcloud_docx")
+    ]
+    monkeypatch.setattr(
+        enrichment,
+        "load_nextcloud_settings",
+        lambda: settings,
+    )
+    monkeypatch.setattr(
+        enrichment,
+        "NextcloudAdapter",
+        lambda url, user, password: (
+            adapter
+            if (url, user, password)
+            == (settings.url, settings.user, settings.password)
+            else pytest.fail("wrong Nextcloud settings")
+        ),
+    )
+    monkeypatch.setattr(
+        enrichment,
+        "NextcloudContentReader",
+        lambda configured_adapter: (
+            reader
+            if configured_adapter is adapter
+            else pytest.fail("wrong Nextcloud adapter")
+        ),
+    )
+    monkeypatch.setattr(
+        enrichment,
+        "NextcloudPDFExtractor",
+        lambda configured_reader: extractors[0],
+    )
+    monkeypatch.setattr(
+        enrichment,
+        "NextcloudODTExtractor",
+        lambda configured_reader: extractors[1],
+    )
+    monkeypatch.setattr(
+        enrichment,
+        "NextcloudDOCXExtractor",
+        lambda configured_reader: extractors[2],
+    )
+
+    FakeWorker.failed_generators.add("nextcloud_pdf")
+    assert enrichment.main(
+        ["--extractor", "nextcloud-documents", "--batch-size", "17"]
+    ) == 1
+    assert FakeWorker.calls == [
+        (repository, extractors[0], 17),
+        (repository, extractors[1], 17),
+        (repository, extractors[2], 17),
+    ]
+    assert FakeWorker.providers == ["nextcloud"] * 3
     assert engine.disposed is True
 
 

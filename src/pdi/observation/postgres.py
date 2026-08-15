@@ -10,7 +10,10 @@ from pdi.repository.orm.asset_source import AssetSourceORM
 from pdi.repository.orm.blob import BlobORM
 from pdi.repository.orm.observation import ResourceEnrichmentORM, ResourceStatementORM
 
-from .errors import ObservationResourceNotFoundError
+from .errors import (
+    ObservationLifecycleError,
+    ObservationResourceNotFoundError,
+)
 from .models import (
     EnrichmentResource,
     EnrichmentSource,
@@ -122,13 +125,55 @@ class PostgreSQLObservationRepository:
         row.error_code = None
         row.error_message = None
 
-    def publish(self, batch: ObservationBatch, *, completed_at: datetime) -> PublishResult:
+    def publish(
+        self,
+        batch: ObservationBatch,
+        *,
+        completed_at: datetime,
+        exclusive_generator_family: tuple[str, ...] = (),
+    ) -> PublishResult:
         asset_id = UUID(parse_resource_ref(batch.subject_resource_ref))
         now = completed_at.astimezone(UTC)
         with self._session_factory() as session:
             try:
                 if session.get(AssetORM, asset_id) is None:
                     raise ObservationResourceNotFoundError("Resource does not exist")
+                if exclusive_generator_family:
+                    session.execute(
+                        select(AssetORM)
+                        .where(AssetORM.id == asset_id)
+                        .with_for_update()
+                    ).scalar_one()
+                    conflicting = session.execute(
+                        select(ResourceStatementORM.id).where(
+                            ResourceStatementORM.subject_asset_id
+                            == asset_id,
+                            ResourceStatementORM.predicate.in_(
+                                batch.covered_predicates
+                            ),
+                            ResourceStatementORM.generator_type
+                            == batch.generator.generator_type,
+                            ResourceStatementORM.generator_name.in_(
+                                exclusive_generator_family
+                            ),
+                            ~(
+                                (
+                                    ResourceStatementORM.generator_name
+                                    == batch.generator.generator_name
+                                )
+                                & (
+                                    ResourceStatementORM.generator_version
+                                    == batch.generator.generator_version
+                                )
+                            ),
+                            ResourceStatementORM.is_current.is_(True),
+                        )
+                    ).first()
+                    if conflicting is not None:
+                        raise ObservationLifecycleError(
+                            "Resource already has a current excerpt from "
+                            "another Nextcloud document generator"
+                        )
                 state = session.execute(
                     select(ResourceEnrichmentORM)
                     .where(*self._identity_filters(asset_id, batch.generator))

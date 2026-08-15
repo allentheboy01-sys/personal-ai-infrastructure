@@ -14,6 +14,9 @@ from pdi.observation import (
     ImmichOCRExtractor,
     ImmichOCRReader,
     NextcloudContentReader,
+    NextcloudDOCXExtractor,
+    NextcloudODTExtractor,
+    NextcloudPDFExtractor,
     NextcloudTextExtractor,
     PostgreSQLObservationRepository,
 )
@@ -25,7 +28,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--extractor",
-        choices=("immich-metadata", "immich-ocr", "nextcloud-text"),
+        choices=(
+            "immich-metadata",
+            "immich-ocr",
+            "nextcloud-text",
+            "nextcloud-documents",
+        ),
         default="immich-metadata",
         help=(
             "Extractor to run; defaults to immich-metadata so existing "
@@ -54,7 +62,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             extractor = ImmichOCRExtractor(
                 ImmichOCRReader(load_immich_settings())
             )
-        else:
+        elif args.extractor == "nextcloud-text":
             settings = load_nextcloud_settings()
             adapter = NextcloudAdapter(
                 settings.url,
@@ -65,7 +73,42 @@ def main(argv: Sequence[str] | None = None) -> int:
                 NextcloudContentReader(adapter)
             )
             provider = "nextcloud"
+        else:
+            extractor = None
+            provider = "nextcloud"
         repository = PostgreSQLObservationRepository(engine)
+        if args.extractor == "nextcloud-documents":
+            settings = load_nextcloud_settings()
+            reader = NextcloudContentReader(
+                NextcloudAdapter(
+                    settings.url,
+                    settings.user,
+                    settings.password,
+                )
+            )
+            results = []
+            for document_extractor in (
+                NextcloudPDFExtractor(reader),
+                NextcloudODTExtractor(reader),
+                NextcloudDOCXExtractor(reader),
+            ):
+                result = EnrichmentWorker(
+                    repository,
+                    document_extractor,
+                    provider="nextcloud",
+                ).run_once(batch_size=args.batch_size)
+                results.append(result)
+                print(
+                    f"{document_extractor.generator.generator_name} "
+                    "finished: "
+                    f"discovered={result.discovered} "
+                    f"processed={result.processed} "
+                    f"skipped={result.skipped} "
+                    f"failed={result.failed} "
+                    f"statement_writes={result.statement_writes} "
+                    f"deactivated={result.deactivated_statements}"
+                )
+            return 0 if all(result.failed == 0 for result in results) else 1
         if provider == "immich":
             worker = EnrichmentWorker(repository, extractor)
         else:

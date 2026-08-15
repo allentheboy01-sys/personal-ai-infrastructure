@@ -1,6 +1,7 @@
 from .errors import (
     ObservationError,
     ObservationExtractionError,
+    ObservationLifecycleError,
     ObservationResourceNotFoundError,
     ObservationValidationError,
 )
@@ -33,6 +34,11 @@ from .nextcloud_text import (
     NextcloudContentReader,
     NextcloudTextExtractor,
 )
+from .nextcloud_documents import (
+    NextcloudDOCXExtractor,
+    NextcloudODTExtractor,
+    NextcloudPDFExtractor,
+)
 from .postgres import PostgreSQLObservationRepository
 from .service import EnrichmentWorker, ObservationService
 
@@ -47,6 +53,7 @@ __all__ = [
     "ObservationBatch",
     "ObservationError",
     "ObservationExtractionError",
+    "ObservationLifecycleError",
     "ObservationResourceNotFoundError",
     "ObservationValidationError",
     "PREDICATES",
@@ -72,4 +79,7 @@ __all__ = [
     "TRUNCATION_MARKER",
     "NextcloudContentReader",
     "NextcloudTextExtractor",
+    "NextcloudDOCXExtractor",
+    "NextcloudODTExtractor",
+    "NextcloudPDFExtractor",
 ]

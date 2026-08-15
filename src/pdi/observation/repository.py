@@ -12,7 +12,13 @@ from .models import (
 
 
 class ObservationRepository(Protocol):
-    def publish(self, batch: ObservationBatch, *, completed_at: datetime) -> PublishResult: ...
+    def publish(
+        self,
+        batch: ObservationBatch,
+        *,
+        completed_at: datetime,
+        exclusive_generator_family: tuple[str, ...] = (),
+    ) -> PublishResult: ...
 
     def get_enrichment_state(
         self, resource_ref: str, generator: GeneratorIdentity

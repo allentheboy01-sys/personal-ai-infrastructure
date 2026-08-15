@@ -1,0 +1,10 @@
+[Unit]
+Description=Run PDI Nextcloud rich document observation enrichment daily
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+Unit=pdi-enrichment-nextcloud-documents.service
+
+[Install]
+WantedBy=timers.target

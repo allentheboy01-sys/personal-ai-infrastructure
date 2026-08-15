@@ -14,3 +14,7 @@ class ObservationResourceNotFoundError(ObservationError):
 
 class ObservationExtractionError(ObservationError):
     code = "extraction_failed"
+
+
+class ObservationLifecycleError(ObservationError):
+    code = "ambiguous_document_generator_state"
