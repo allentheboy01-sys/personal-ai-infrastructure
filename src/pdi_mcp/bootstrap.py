@@ -12,6 +12,7 @@ from pdi.observation import (
     PostgreSQLObservationRepository,
 )
 from pdi.repository import PostgreSQLRepository
+from pdi.rich_retrieval import RichRetrievalService
 from pdi.retrieval import RetrievalService
 from pdi.retrieval.providers import ImmichSemanticRetrievalAdapter
 
@@ -41,6 +42,7 @@ def create_runtime_server(
         query_service,
         observation_service,
         retrieval_service,
+        RichRetrievalService(repository, retrieval_service),
     )
 
 

@@ -32,6 +32,14 @@ from pdi.query.resources import (
     ResourceTimeRange,
     format_resource_ref,
 )
+from pdi.rich_retrieval import (
+    InvalidRichRetrievalStateError,
+    ObservationTextPrimary,
+    RichCandidate,
+    RichFilterSignals,
+    RichFilters,
+    RichRetrievalRepository,
+)
 from pdi.retrieval import (
     RetrievalMappingError,
     RetrievalMappingRepository,
@@ -40,12 +48,14 @@ from pdi.repository.base import Repository
 from pdi.repository.orm.asset import AssetORM
 from pdi.repository.orm.asset_source import AssetSourceORM
 from pdi.repository.orm.blob import BlobORM
+from pdi.repository.orm.observation import ResourceStatementORM
 
 
 class PostgreSQLRepository(
     Repository,
     QueryRepository,
     RetrievalMappingRepository,
+    RichRetrievalRepository,
 ):
     def __init__(
         self,
@@ -665,6 +675,186 @@ class PostgreSQLRepository(
                 )
                 for locator, asset_ids in asset_ids_by_locator.items()
             }
+
+    def search_current_observation_text(
+        self,
+        *,
+        primary: ObservationTextPrimary,
+        limit: int,
+    ) -> tuple[RichCandidate, ...]:
+        pattern = f"%{self._escape_like(primary.query)}%"
+        with self._session_factory() as session:
+            asset_orms = list(
+                session.execute(
+                    select(AssetORM)
+                    .join(
+                        ResourceStatementORM,
+                        ResourceStatementORM.subject_asset_id
+                        == AssetORM.id,
+                    )
+                    .where(
+                        ResourceStatementORM.predicate
+                        == primary.predicate,
+                        ResourceStatementORM.value_type == "string",
+                        ResourceStatementORM.is_current.is_(True),
+                        ResourceStatementORM.string_value.ilike(
+                            pattern,
+                            escape="\\",
+                        ),
+                        self._active_source_exists(
+                            provider=None,
+                            mime_type=None,
+                            mime_category=None,
+                            path_prefix=None,
+                        ),
+                    )
+                    .distinct()
+                    .order_by(
+                        AssetORM.title.asc(),
+                        AssetORM.id.asc(),
+                    )
+                    .limit(limit)
+                )
+                .scalars()
+                .all()
+            )
+            summaries = self._load_resource_summaries(
+                session,
+                asset_orms,
+            )
+        return tuple(
+            RichCandidate(
+                resource=resource,
+                source_rank=rank,
+                matched_predicates=(primary.predicate,),
+            )
+            for rank, resource in enumerate(summaries, start=1)
+        )
+
+    def load_rich_filter_signals(
+        self,
+        *,
+        resource_refs: tuple[str, ...],
+        filters: RichFilters,
+    ) -> dict[str, RichFilterSignals]:
+        unique_refs = tuple(dict.fromkeys(resource_refs))
+        if not unique_refs:
+            return {}
+        asset_ids_by_ref = {
+            resource_ref: UUID(
+                resource_ref.removeprefix("pdi:resource:")
+            )
+            for resource_ref in unique_refs
+        }
+        asset_ids = tuple(asset_ids_by_ref.values())
+        source_filter_requested = any((
+            filters.provider,
+            filters.mime_type,
+            filters.mime_category,
+            filters.path_prefix,
+        ))
+        observation_predicates = tuple(dict.fromkeys((
+            *filters.required_predicates,
+            *(
+                ("media.captured_at",)
+                if (
+                    filters.captured_from is not None
+                    or filters.captured_to is not None
+                )
+                else ()
+            ),
+        )))
+
+        eligible_asset_ids = set(asset_ids)
+        current_predicates: dict[UUID, set[str]] = {
+            asset_id: set() for asset_id in asset_ids
+        }
+        captured_values: dict[UUID, list[datetime]] = {
+            asset_id: [] for asset_id in asset_ids
+        }
+
+        with self._session_factory() as session:
+            if source_filter_requested:
+                eligible_asset_ids = set(
+                    session.execute(
+                        select(BlobORM.asset_id)
+                        .select_from(BlobORM)
+                        .join(
+                            AssetSourceORM,
+                            AssetSourceORM.blob_id == BlobORM.id,
+                        )
+                        .where(
+                            BlobORM.asset_id.in_(asset_ids),
+                            *self._source_filters(
+                                provider=filters.provider,
+                                mime_type=filters.mime_type,
+                                mime_category=filters.mime_category,
+                                path_prefix=filters.path_prefix,
+                            ),
+                        )
+                        .distinct()
+                    ).scalars()
+                )
+
+            if observation_predicates:
+                rows = session.execute(
+                    select(
+                        ResourceStatementORM.subject_asset_id,
+                        ResourceStatementORM.predicate,
+                        ResourceStatementORM.value_type,
+                        ResourceStatementORM.datetime_value,
+                    ).where(
+                        ResourceStatementORM.subject_asset_id.in_(
+                            asset_ids
+                        ),
+                        ResourceStatementORM.predicate.in_(
+                            observation_predicates
+                        ),
+                        ResourceStatementORM.is_current.is_(True),
+                    )
+                ).all()
+                for (
+                    asset_id,
+                    predicate,
+                    value_type,
+                    datetime_value,
+                ) in rows:
+                    current_predicates[asset_id].add(predicate)
+                    if predicate == "media.captured_at":
+                        if (
+                            value_type != "datetime"
+                            or datetime_value is None
+                        ):
+                            raise InvalidRichRetrievalStateError(
+                                "Current media.captured_at has an invalid "
+                                "typed value"
+                            )
+                        captured_values[asset_id].append(datetime_value)
+
+        for values in captured_values.values():
+            if len(values) > 1:
+                raise InvalidRichRetrievalStateError(
+                    "Resource has multiple current media.captured_at "
+                    "claims"
+                )
+
+        return {
+            resource_ref: RichFilterSignals(
+                resource_ref=resource_ref,
+                source_metadata_match=(
+                    asset_id in eligible_asset_ids
+                ),
+                captured_at=(
+                    captured_values[asset_id][0]
+                    if captured_values[asset_id]
+                    else None
+                ),
+                current_predicates=frozenset(
+                    current_predicates[asset_id]
+                ),
+            )
+            for resource_ref, asset_id in asset_ids_by_ref.items()
+        }
 
     @staticmethod
     def _asset_time_filters(

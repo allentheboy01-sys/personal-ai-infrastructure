@@ -7,6 +7,7 @@ from pdi.query import (
     ResourceSummary,
 )
 from pdi.observation import StatementValueType, StatementView
+from pdi.rich_retrieval import RichRetrievalResult
 from pdi.retrieval import ResourceRetrievalResult
 
 
@@ -62,6 +63,35 @@ def serialize_retrieval_result(
                 "resource": serialize_resource_summary(hit.resource),
             }
             for hit in result.hits
+        ],
+        "unmapped_hit_count": result.unmapped_hit_count,
+    }
+
+
+def serialize_rich_retrieval_result(
+    result: RichRetrievalResult,
+) -> dict[str, object]:
+    return {
+        "hits": [
+            {
+                "resource": serialize_resource_summary(hit.resource),
+                "source_rank": hit.source_rank,
+                "matched_predicates": list(hit.matched_predicates),
+                "captured_at": (
+                    None
+                    if hit.captured_at is None
+                    else hit.captured_at.isoformat()
+                ),
+            }
+            for hit in result.hits
+        ],
+        "stages": [
+            {
+                "stage": stage.stage,
+                "input_count": stage.input_count,
+                "output_count": stage.output_count,
+            }
+            for stage in result.stages
         ],
         "unmapped_hit_count": result.unmapped_hit_count,
     }

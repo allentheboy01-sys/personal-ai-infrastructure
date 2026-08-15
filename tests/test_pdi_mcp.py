@@ -20,6 +20,7 @@ from pdi.query import (
     parse_resource_ref,
 )
 from pdi_mcp import create_server
+from pdi_mcp.serialization import serialize_rich_retrieval_result
 from pdi.observation import (
     Evidence,
     EvidenceSourceKind,
@@ -31,6 +32,11 @@ from pdi.observation import (
 from pdi.retrieval import (
     ResourceRetrievalHit,
     ResourceRetrievalResult,
+)
+from pdi.rich_retrieval import (
+    RetrievalStage,
+    RichRetrievalHit,
+    RichRetrievalResult,
 )
 
 
@@ -332,10 +338,23 @@ def test_search_and_retrieval_descriptions_define_distinct_intent() -> None:
         }
         search = descriptions["pdi_search_resources"]
         retrieval = descriptions["pdi_retrieve_resources"]
+        rich = " ".join(
+            descriptions["pdi_rich_retrieve_resources"].split()
+        )
         assert "filename, title, source path, metadata" in search
         assert "automatic fallback" in search
         assert "resource content or visual concepts" in retrieval
         assert "do not automatically follow it" in retrieval
+        assert "one content candidate source" in rich
+        assert "without first calling pdi_retrieve_resources" in rich
+        assert "set mime_category to image" in rich
+        assert "literal current OCR or document-excerpt" in rich
+        assert "does not merge candidate sources" in rich
+        assert "do not call observations per hit" in rich
+        assert "exactly that one filtered call" in rich
+        assert "do not make an unfiltered comparison call" in rich
+        assert "require media.captured_at" in rich
+        assert "small selected" in rich
 
     asyncio.run(inspect_tools())
 
@@ -372,6 +391,7 @@ def test_mcp_aggregation_is_the_only_new_tool_and_serializes_semantics() -> None
             "pdi_aggregate_resources",
             "pdi_get_resource_observations",
             "pdi_retrieve_resources",
+            "pdi_rich_retrieve_resources",
         }
         payload = grouped.structured_content
         assert payload is not None
@@ -429,7 +449,7 @@ def test_observation_tool_is_the_only_v0_1_addition_and_does_not_leak_ids() -> N
                 },
             )
 
-        assert len(tools) == 6
+        assert len(tools) == 7
         assert result.structured_content == {
             "ok": True,
             "observations": [{
@@ -501,7 +521,7 @@ def test_retrieval_tool_serializes_public_resources_without_leakage() -> None:
                 },
             )
 
-        assert len(tools) == 6
+        assert len(tools) == 7
         assert result.structured_content == {
             "ok": True,
             "provider": "immich",
@@ -586,3 +606,185 @@ def test_unsupported_retrieval_provider_is_rejected_by_mcp_schema() -> None:
         assert result.structured_content is None
 
     asyncio.run(exercise())
+
+
+def test_rich_retrieval_tool_has_tagged_input_and_bounded_payload() -> None:
+    query_repository = RecordingRepository()
+
+    class RecordingRichRetrievalService:
+        def __init__(self) -> None:
+            self.call = None
+
+        def retrieve_resources(self, *, primary, filters, limit):
+            self.call = (primary, filters, limit)
+            return RichRetrievalResult(
+                hits=(RichRetrievalHit(
+                    resource=query_repository.summary,
+                    source_rank=4,
+                    matched_predicates=(
+                        "media.ocr_text",
+                        "media.captured_at",
+                    ),
+                    captured_at=datetime(2025, 1, 2, tzinfo=UTC),
+                ),),
+                stages=(
+                    RetrievalStage(
+                        "observation_text_primary",
+                        0,
+                        1,
+                    ),
+                    RetrievalStage("captured_at_filter", 1, 1),
+                    RetrievalStage("final_limit", 1, 1),
+                ),
+                unmapped_hit_count=0,
+            )
+
+    rich_service = RecordingRichRetrievalService()
+    server = create_server(
+        QueryService(query_repository),
+        rich_retrieval_service=rich_service,
+    )
+
+    async def exercise() -> None:
+        async with Client(server) as client:
+            tools = (await client.list_tools()).tools
+            rich_tool = next(
+                tool
+                for tool in tools
+                if tool.name == "pdi_rich_retrieve_resources"
+            )
+            result = await client.call_tool(
+                "pdi_rich_retrieve_resources",
+                {
+                    "primary": {
+                        "kind": "observation_text",
+                        "query": "Cambridge",
+                        "predicate": "media.ocr_text",
+                    },
+                    "filters": {
+                        "captured_from": "2025-01-01T08:00:00+08:00",
+                        "required_predicates": ["media.ocr_text"],
+                    },
+                    "limit": 20,
+                },
+            )
+
+        assert len(tools) == 7
+        primary_schema = rich_tool.input_schema["properties"]["primary"]
+        assert primary_schema["discriminator"]["propertyName"] == "kind"
+        assert len(primary_schema["oneOf"]) == 2
+        assert result.structured_content == {
+            "ok": True,
+            "hits": [{
+                "resource": {
+                    "resource_ref": query_repository.resource_ref,
+                    "resource_type": "file",
+                    "display_name": "CURRENT_CONTEXT.md",
+                    "pdi_first_observed_at": (
+                        "2026-07-31T12:00:00+00:00"
+                    ),
+                    "sources": [{
+                        "provider": "immich",
+                        "location": "/library/CURRENT_CONTEXT.md",
+                        "name": "CURRENT_CONTEXT.md",
+                        "mime_type": "text/markdown",
+                        "size_bytes": 4096,
+                        "is_active": True,
+                    }],
+                },
+                "source_rank": 4,
+                "matched_predicates": [
+                    "media.ocr_text",
+                    "media.captured_at",
+                ],
+                "captured_at": "2025-01-02T00:00:00+00:00",
+            }],
+            "stages": [
+                {
+                    "stage": "observation_text_primary",
+                    "input_count": 0,
+                    "output_count": 1,
+                },
+                {
+                    "stage": "captured_at_filter",
+                    "input_count": 1,
+                    "output_count": 1,
+                },
+                {
+                    "stage": "final_limit",
+                    "input_count": 1,
+                    "output_count": 1,
+                },
+            ],
+            "unmapped_hit_count": 0,
+        }
+        encoded = json.dumps(result.structured_content)
+        assert len(encoded.encode()) < 10_000
+        for private_name in (
+            "provider_locator",
+            "external_id",
+            "asset_id",
+            "blob_id",
+            "source_id",
+            "metadata",
+            "raw",
+        ):
+            assert private_name not in encoded
+        assert "Cambridge" not in encoded
+        assert "observation body" not in encoded
+
+    asyncio.run(exercise())
+    assert rich_service.call is not None
+    primary, filters, limit = rich_service.call
+    assert primary.kind == "observation_text"
+    assert primary.predicate == "media.ocr_text"
+    assert filters.captured_from == datetime(2025, 1, 1, tzinfo=UTC)
+    assert filters.required_predicates == ("media.ocr_text",)
+    assert limit == 20
+
+
+def test_rich_retrieval_mixed_primary_is_rejected_by_mcp_schema() -> None:
+    server = create_server(QueryService(RecordingRepository()))
+
+    async def exercise() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "pdi_rich_retrieve_resources",
+                {
+                    "primary": {
+                        "kind": "provider_semantic",
+                        "query": "car",
+                        "provider": "immich",
+                        "predicate": "media.ocr_text",
+                    }
+                },
+            )
+        assert result.is_error is True
+        assert result.structured_content is None
+
+    asyncio.run(exercise())
+
+
+def test_rich_retrieval_max_twenty_payload_stays_bounded() -> None:
+    repository = RecordingRepository()
+    result = RichRetrievalResult(
+        hits=tuple(
+            RichRetrievalHit(
+                resource=repository.summary,
+                source_rank=rank,
+                matched_predicates=("media.ocr_text",),
+            )
+            for rank in range(1, 21)
+        ),
+        stages=(
+            RetrievalStage("observation_text_primary", 0, 50),
+            RetrievalStage("final_limit", 50, 20),
+        ),
+        unmapped_hit_count=0,
+    )
+
+    encoded = json.dumps(serialize_rich_retrieval_result(result))
+
+    assert len(encoded.encode()) < 30_000
+    assert "OCR body" not in encoded
+    assert "document excerpt body" not in encoded

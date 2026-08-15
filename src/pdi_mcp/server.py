@@ -1,11 +1,18 @@
 from collections.abc import Callable
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from mcp.server import MCPServer
+from pydantic import Field
 
 from pdi.query import InvalidQueryError, QueryError, QueryService
 from pdi.observation import ObservationError, ObservationService
+from pdi.rich_retrieval import (
+    RichFilters,
+    RichPrimary,
+    RichRetrievalError,
+    RichRetrievalService,
+)
 from pdi.retrieval import (
     ProviderCapabilityUnavailableError,
     RetrievalError,
@@ -15,6 +22,7 @@ from pdi.retrieval import (
 from .serialization import (
     serialize_resource_aggregation,
     serialize_resource_detail,
+    serialize_rich_retrieval_result,
     serialize_retrieval_result,
     serialize_resource_summary,
     serialize_statement,
@@ -25,7 +33,12 @@ ToolResult = dict[str, object]
 
 
 def _error_result(
-    error: QueryError | ObservationError | RetrievalError,
+    error: (
+        QueryError
+        | ObservationError
+        | RetrievalError
+        | RichRetrievalError
+    ),
 ) -> ToolResult:
     return {
         "ok": False,
@@ -39,7 +52,12 @@ def _error_result(
 def _query_call(operation: Callable[[], ToolResult]) -> ToolResult:
     try:
         return operation()
-    except (QueryError, ObservationError, RetrievalError) as error:
+    except (
+        QueryError,
+        ObservationError,
+        RetrievalError,
+        RichRetrievalError,
+    ) as error:
         return _error_result(error)
 
 
@@ -65,6 +83,7 @@ def create_server(
     query_service: QueryService,
     observation_service: ObservationService | None = None,
     retrieval_service: RetrievalService | None = None,
+    rich_retrieval_service: RichRetrievalService | None = None,
 ) -> MCPServer:
     server = MCPServer(
         name="pdi-personal-retrieval",
@@ -245,6 +264,51 @@ def create_server(
             return {
                 "ok": True,
                 **serialize_retrieval_result(result),
+            }
+
+        return _query_call(operation)
+
+    @server.tool(structured_output=True)
+    def pdi_rich_retrieve_resources(
+        primary: Annotated[RichPrimary, Field(discriminator="kind")],
+        filters: RichFilters | None = None,
+        limit: int = 10,
+    ) -> ToolResult:
+        """Compose one content candidate source with deterministic filters.
+
+        Call this tool directly, without first calling pdi_retrieve_resources,
+        when one request combines a content or visual concept with a PDI
+        filter or required signal. Use provider_semantic for that primary. To
+        return only photos or images, set mime_category to image in that same
+        call. To
+        identify which semantic hits have OCR, require media.ocr_text;
+        existence is reported in matched_predicates, so do not call
+        observations per hit when existence is all the user asked for. To
+        answer which concept hits have OCR, make exactly that one filtered
+        call and treat its surviving hits as the answer; do not make an
+        unfiltered comparison call. To return photo capture times, require
+        media.captured_at in the same single call; matching hits include the
+        structured captured_at value. Use observation_text for literal
+        current OCR or document-excerpt substring matching. It directly finds
+        matching Resources but does not return the body; fetch observations
+        only for the small selected set when the user needs excerpt content.
+        This does not merge candidate sources or return raw observation
+        bodies.
+        """
+
+        def operation() -> ToolResult:
+            if rich_retrieval_service is None:
+                raise ProviderCapabilityUnavailableError(
+                    "Rich retrieval service is unavailable"
+                )
+            result = rich_retrieval_service.retrieve_resources(
+                primary=primary,
+                filters=filters,
+                limit=limit,
+            )
+            return {
+                "ok": True,
+                **serialize_rich_retrieval_result(result),
             }
 
         return _query_call(operation)
