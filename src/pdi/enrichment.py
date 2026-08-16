@@ -10,6 +10,7 @@ from pdi.config.settings import (
 from pdi.database import create_postgres_engine
 from pdi.observation import (
     EnrichmentWorker,
+    FileMetadataExtractor,
     ImmichMetadataExtractor,
     ImmichOCRExtractor,
     ImmichOCRReader,
@@ -31,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=(
             "immich-metadata",
             "immich-ocr",
+            "file-metadata",
             "nextcloud-text",
             "nextcloud-documents",
         ),
@@ -58,6 +60,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         provider = "immich"
         if args.extractor == "immich-metadata":
             extractor = ImmichMetadataExtractor()
+        elif args.extractor == "file-metadata":
+            extractor = FileMetadataExtractor()
+            provider = extractor.discovery_providers
         elif args.extractor == "immich-ocr":
             extractor = ImmichOCRExtractor(
                 ImmichOCRReader(load_immich_settings())

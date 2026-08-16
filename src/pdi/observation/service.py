@@ -28,10 +28,24 @@ class ObservationService:
 class EnrichmentWorker:
     DEFAULT_STALE_AFTER = timedelta(minutes=30)
 
-    def __init__(self, repository: ObservationRepository, extractor, *, provider: str = "immich", clock: Callable[[], datetime] | None = None, stale_after: timedelta = DEFAULT_STALE_AFTER) -> None:
+    def __init__(self, repository: ObservationRepository, extractor, *, provider: str | tuple[str, ...] = "immich", clock: Callable[[], datetime] | None = None, stale_after: timedelta = DEFAULT_STALE_AFTER) -> None:
         self._repository = repository; self._extractor = extractor
-        if not isinstance(provider, str) or not provider.strip():
-            raise ValueError("provider must be non-empty")
+        valid_provider = (
+            isinstance(provider, str)
+            and bool(provider.strip())
+        ) or (
+            isinstance(provider, tuple)
+            and bool(provider)
+            and len(set(provider)) == len(provider)
+            and all(
+                isinstance(item, str) and bool(item.strip())
+                for item in provider
+            )
+        )
+        if not valid_provider:
+            raise ValueError(
+                "provider must be a non-empty name or tuple of names"
+            )
         self._provider = provider
         self._clock = clock or (lambda: datetime.now(UTC)); self._stale_after = stale_after
 

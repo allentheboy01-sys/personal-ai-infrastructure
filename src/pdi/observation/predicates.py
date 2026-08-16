@@ -14,6 +14,7 @@ MEDIA_CAMERA_MAKE = "media.camera_make"
 MEDIA_CAMERA_MODEL = "media.camera_model"
 MEDIA_OCR_TEXT = "media.ocr_text"
 DOCUMENT_TEXT_EXCERPT = "document.text_excerpt"
+FILE_MODIFIED_AT = "file.modified_at"
 
 
 PREDICATES = MappingProxyType(
@@ -51,6 +52,11 @@ PREDICATES = MappingProxyType(
         DOCUMENT_TEXT_EXCERPT: PredicateDefinition(
             name=DOCUMENT_TEXT_EXCERPT,
             value_type=StatementValueType.STRING,
+            cardinality=PredicateCardinality.SINGLE,
+        ),
+        FILE_MODIFIED_AT: PredicateDefinition(
+            name=FILE_MODIFIED_AT,
+            value_type=StatementValueType.DATETIME,
             cardinality=PredicateCardinality.SINGLE,
         ),
     }

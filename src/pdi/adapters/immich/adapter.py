@@ -256,6 +256,7 @@ class ImmichAdapter(Adapter):
                 "width": asset.get("width"),
                 "height": asset.get("height"),
                 "exif": dict(exif_info),
+                "fileModifiedAt": asset.get("fileModifiedAt"),
                 "favorite": asset.get("isFavorite"),
                 "archived": asset.get("isArchived"),
                 "trashed": asset.get("isTrashed"),

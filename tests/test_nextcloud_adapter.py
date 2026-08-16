@@ -201,6 +201,12 @@ def test_scan_discovers_complete_tree_with_stable_external_ids(
         "Sibling": 1,
         "A/B": 1,
     }
+    assert all(
+        fact.raw["getlastmodified"]
+        == "Sun, 10 Aug 2026 00:00:00 GMT"
+        for fact in facts
+    )
+    assert all("creationdate" not in fact.raw for fact in facts)
 
 
 def test_scan_visits_a_repeated_directory_path_only_once(

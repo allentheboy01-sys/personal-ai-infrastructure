@@ -23,8 +23,9 @@ from .models import (
     StatementView,
     WorkerResult,
 )
-from .predicates import PREDICATES, get_predicate
+from .predicates import FILE_MODIFIED_AT, PREDICATES, get_predicate
 from .extractor import ImmichMetadataExtractor
+from .file_metadata import FileMetadataExtractor
 from .ocr import ImmichOCRExtractor, ImmichOCRReader, OCRRegion
 from .nextcloud_text import (
     MAX_DECODED_CHARACTERS,
@@ -49,6 +50,8 @@ __all__ = [
     "EnrichmentStatus",
     "Evidence",
     "EvidenceSourceKind",
+    "FILE_MODIFIED_AT",
+    "FileMetadataExtractor",
     "GeneratorIdentity",
     "ObservationBatch",
     "ObservationError",

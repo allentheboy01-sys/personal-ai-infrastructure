@@ -78,6 +78,27 @@ def test_mcp_observation_tool_reads_real_postgresql_without_internal_ids() -> No
             ),
         ),),
     ), completed_at=now)
+    repository.publish(ObservationBatch(
+        resource_ref,
+        GeneratorIdentity(
+            "deterministic_extractor",
+            "file_metadata",
+            "1",
+        ),
+        ("file.modified_at",),
+        "3" * 64,
+        (StatementDraft(
+            "file.modified_at",
+            TypedStatementValue(
+                StatementValueType.DATETIME,
+                datetime(2026, 8, 10, 8, tzinfo=UTC),
+            ),
+            Evidence(
+                EvidenceSourceKind.PROVIDER_METADATA,
+                "nextcloud.webdav.getlastmodified",
+            ),
+        ),),
+    ), completed_at=now)
 
     async def exercise() -> None:
         async with Client(create_runtime_server(database_url)) as client:
@@ -94,6 +115,13 @@ def test_mcp_observation_tool_reads_real_postgresql_without_internal_ids() -> No
                 {
                     "resource_ref": resource_ref,
                     "predicate": "document.text_excerpt",
+                },
+            )
+            temporal_result = await client.call_tool(
+                "pdi_get_resource_observations",
+                {
+                    "resource_ref": resource_ref,
+                    "predicate": "file.modified_at",
                 },
             )
         assert len(tools) == 7
@@ -131,6 +159,31 @@ def test_mcp_observation_tool_reads_real_postgresql_without_internal_ids() -> No
             "raw",
         ):
             assert internal not in document_payload
+        temporal = temporal_result.structured_content[
+            "observations"
+        ][0]
+        assert temporal == {
+            "subject_resource_ref": resource_ref,
+            "predicate": "file.modified_at",
+            "value_type": "datetime",
+            "value": "2026-08-10T08:00:00+00:00",
+            "generator_type": "deterministic_extractor",
+            "generator_name": "file_metadata",
+            "generator_version": "1",
+            "source_kind": "provider_metadata",
+            "source_locator": "nextcloud.webdav.getlastmodified",
+            "confidence": None,
+            "created_at": "2026-08-13T00:00:00+00:00",
+        }
+        temporal_payload = str(temporal_result.structured_content)
+        for internal in (
+            "source_id",
+            "external_id",
+            "blob_id",
+            "provider_locator",
+            "raw",
+        ):
+            assert internal not in temporal_payload
 
     try:
         asyncio.run(exercise())

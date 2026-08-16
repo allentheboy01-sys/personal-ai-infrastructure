@@ -273,7 +273,12 @@ class PostgreSQLObservationRepository:
             row.completed_at = None; row.error_code = error_code[:64]; row.error_message = safe_message
             session.commit()
 
-    def list_enrichment_resources(self, *, provider: str) -> tuple[EnrichmentResource, ...]:
+    def list_enrichment_resources(
+        self,
+        *,
+        provider: str | tuple[str, ...],
+    ) -> tuple[EnrichmentResource, ...]:
+        providers = (provider,) if isinstance(provider, str) else provider
         with self._session_factory() as session:
             rows = session.execute(
                 select(
@@ -291,7 +296,10 @@ class PostgreSQLObservationRepository:
                 )
                 .join(BlobORM, BlobORM.asset_id == AssetORM.id)
                 .join(AssetSourceORM, AssetSourceORM.blob_id == BlobORM.id)
-                .where(AssetSourceORM.provider == provider, AssetSourceORM.is_active.is_(True))
+                .where(
+                    AssetSourceORM.provider.in_(providers),
+                    AssetSourceORM.is_active.is_(True),
+                )
                 .order_by(AssetORM.id, AssetSourceORM.id)
             ).all()
             grouped: dict[UUID, list[EnrichmentSource]] = {}

@@ -259,3 +259,74 @@ def test_unchanged_immich_asset_does_not_open_or_duplicate(
         len(repository.blobs),
         len(repository.sources),
     ) == counts_before
+
+
+def test_same_version_new_curated_metadata_updates_source_without_open(
+) -> None:
+    repository = InMemoryRepository()
+    original_metadata = {
+        "href": "/remote.php/dav/files/test-user/report.md",
+        "oc_id": "report-source",
+        "file_id": "file-report-source",
+        "is_collection": False,
+    }
+    source = _seed_source(
+        repository,
+        provider="nextcloud",
+        external_id="report-source",
+        path="report.md",
+        name="report.md",
+        version_tag="version-report-source",
+        metadata=original_metadata,
+    )
+    fact = _nextcloud_fact(
+        external_id="report-source",
+        path="report.md",
+    )
+    fact.raw["getlastmodified"] = (
+        "Sun, 10 Aug 2026 00:00:00 GMT"
+    )
+
+    class FakeNextcloudAdapter:
+        provider_name = "nextcloud"
+
+        def connect(self) -> None:
+            return None
+
+        def scan(self) -> list[ProviderFact]:
+            return [fact]
+
+        def open(self, fact: ProviderFact):
+            pytest.fail("Metadata-only reconciliation must not open content")
+
+    counts_before = (
+        len(repository.assets),
+        len(repository.blobs),
+        len(repository.sources),
+    )
+    source_id = source.id
+    blob_id = source.blob_id
+
+    SyncEngine(
+        adapter=FakeNextcloudAdapter(),
+        matcher=Matcher(),
+        repository=repository,
+    ).sync_once()
+
+    saved_source = repository.find_source(
+        provider="nextcloud",
+        external_id="report-source",
+    )
+    assert saved_source is not None
+    assert saved_source.id == source_id
+    assert saved_source.blob_id == blob_id
+    assert saved_source.version_tag == "version-report-source"
+    assert saved_source.metadata == {
+        **original_metadata,
+        "getlastmodified": "Sun, 10 Aug 2026 00:00:00 GMT",
+    }
+    assert (
+        len(repository.assets),
+        len(repository.blobs),
+        len(repository.sources),
+    ) == counts_before

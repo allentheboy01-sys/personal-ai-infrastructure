@@ -138,6 +138,28 @@ def test_explicit_ocr_selector_builds_reader_and_extractor(
     assert engine.disposed is True
 
 
+def test_file_metadata_selector_uses_one_union_worker(
+    monkeypatch,
+    composition,
+) -> None:
+    engine, repository = composition
+    extractor = SimpleNamespace(
+        discovery_providers=("nextcloud", "immich"),
+    )
+    monkeypatch.setattr(
+        enrichment,
+        "FileMetadataExtractor",
+        lambda: extractor,
+    )
+
+    assert enrichment.main(
+        ["--extractor", "file-metadata", "--batch-size", "19"]
+    ) == 0
+    assert FakeWorker.calls == [(repository, extractor, 19)]
+    assert FakeWorker.providers == [("nextcloud", "immich")]
+    assert engine.disposed is True
+
+
 def test_ocr_configuration_failure_still_disposes_engine(
     monkeypatch,
     composition,

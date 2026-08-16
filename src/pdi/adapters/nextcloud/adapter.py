@@ -335,6 +335,7 @@ class NextcloudAdapter(Adapter):
                         "oc_id": oc_id,
                         "file_id": file_id,
                         "is_collection": is_collection,
+                        "getlastmodified": modified_at,
                     },
                 )
             )

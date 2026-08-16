@@ -52,6 +52,9 @@ def test_predicate_registry_is_frozen_and_unknown_rejected() -> None:
     document_excerpt = get_predicate("document.text_excerpt")
     assert document_excerpt.value_type == "string"
     assert document_excerpt.cardinality == "single"
+    file_modified = get_predicate("file.modified_at")
+    assert file_modified.value_type == "datetime"
+    assert file_modified.cardinality == "single"
     with pytest.raises(ObservationValidationError):
         get_predicate("media.future_guess")
     with pytest.raises(TypeError):

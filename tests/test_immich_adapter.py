@@ -109,6 +109,7 @@ def test_scan_paginates_and_maps_provider_facts(
         "originalPath": "/library/photo.jpg",
         "originalFileName": "photo.jpg",
         "originalMimeType": "image/jpeg",
+        "fileModifiedAt": "2026-07-19T01:02:03.456Z",
         "updatedAt": "2026-07-20T01:02:03.000Z",
         "checksum": "js0B4cvgxvZPg1MYAQygR6r8vQc=",
         "width": 4032,
@@ -249,6 +250,7 @@ def test_scan_paginates_and_maps_provider_facts(
             "make": "Camera Co.",
             "model": "Camera Model",
         },
+        "fileModifiedAt": "2026-07-19T01:02:03.456Z",
         "favorite": True,
         "archived": False,
         "trashed": False,
@@ -259,6 +261,10 @@ def test_scan_paginates_and_maps_provider_facts(
     assert "ownerId" not in fact.raw
     assert "libraryId" not in fact.raw
     assert "thumbhash" not in fact.raw
+    assert "fileCreatedAt" not in fact.raw
+    assert "createdAt" not in fact.raw
+    assert "updatedAt" not in fact.raw
+    assert "localDateTime" not in fact.raw
     assert "Scanning Immich..." in caplog.messages
     assert "Found 2 Immich assets" in caplog.messages
     assert "Immich scan finished" in caplog.messages
