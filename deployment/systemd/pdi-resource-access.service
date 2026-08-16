@@ -1,0 +1,20 @@
+[Unit]
+Description=PDI read-only Resource Access service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=harry
+WorkingDirectory=/srv/projects/PDI
+ExecStart=/srv/projects/PDI/deployment/resource-access/pdi-resource-access
+Restart=on-failure
+RestartSec=2s
+RuntimeDirectory=pdi
+RuntimeDirectoryMode=0700
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

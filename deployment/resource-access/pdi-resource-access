@@ -1,0 +1,42 @@
+#!/bin/sh
+set -eu
+umask 077
+
+readonly PDI_ENV=/etc/pdi/pdi.env
+readonly PDI_PYTHON=/srv/projects/PDI/.venv/bin/python
+readonly PDI_SOCKET=/run/pdi/resource-access.sock
+
+if [ ! -r "$PDI_ENV" ]; then
+    echo "pdi-resource-access: formal configuration is unavailable" >&2
+    exit 1
+fi
+
+set -a
+# shellcheck disable=SC1091
+. "$PDI_ENV"
+set +a
+
+if [ -z "${DATABASE__URL:-}" ] || \
+   [ -z "${IMMICH__URL:-}" ] || \
+   [ -z "${IMMICH__API_KEY:-}" ]; then
+    echo "pdi-resource-access: required configuration is missing" >&2
+    exit 1
+fi
+
+if [ ! -x "$PDI_PYTHON" ]; then
+    echo "pdi-resource-access: PDI Python is unavailable" >&2
+    exit 1
+fi
+
+cd /srv/projects/PDI
+exec env -i \
+    HOME="${HOME:-/home/harry}" \
+    USER="${USER:-harry}" \
+    LOGNAME="${LOGNAME:-harry}" \
+    PATH=/usr/local/bin:/usr/bin:/bin \
+    LANG="${LANG:-C.UTF-8}" \
+    DATABASE__URL="$DATABASE__URL" \
+    IMMICH__URL="$IMMICH__URL" \
+    IMMICH__API_KEY="$IMMICH__API_KEY" \
+    PDI_RESOURCE_ACCESS_SOCKET="$PDI_SOCKET" \
+    "$PDI_PYTHON" -m pdi_resource_access

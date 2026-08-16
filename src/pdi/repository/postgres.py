@@ -32,6 +32,10 @@ from pdi.query.resources import (
     ResourceTimeRange,
     format_resource_ref,
 )
+from pdi.resource_access import (
+    ResourceAccessRepository,
+    ResourceAccessSource,
+)
 from pdi.rich_retrieval import (
     InvalidRichRetrievalStateError,
     ObservationTextPrimary,
@@ -56,6 +60,7 @@ class PostgreSQLRepository(
     QueryRepository,
     RetrievalMappingRepository,
     RichRetrievalRepository,
+    ResourceAccessRepository,
 ):
     def __init__(
         self,
@@ -416,6 +421,42 @@ class PostgreSQLRepository(
                     self._asset_source_to_view(source_orm)
                     for source_orm in source_orms
                 ),
+            )
+
+    def resolve_access_sources(
+        self,
+        asset_id: str,
+    ) -> tuple[ResourceAccessSource, ...] | None:
+        """Resolve detached active Immich image Sources for access."""
+
+        parsed_id = UUID(asset_id)
+        with self._session_factory() as session:
+            if session.get(AssetORM, parsed_id) is None:
+                return None
+
+            rows = session.execute(
+                select(AssetSourceORM, BlobORM)
+                .join(
+                    BlobORM,
+                    AssetSourceORM.blob_id == BlobORM.id,
+                )
+                .where(
+                    BlobORM.asset_id == parsed_id,
+                    AssetSourceORM.is_active.is_(True),
+                    AssetSourceORM.provider == "immich",
+                    func.lower(BlobORM.mime_type).like("image/%"),
+                )
+                .order_by(AssetSourceORM.id.asc())
+            ).all()
+
+            return tuple(
+                ResourceAccessSource(
+                    provider=source.provider,
+                    provider_locator=source.external_id,
+                    resource_type="file",
+                    mime_type=blob.mime_type,
+                )
+                for source, blob in rows
             )
 
     @staticmethod
