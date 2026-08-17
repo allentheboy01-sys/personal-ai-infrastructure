@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 from mcp import Client
@@ -354,7 +354,10 @@ def test_search_and_retrieval_descriptions_define_distinct_intent() -> None:
         assert "exactly that one filtered call" in rich
         assert "do not make an unfiltered comparison call" in rich
         assert "require media.captured_at" in rich
+        assert "file_modified_from/to" in rich
+        assert "Provider-reported file modification time" in rich
         assert "small selected" in rich
+        assert "defaults to 10 and must not exceed 20" in rich
 
     asyncio.run(inspect_tools())
 
@@ -624,8 +627,16 @@ def test_rich_retrieval_tool_has_tagged_input_and_bounded_payload() -> None:
                     matched_predicates=(
                         "media.ocr_text",
                         "media.captured_at",
+                        "file.modified_at",
                     ),
                     captured_at=datetime(2025, 1, 2, tzinfo=UTC),
+                    file_modified_at=datetime(
+                        2025,
+                        2,
+                        3,
+                        8,
+                        tzinfo=timezone(timedelta(hours=8)),
+                    ),
                 ),),
                 stages=(
                     RetrievalStage(
@@ -634,6 +645,11 @@ def test_rich_retrieval_tool_has_tagged_input_and_bounded_payload() -> None:
                         1,
                     ),
                     RetrievalStage("captured_at_filter", 1, 1),
+                    RetrievalStage(
+                        "file_modified_at_filter",
+                        1,
+                        1,
+                    ),
                     RetrievalStage("final_limit", 1, 1),
                 ),
                 unmapped_hit_count=0,
@@ -663,6 +679,9 @@ def test_rich_retrieval_tool_has_tagged_input_and_bounded_payload() -> None:
                     },
                     "filters": {
                         "captured_from": "2025-01-01T08:00:00+08:00",
+                        "file_modified_from": (
+                            "2025-02-03T08:00:00+08:00"
+                        ),
                         "required_predicates": ["media.ocr_text"],
                     },
                     "limit": 20,
@@ -673,6 +692,17 @@ def test_rich_retrieval_tool_has_tagged_input_and_bounded_payload() -> None:
         primary_schema = rich_tool.input_schema["properties"]["primary"]
         assert primary_schema["discriminator"]["propertyName"] == "kind"
         assert len(primary_schema["oneOf"]) == 2
+        filter_schema = rich_tool.input_schema["$defs"][
+            "RichFilters"
+        ]["properties"]
+        assert filter_schema["file_modified_from"]["anyOf"][0] == {
+            "format": "date-time",
+            "type": "string",
+        }
+        assert filter_schema["file_modified_to"]["anyOf"][0] == {
+            "format": "date-time",
+            "type": "string",
+        }
         assert result.structured_content == {
             "ok": True,
             "hits": [{
@@ -696,8 +726,10 @@ def test_rich_retrieval_tool_has_tagged_input_and_bounded_payload() -> None:
                 "matched_predicates": [
                     "media.ocr_text",
                     "media.captured_at",
+                    "file.modified_at",
                 ],
                 "captured_at": "2025-01-02T00:00:00+00:00",
+                "file_modified_at": "2025-02-03T00:00:00+00:00",
             }],
             "stages": [
                 {
@@ -707,6 +739,11 @@ def test_rich_retrieval_tool_has_tagged_input_and_bounded_payload() -> None:
                 },
                 {
                     "stage": "captured_at_filter",
+                    "input_count": 1,
+                    "output_count": 1,
+                },
+                {
+                    "stage": "file_modified_at_filter",
                     "input_count": 1,
                     "output_count": 1,
                 },
@@ -739,6 +776,12 @@ def test_rich_retrieval_tool_has_tagged_input_and_bounded_payload() -> None:
     assert primary.kind == "observation_text"
     assert primary.predicate == "media.ocr_text"
     assert filters.captured_from == datetime(2025, 1, 1, tzinfo=UTC)
+    assert filters.file_modified_from == datetime(
+        2025,
+        2,
+        3,
+        tzinfo=UTC,
+    )
     assert filters.required_predicates == ("media.ocr_text",)
     assert limit == 20
 

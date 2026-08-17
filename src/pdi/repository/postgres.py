@@ -794,6 +794,11 @@ class PostgreSQLRepository(
             filters.mime_category,
             filters.path_prefix,
         ))
+        file_modified_requested = (
+            filters.file_modified_from is not None
+            or filters.file_modified_to is not None
+            or "file.modified_at" in filters.required_predicates
+        )
         observation_predicates = tuple(dict.fromkeys((
             *filters.required_predicates,
             *(
@@ -804,6 +809,11 @@ class PostgreSQLRepository(
                 )
                 else ()
             ),
+            *(
+                ("file.modified_at",)
+                if file_modified_requested
+                else ()
+            ),
         )))
 
         eligible_asset_ids = set(asset_ids)
@@ -811,6 +821,9 @@ class PostgreSQLRepository(
             asset_id: set() for asset_id in asset_ids
         }
         captured_values: dict[UUID, list[datetime]] = {
+            asset_id: [] for asset_id in asset_ids
+        }
+        file_modified_values: dict[UUID, list[datetime]] = {
             asset_id: [] for asset_id in asset_ids
         }
 
@@ -871,11 +884,29 @@ class PostgreSQLRepository(
                                 "typed value"
                             )
                         captured_values[asset_id].append(datetime_value)
+                    if predicate == "file.modified_at":
+                        if (
+                            value_type != "datetime"
+                            or datetime_value is None
+                        ):
+                            raise InvalidRichRetrievalStateError(
+                                "Current file.modified_at has an invalid "
+                                "typed value"
+                            )
+                        file_modified_values[asset_id].append(
+                            datetime_value.astimezone(UTC)
+                        )
 
         for values in captured_values.values():
             if len(values) > 1:
                 raise InvalidRichRetrievalStateError(
                     "Resource has multiple current media.captured_at "
+                    "claims"
+                )
+        for values in file_modified_values.values():
+            if len(values) > 1:
+                raise InvalidRichRetrievalStateError(
+                    "Resource has multiple current file.modified_at "
                     "claims"
                 )
 
@@ -888,6 +919,11 @@ class PostgreSQLRepository(
                 captured_at=(
                     captured_values[asset_id][0]
                     if captured_values[asset_id]
+                    else None
+                ),
+                file_modified_at=(
+                    file_modified_values[asset_id][0]
+                    if file_modified_values[asset_id]
                     else None
                 ),
                 current_predicates=frozenset(

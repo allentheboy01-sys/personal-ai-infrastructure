@@ -287,13 +287,17 @@ def create_server(
         answer which concept hits have OCR, make exactly that one filtered
         call and treat its surviving hits as the answer; do not make an
         unfiltered comparison call. To return photo capture times, require
-        media.captured_at in the same single call; matching hits include the
-        structured captured_at value. Use observation_text for literal
-        current OCR or document-excerpt substring matching. It directly finds
-        matching Resources but does not return the body; fetch observations
-        only for the small selected set when the user needs excerpt content.
-        This does not merge candidate sources or return raw observation
-        bodies.
+        media.captured_at or use captured_from/to; these filter media capture
+        time. file_modified_from/to filter the Provider-reported file
+        modification time. They are distinct and never fall back to each
+        other or to PDI first-observed time. Matching hits include the
+        structured captured_at or file_modified_at value when the signal is
+        requested. Use observation_text for literal current OCR or
+        document-excerpt substring matching. It directly finds matching
+        Resources but does not return the body; fetch observations only for
+        the small selected set when the user needs excerpt content. This does
+        not merge candidate sources or return raw observation bodies.
+        Result limit defaults to 10 and must not exceed 20.
         """
 
         def operation() -> ToolResult:

@@ -32,6 +32,9 @@ from tests.integration.database_guard import require_safe_test_database_url
 
 ROOT = Path(__file__).resolve().parents[3]
 CAPTURED = datetime(2025, 6, 1, 12, tzinfo=UTC)
+FILE_MODIFIED = datetime(2026, 7, 8, 2, 59, 28, tzinfo=UTC)
+FILE_MODIFIED_FROM = datetime(2026, 7, 1, tzinfo=UTC)
+FILE_MODIFIED_TO = datetime(2026, 8, 1, tzinfo=UTC)
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,9 +153,25 @@ def rich_context():
             string_value="Original Camera Co.",
         ),
         _statement(
+            ocr_id,
+            "file.modified_at",
+            datetime_value=FILE_MODIFIED,
+        ),
+        _statement(
             document_id,
             "document.text_excerpt",
             string_value=document_text,
+        ),
+        _statement(
+            document_id,
+            "file.modified_at",
+            datetime_value=datetime(2026, 6, 1, tzinfo=UTC),
+            current=False,
+        ),
+        _statement(
+            document_id,
+            "file.modified_at",
+            datetime_value=FILE_MODIFIED,
         ),
         _statement(
             historical_id,
@@ -169,6 +188,11 @@ def rich_context():
             multi_id,
             "media.captured_at",
             datetime_value=CAPTURED,
+        ),
+        _statement(
+            multi_id,
+            "file.modified_at",
+            datetime_value=FILE_MODIFIED,
         ),
     )
 
@@ -313,6 +337,42 @@ def test_observation_text_is_literal_current_and_deterministic(
         data.document_ref
     ]
 
+    modified_document = service.retrieve_resources(
+        primary=ObservationTextPrimary(
+            "observation_text",
+            f"machine learning {data.token}",
+            "document.text_excerpt",
+        ),
+        filters=RichFilters(
+            file_modified_from=FILE_MODIFIED_FROM,
+            file_modified_to=FILE_MODIFIED_TO,
+        ),
+    )
+    assert [hit.resource.resource_ref for hit in modified_document.hits] == [
+        data.document_ref
+    ]
+    assert modified_document.hits[0].file_modified_at == FILE_MODIFIED
+    assert modified_document.hits[0].matched_predicates == (
+        "document.text_excerpt",
+        "file.modified_at",
+    )
+
+    required_only = service.retrieve_resources(
+        primary=ObservationTextPrimary(
+            "observation_text",
+            f"machine learning {data.token}",
+            "document.text_excerpt",
+        ),
+        filters=RichFilters(
+            required_predicates=("file.modified_at",),
+        ),
+    )
+    assert required_only.hits[0].file_modified_at == FILE_MODIFIED
+    assert required_only.hits[0].matched_predicates == (
+        "document.text_excerpt",
+        "file.modified_at",
+    )
+
 
 class StaticProviderAdapter:
     provider = "immich"
@@ -360,6 +420,8 @@ def test_provider_candidates_use_batch_filters_same_source_and_keep_rank(
                 mime_category="image",
                 captured_from=datetime(2025, 1, 1, tzinfo=UTC),
                 captured_to=datetime(2026, 1, 1, tzinfo=UTC),
+                file_modified_from=FILE_MODIFIED_FROM,
+                file_modified_to=FILE_MODIFIED_TO,
                 required_predicates=("media.ocr_text",),
             ),
             limit=20,
@@ -375,6 +437,7 @@ def test_provider_candidates_use_batch_filters_same_source_and_keep_rank(
     assert [hit.source_rank for hit in result.hits] == [1, 4]
     assert result.unmapped_hit_count == 1
     assert result.hits[0].captured_at == CAPTURED
+    assert result.hits[0].file_modified_at == FILE_MODIFIED
     assert len(select_statements) == 5
 
     cross_source = service.retrieve_resources(
@@ -444,6 +507,215 @@ def test_multiple_current_captured_claims_fail_whole_request(
             )
 
 
+def test_file_modified_invariants_fail_only_when_signal_is_requested(
+    rich_context,
+) -> None:
+    engine, repository, data = rich_context
+    asset_id = UUID(data.ocr_ref.removeprefix("pdi:resource:"))
+    extra_id = uuid4()
+    malformed = _statement(
+        asset_id,
+        "file.modified_at",
+        string_value="not-a-datetime",
+        generator="rich-test-malformed",
+    )
+    malformed["id"] = extra_id
+    with engine.begin() as connection:
+        connection.execute(
+            ResourceStatementORM.__table__.insert(),
+            malformed,
+        )
+    try:
+        unaffected = RichRetrievalService(repository).retrieve_resources(
+            primary=ObservationTextPrimary(
+                "observation_text",
+                f"cambridge-{data.token}",
+                "media.ocr_text",
+            ),
+            filters=RichFilters(
+                captured_from=datetime(2025, 1, 1, tzinfo=UTC),
+            ),
+        )
+        assert data.ocr_ref in {
+            hit.resource.resource_ref for hit in unaffected.hits
+        }
+
+        with pytest.raises(InvalidRichRetrievalStateError):
+            RichRetrievalService(repository).retrieve_resources(
+                primary=ObservationTextPrimary(
+                    "observation_text",
+                    f"cambridge-{data.token}",
+                    "media.ocr_text",
+                ),
+                filters=RichFilters(
+                    file_modified_from=FILE_MODIFIED_FROM,
+                ),
+            )
+    finally:
+        with engine.begin() as connection:
+            connection.execute(
+                ResourceStatementORM.__table__.delete().where(
+                    ResourceStatementORM.id == extra_id
+                )
+            )
+
+
+def test_multiple_current_file_modified_claims_fail_whole_request(
+    rich_context,
+) -> None:
+    engine, repository, data = rich_context
+    asset_id = UUID(data.ocr_ref.removeprefix("pdi:resource:"))
+    extra_id = uuid4()
+    row = _statement(
+        asset_id,
+        "file.modified_at",
+        datetime_value=FILE_MODIFIED,
+        generator="rich-test-second-file-modified",
+    )
+    row["id"] = extra_id
+    with engine.begin() as connection:
+        connection.execute(ResourceStatementORM.__table__.insert(), row)
+    try:
+        with pytest.raises(InvalidRichRetrievalStateError):
+            RichRetrievalService(repository).retrieve_resources(
+                primary=ObservationTextPrimary(
+                    "observation_text",
+                    f"cambridge-{data.token}",
+                    "media.ocr_text",
+                ),
+                filters=RichFilters(
+                    file_modified_from=FILE_MODIFIED_FROM,
+                ),
+            )
+    finally:
+        with engine.begin() as connection:
+            connection.execute(
+                ResourceStatementORM.__table__.delete().where(
+                    ResourceStatementORM.id == extra_id
+                )
+            )
+
+
+def test_postgresql_file_modified_batch_fifty_is_current_and_fixed_query_count(
+    rich_context,
+) -> None:
+    engine, repository, data = rich_context
+    token = f"batch-{data.token}"
+    now = datetime(2026, 8, 17, tzinfo=UTC)
+    asset_ids = [uuid4() for _ in range(50)]
+    blob_ids = [uuid4() for _ in asset_ids]
+    source_ids = [uuid4() for _ in asset_ids]
+    statements = []
+    for index, asset_id in enumerate(asset_ids):
+        statements.extend((
+            _statement(
+                asset_id,
+                "document.text_excerpt",
+                string_value=f"{token} machine learning",
+            ),
+            _statement(
+                asset_id,
+                "file.modified_at",
+                datetime_value=FILE_MODIFIED,
+            ),
+        ))
+    with engine.begin() as connection:
+        connection.execute(AssetORM.__table__.insert(), [
+            {
+                "id": asset_id,
+                "title": f"Temporal Batch {index:02d}.pdf",
+                "metadata": {},
+                "created_at": now,
+                "updated_at": now,
+            }
+            for index, asset_id in enumerate(asset_ids)
+        ])
+        connection.execute(BlobORM.__table__.insert(), [
+            {
+                "id": blob_id,
+                "asset_id": asset_id,
+                "hash": f"rich-{token}-{index}",
+                "size": 100,
+                "mime_type": "application/pdf",
+            }
+            for index, (blob_id, asset_id) in enumerate(
+                zip(blob_ids, asset_ids, strict=True)
+            )
+        ])
+        connection.execute(AssetSourceORM.__table__.insert(), [
+            {
+                "id": source_id,
+                "blob_id": blob_id,
+                "provider": "nextcloud",
+                "external_id": f"{token}-{index}",
+                "path": f"/docs/{index}.pdf",
+                "name": f"{index}.pdf",
+                "version_tag": "1",
+                "metadata": {},
+                "is_active": True,
+                "deleted_at": None,
+            }
+            for index, (source_id, blob_id) in enumerate(
+                zip(source_ids, blob_ids, strict=True)
+            )
+        ])
+        connection.execute(
+            ResourceStatementORM.__table__.insert(),
+            statements,
+        )
+
+    select_statements: list[str] = []
+
+    def record_select(_, __, statement, *args) -> None:
+        if statement.lstrip().upper().startswith("SELECT"):
+            select_statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record_select)
+    try:
+        result = RichRetrievalService(repository).retrieve_resources(
+            primary=ObservationTextPrimary(
+                "observation_text",
+                token,
+                "document.text_excerpt",
+            ),
+            filters=RichFilters(
+                file_modified_from=FILE_MODIFIED_FROM,
+                file_modified_to=FILE_MODIFIED_TO,
+            ),
+            limit=20,
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", record_select)
+        with engine.begin() as connection:
+            connection.execute(
+                ResourceStatementORM.__table__.delete().where(
+                    ResourceStatementORM.subject_asset_id.in_(asset_ids)
+                )
+            )
+            connection.execute(
+                AssetSourceORM.__table__.delete().where(
+                    AssetSourceORM.id.in_(source_ids)
+                )
+            )
+            connection.execute(
+                BlobORM.__table__.delete().where(
+                    BlobORM.id.in_(blob_ids)
+                )
+            )
+            connection.execute(
+                AssetORM.__table__.delete().where(
+                    AssetORM.id.in_(asset_ids)
+                )
+            )
+
+    assert len(result.hits) == 20
+    assert all(
+        hit.file_modified_at == FILE_MODIFIED
+        for hit in result.hits
+    )
+    assert len(select_statements) == 4
+
+
 def test_mcp_in_memory_client_reaches_real_postgresql_without_leakage(
     rich_context,
 ) -> None:
@@ -464,6 +736,10 @@ def test_mcp_in_memory_client_reaches_real_postgresql_without_leakage(
                     "filters": {
                         "provider": "nextcloud",
                         "mime_type": "application/pdf",
+                        "file_modified_from": (
+                            FILE_MODIFIED_FROM.isoformat()
+                        ),
+                        "file_modified_to": FILE_MODIFIED_TO.isoformat(),
                     },
                     "limit": 20,
                 },
@@ -477,6 +753,19 @@ def test_mcp_in_memory_client_reaches_real_postgresql_without_leakage(
     assert [
         hit["resource"]["resource_ref"] for hit in payload["hits"]
     ] == [data.document_ref]
+    assert payload["hits"][0]["file_modified_at"] == (
+        FILE_MODIFIED.isoformat()
+    )
+    assert payload["hits"][0]["matched_predicates"] == [
+        "document.text_excerpt",
+        "file.modified_at",
+    ]
+    assert [stage["stage"] for stage in payload["stages"]] == [
+        "observation_text_primary",
+        "source_metadata_filter",
+        "file_modified_at_filter",
+        "final_limit",
+    ]
     encoded = json.dumps(payload)
     assert data.document_text not in encoded
     assert data.token not in encoded

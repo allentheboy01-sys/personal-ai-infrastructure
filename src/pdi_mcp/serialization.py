@@ -1,3 +1,5 @@
+from datetime import UTC
+
 from pdi.query import (
     ContentSummary,
     ResourceAggregationResult,
@@ -81,6 +83,11 @@ def serialize_rich_retrieval_result(
                     None
                     if hit.captured_at is None
                     else hit.captured_at.isoformat()
+                ),
+                "file_modified_at": (
+                    None
+                    if hit.file_modified_at is None
+                    else hit.file_modified_at.astimezone(UTC).isoformat()
                 ),
             }
             for hit in result.hits

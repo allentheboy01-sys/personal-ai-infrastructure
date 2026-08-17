@@ -54,6 +54,8 @@ class RichFilters:
     path_prefix: str | None = None
     captured_from: datetime | None = None
     captured_to: datetime | None = None
+    file_modified_from: datetime | None = None
+    file_modified_to: datetime | None = None
     required_predicates: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -83,6 +85,7 @@ class RichFilterSignals:
     resource_ref: str
     source_metadata_match: bool
     captured_at: datetime | None
+    file_modified_at: datetime | None
     current_predicates: frozenset[str]
 
     def __post_init__(self) -> None:
@@ -106,6 +109,7 @@ class RichRetrievalHit:
     source_rank: int
     matched_predicates: tuple[str, ...]
     captured_at: datetime | None = None
+    file_modified_at: datetime | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(

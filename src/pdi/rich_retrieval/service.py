@@ -65,6 +65,10 @@ class RichRetrievalService:
             validated_filters.captured_from is not None
             or validated_filters.captured_to is not None
         )
+        has_file_modified_filter = (
+            validated_filters.file_modified_from is not None
+            or validated_filters.file_modified_to is not None
+        )
         has_predicate_filter = bool(
             validated_filters.required_predicates
         )
@@ -73,11 +77,17 @@ class RichRetrievalService:
             or "media.captured_at"
             in validated_filters.required_predicates
         )
+        include_file_modified_signal = (
+            has_file_modified_filter
+            or "file.modified_at"
+            in validated_filters.required_predicates
+        )
 
         signals = {}
         if remaining and (
             has_metadata_filter
             or has_captured_filter
+            or has_file_modified_filter
             or has_predicate_filter
         ):
             signals = self._repository.load_rich_filter_signals(
@@ -122,6 +132,23 @@ class RichRetrievalService:
                 len(remaining),
             ))
 
+        if has_file_modified_filter:
+            before = len(remaining)
+            remaining = [
+                candidate
+                for candidate in remaining
+                if self._file_modified_matches(
+                    signals[candidate.resource.resource_ref]
+                    .file_modified_at,
+                    validated_filters,
+                )
+            ]
+            stages.append(RetrievalStage(
+                "file_modified_at_filter",
+                before,
+                len(remaining),
+            ))
+
         if has_predicate_filter:
             before = len(remaining)
             required = set(validated_filters.required_predicates)
@@ -150,6 +177,12 @@ class RichRetrievalService:
                 captured_at=(
                     signals[candidate.resource.resource_ref].captured_at
                     if include_captured_signal
+                    else None
+                ),
+                file_modified_at=(
+                    signals[candidate.resource.resource_ref]
+                    .file_modified_at
+                    if include_file_modified_signal
                     else None
                 ),
             )
@@ -296,6 +329,24 @@ class RichRetrievalService:
                 "captured_from must be earlier than captured_to"
             )
 
+        file_modified_from = cls._utc_datetime(
+            filters.file_modified_from,
+            "file_modified_from",
+        )
+        file_modified_to = cls._utc_datetime(
+            filters.file_modified_to,
+            "file_modified_to",
+        )
+        if (
+            file_modified_from is not None
+            and file_modified_to is not None
+            and file_modified_from >= file_modified_to
+        ):
+            raise InvalidQueryError(
+                "file_modified_from must be earlier than "
+                "file_modified_to"
+            )
+
         required: list[str] = []
         for predicate in filters.required_predicates:
             name = cls._required_text(predicate, "required_predicate")
@@ -317,6 +368,8 @@ class RichRetrievalService:
             ),
             captured_from=captured_from,
             captured_to=captured_to,
+            file_modified_from=file_modified_from,
+            file_modified_to=file_modified_to,
             required_predicates=tuple(required),
         )
 
@@ -338,6 +391,23 @@ class RichRetrievalService:
         )
 
     @staticmethod
+    def _file_modified_matches(
+        file_modified_at: datetime | None,
+        filters: RichFilters,
+    ) -> bool:
+        if file_modified_at is None:
+            return False
+        if (
+            filters.file_modified_from is not None
+            and file_modified_at < filters.file_modified_from
+        ):
+            return False
+        return not (
+            filters.file_modified_to is not None
+            and file_modified_at >= filters.file_modified_to
+        )
+
+    @staticmethod
     def _matched_predicates(
         candidate: RichCandidate,
         filters: RichFilters,
@@ -348,6 +418,11 @@ class RichRetrievalService:
             or filters.captured_to is not None
         ):
             predicates.append("media.captured_at")
+        if (
+            filters.file_modified_from is not None
+            or filters.file_modified_to is not None
+        ):
+            predicates.append("file.modified_at")
         predicates.extend(filters.required_predicates)
         return tuple(dict.fromkeys(predicates))
 

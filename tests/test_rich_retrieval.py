@@ -92,12 +92,14 @@ def _signals(
     *,
     source_match: bool = True,
     captured_at: datetime | None = None,
+    file_modified_at: datetime | None = None,
     predicates: frozenset[str] = frozenset(),
 ) -> RichFilterSignals:
     return RichFilterSignals(
         resource_ref=resource.resource_ref,
         source_metadata_match=source_match,
         captured_at=captured_at,
+        file_modified_at=file_modified_at,
         current_predicates=predicates,
     )
 
@@ -261,13 +263,148 @@ def test_captured_range_is_utc_from_inclusive_to_exclusive() -> None:
     assert missing not in [hit.resource for hit in result.hits]
 
 
+def test_file_modified_range_is_utc_half_open_and_missing_excludes() -> None:
+    at_from = _summary("from.pdf")
+    before_to = _summary("before-to.pdf")
+    at_to = _summary("to.pdf")
+    missing = _summary("missing.pdf")
+    candidates = tuple(
+        RichCandidate(resource, index)
+        for index, resource in enumerate(
+            (at_from, before_to, at_to, missing),
+            start=1,
+        )
+    )
+    repository = StubRichRepository(
+        candidates=candidates,
+        signals={
+            at_from.resource_ref: _signals(
+                at_from,
+                file_modified_at=NOW,
+            ),
+            before_to.resource_ref: _signals(
+                before_to,
+                file_modified_at=NOW + timedelta(hours=23),
+            ),
+            at_to.resource_ref: _signals(
+                at_to,
+                file_modified_at=NOW + timedelta(days=1),
+            ),
+            missing.resource_ref: _signals(missing),
+        },
+    )
+
+    result = RichRetrievalService(repository).retrieve_resources(
+        primary=ObservationTextPrimary(
+            "observation_text",
+            "machine learning",
+            "document.text_excerpt",
+        ),
+        filters=RichFilters(
+            file_modified_from=datetime(
+                2026,
+                8,
+                15,
+                8,
+                tzinfo=timezone(timedelta(hours=8)),
+            ),
+            file_modified_to=datetime(
+                2026,
+                8,
+                15,
+                16,
+                tzinfo=timezone(-timedelta(hours=8)),
+            ),
+        ),
+    )
+
+    assert [hit.resource for hit in result.hits] == [at_from, before_to]
+    assert [hit.file_modified_at for hit in result.hits] == [
+        NOW,
+        NOW + timedelta(hours=23),
+    ]
+    assert all(
+        hit.matched_predicates == (
+            "file.modified_at",
+        )
+        for hit in result.hits
+    )
+    assert [stage.stage for stage in result.stages] == [
+        "observation_text_primary",
+        "file_modified_at_filter",
+        "final_limit",
+    ]
+    requested = repository.filter_calls[0][1]
+    assert requested.file_modified_from == NOW
+    assert requested.file_modified_to == NOW + timedelta(days=1)
+
+
+def test_file_modified_only_from_and_only_to_preserve_rank() -> None:
+    earlier = _summary("earlier.pdf")
+    later = _summary("later.pdf")
+    candidates = (
+        RichCandidate(earlier, 2),
+        RichCandidate(later, 7),
+    )
+    signals = {
+        earlier.resource_ref: _signals(
+            earlier,
+            file_modified_at=NOW,
+        ),
+        later.resource_ref: _signals(
+            later,
+            file_modified_at=NOW + timedelta(days=2),
+        ),
+    }
+
+    only_from = RichRetrievalService(StubRichRepository(
+        candidates=candidates,
+        signals=signals,
+    )).retrieve_resources(
+        primary=ObservationTextPrimary(
+            "observation_text",
+            "document",
+            "document.text_excerpt",
+        ),
+        filters=RichFilters(
+            file_modified_from=NOW + timedelta(days=1),
+        ),
+    )
+    only_to = RichRetrievalService(StubRichRepository(
+        candidates=candidates,
+        signals=signals,
+    )).retrieve_resources(
+        primary=ObservationTextPrimary(
+            "observation_text",
+            "document",
+            "document.text_excerpt",
+        ),
+        filters=RichFilters(
+            file_modified_to=NOW + timedelta(days=1),
+        ),
+    )
+
+    assert [hit.source_rank for hit in only_from.hits] == [7]
+    assert [hit.source_rank for hit in only_to.hits] == [2]
+
+
 @pytest.mark.parametrize(
     "filters",
     [
         RichFilters(captured_from=datetime(2026, 1, 1)),
+        RichFilters(file_modified_from=datetime(2026, 1, 1)),
+        RichFilters(file_modified_to=datetime(2026, 1, 1)),
         RichFilters(
             captured_from=NOW,
             captured_to=NOW,
+        ),
+        RichFilters(
+            file_modified_from=NOW,
+            file_modified_to=NOW,
+        ),
+        RichFilters(
+            file_modified_from=NOW + timedelta(seconds=1),
+            file_modified_to=NOW,
         ),
         RichFilters(required_predicates=("unknown.predicate",)),
         RichFilters(mime_type="image/jpeg", mime_category="image"),
@@ -365,6 +502,114 @@ def test_required_captured_at_returns_the_batched_structured_signal() -> None:
         "media.ocr_text",
         "media.captured_at",
     )
+
+
+def test_file_modified_required_only_returns_signal_without_duplicates() -> None:
+    resource = _summary("document.pdf")
+    candidate = RichCandidate(
+        resource,
+        3,
+        ("document.text_excerpt",),
+    )
+    repository = StubRichRepository(
+        candidates=(candidate,),
+        signals={
+            resource.resource_ref: _signals(
+                resource,
+                file_modified_at=NOW,
+                predicates=frozenset({"file.modified_at"}),
+            ),
+        },
+    )
+
+    result = RichRetrievalService(repository).retrieve_resources(
+        primary=ObservationTextPrimary(
+            "observation_text",
+            "machine learning",
+            "document.text_excerpt",
+        ),
+        filters=RichFilters(
+            file_modified_from=NOW,
+            required_predicates=("file.modified_at",),
+        ),
+    )
+
+    assert result.hits[0].file_modified_at == NOW
+    assert result.hits[0].matched_predicates == (
+        "document.text_excerpt",
+        "file.modified_at",
+    )
+
+
+def test_captured_and_file_modified_use_strict_and_semantics() -> None:
+    included = _summary("included.jpg")
+    wrong_capture = _summary("wrong-capture.jpg")
+    wrong_modified = _summary("wrong-modified.jpg")
+    candidates = tuple(
+        RichCandidate(resource, rank)
+        for rank, resource in enumerate(
+            (included, wrong_capture, wrong_modified),
+            start=1,
+        )
+    )
+    repository = StubRichRepository(
+        candidates=candidates,
+        signals={
+            included.resource_ref: _signals(
+                included,
+                captured_at=NOW,
+                file_modified_at=NOW,
+            ),
+            wrong_capture.resource_ref: _signals(
+                wrong_capture,
+                captured_at=NOW - timedelta(days=1),
+                file_modified_at=NOW,
+            ),
+            wrong_modified.resource_ref: _signals(
+                wrong_modified,
+                captured_at=NOW,
+                file_modified_at=NOW - timedelta(days=1),
+            ),
+        },
+    )
+
+    result = RichRetrievalService(repository).retrieve_resources(
+        primary=ObservationTextPrimary(
+            "observation_text",
+            "Cambridge",
+            "media.ocr_text",
+        ),
+        filters=RichFilters(
+            captured_from=NOW,
+            file_modified_from=NOW,
+        ),
+    )
+
+    assert [hit.resource for hit in result.hits] == [included]
+    assert result.hits[0].captured_at == NOW
+    assert result.hits[0].file_modified_at == NOW
+    assert result.hits[0].matched_predicates == (
+        "media.captured_at",
+        "file.modified_at",
+    )
+
+
+def test_file_modified_signal_is_not_requested_unconditionally() -> None:
+    resource = _summary("document.pdf")
+    repository = StubRichRepository(
+        candidates=(RichCandidate(resource, 1),),
+    )
+
+    result = RichRetrievalService(repository).retrieve_resources(
+        primary=ObservationTextPrimary(
+            "observation_text",
+            "machine learning",
+            "document.text_excerpt",
+        ),
+    )
+
+    assert result.hits[0].file_modified_at is None
+    assert repository.filter_calls == []
 
 
 def test_zero_hits_is_success_and_repository_failure_aborts() -> None:
