@@ -19,9 +19,9 @@ details live in their dedicated documents.
 ## Current
 
 - **v0.6 — Operational retrieval hardening:** validate the v0.5 contracts at
-  production scale, complete geo enrichment scheduling and retrieval UX, and
-  improve release/development automation without weakening production
-  isolation.
+  production scale, promote and validate the implemented geo enrichment timer,
+  improve retrieval UX, and improve release/development automation without
+  weakening production isolation.
 
 ## Future
 

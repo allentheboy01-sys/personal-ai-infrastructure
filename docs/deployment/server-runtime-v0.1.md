@@ -62,24 +62,38 @@ must never be used by the production services.
 
 - `pdi-sync-nextcloud.service`
 - `pdi-sync-immich.service`
+- `pdi-enrichment-nextcloud-text.service`
+- `pdi-enrichment-nextcloud-documents.service`
+- `pdi-enrichment-immich-geo.service`
+- `pdi-enrichment-file-metadata.service`
+- `pdi-enrichment-immich.service`
+- `pdi-enrichment-immich-ocr.service`
+- `pdi-resource-access.service`
 
-Each is a system-level `Type=oneshot` unit with the repository as its working
-directory and `/etc/pdi/pdi.env` as its explicit environment source.
+Sync and enrichment units are system-level `Type=oneshot` services with the
+repository as their working directory and `/etc/pdi/pdi.env` as their explicit
+environment source. Resource access is a separate long-running service.
 
 ## Timers and cadence
 
 - `pdi-sync-nextcloud.timer`: daily at 02:15 server local time
+- `pdi-enrichment-nextcloud-text.timer`: daily at 03:00
+- `pdi-enrichment-nextcloud-documents.timer`: daily at 03:15
 - `pdi-sync-immich.timer`: daily at 05:15 server local time
+- `pdi-enrichment-immich-geo.timer`: daily at 05:30
+- `pdi-enrichment-file-metadata.timer`: daily at 05:45
+- `pdi-enrichment-immich.timer`: daily at 06:00
+- `pdi-enrichment-immich-ocr.timer`: daily at 06:30
 
-Both timers use `Persistent=true`. The three-hour offset reduces normal lock
-contention. The cadence is deployment configuration, not a PDI Core contract.
+All timers use `Persistent=true`. Staggering plus the shared lock prevents
+normal overlap. The cadence is deployment configuration, not a PDI Core
+contract.
 
 ## Global lock
 
-Both services take an exclusive lock on `/run/lock/pdi-sync.lock`. A contender
-waits at most 3,600 seconds, then exits non-zero instead of running concurrently
-or waiting forever. Each complete service run has a 12-hour upper bound so a
-stuck provider cannot occupy the runtime indefinitely.
+All sync and enrichment services take an exclusive lock on
+`/run/lock/pdi-sync.lock`. A contender waits for its unit-specific bounded
+period, then exits non-zero instead of running concurrently or waiting forever.
 
 ## Logging
 
@@ -101,6 +115,7 @@ logging behavior are exercised as scheduled execution:
 ```bash
 sudo systemctl start pdi-sync-nextcloud.service
 sudo systemctl start pdi-sync-immich.service
+sudo systemctl start pdi-enrichment-immich-geo.service
 ```
 
 Run Immich only after the Nextcloud smoke test passes.
@@ -119,6 +134,7 @@ important result is `Result=success` and exit status zero.
 
 ```bash
 systemctl list-timers 'pdi-sync-*' --all
+systemctl list-timers 'pdi-enrichment-*' --all
 systemctl show pdi-sync-nextcloud.timer -p UnitFileState -p Persistent -p NextElapseUSecRealtime
 systemctl show pdi-sync-immich.timer -p UnitFileState -p Persistent -p NextElapseUSecRealtime
 ```
@@ -162,6 +178,8 @@ sudo install -o root -g root -m 0644 deployment/systemd/pdi-sync-nextcloud.servi
 sudo install -o root -g root -m 0644 deployment/systemd/pdi-sync-nextcloud.timer /etc/systemd/system/
 sudo install -o root -g root -m 0644 deployment/systemd/pdi-sync-immich.service /etc/systemd/system/
 sudo install -o root -g root -m 0644 deployment/systemd/pdi-sync-immich.timer /etc/systemd/system/
+sudo install -o root -g root -m 0644 deployment/systemd/pdi-enrichment-immich-geo.service /etc/systemd/system/
+sudo install -o root -g root -m 0644 deployment/systemd/pdi-enrichment-immich-geo.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 ```
 
@@ -180,8 +198,10 @@ Validate in this order:
 7. Start Immich and stop review if hashes, actions, downloads, or deactivations are
    unexpectedly large.
 8. Confirm existing Source and Blob identity remain stable for unchanged assets.
-9. Validate that both services reference the same lock path.
-10. Enable timers only after all preceding checks pass.
+9. Validate that all sync and enrichment services reference the same lock path.
+10. Run Immich geo enrichment manually after Immich sync; review the result and
+    verify `geo.country`, `geo.admin1`, and `geo.locality` observation semantics.
+11. Enable timers only after all preceding checks pass.
 
 Do not run pytest against the production database.
 
@@ -192,7 +212,9 @@ After successful service validation:
 ```bash
 sudo systemctl enable --now pdi-sync-nextcloud.timer
 sudo systemctl enable --now pdi-sync-immich.timer
+sudo systemctl enable --now pdi-enrichment-immich-geo.timer
 systemctl list-timers 'pdi-sync-*' --all
+systemctl list-timers 'pdi-enrichment-*' --all
 ```
 
 No reboot is required for V0.1 validation. Enabled state plus `Persistent=true`

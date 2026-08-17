@@ -116,7 +116,7 @@ service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线
 2026-08-17 本地完整测试：
 
 ```text
-412 passed, 66 skipped
+414 passed, 66 skipped
 ```
 
 66 个 skip 是显式的数据库/真实 Provider integration gate。本轮没有让 pytest 连接
@@ -129,12 +129,12 @@ deployment/design 文档中。
 - 没有 write Tool、任务系统或 proactive agent loop；
 - 没有正式 HTTP/Web UI；
 - Codex CLI 是开发工具，不进入 production data path；
-- Immich geo extractor 已实现，但独立 production scheduling 属于 v0.6 operational
-  hardening；
+- Immich geo extractor 与独立 05:30 systemd scheduling artifacts 已实现；production
+  安装、首次运行与 timer enable 仍需按 deployment gate 完成；
 - production integration validation 必须使用隔离数据库，不能复用 production secret。
 
 ## 7. 下一阶段
 
-下一阶段是 v0.6 operational retrieval hardening：生产规模验证、geo scheduling、
-retrieval UX 与可重复 release/development automation。任何关系推理、Memory、写操作或
-Web transport 都必须先冻结 trust boundary 与架构，再实现。
+下一阶段是 v0.6 operational retrieval hardening：生产规模验证并启用 geo scheduling、
+改进 retrieval UX 与可重复 release/development automation。任何关系推理、Memory、
+写操作或 Web transport 都必须先冻结 trust boundary 与架构，再实现。
