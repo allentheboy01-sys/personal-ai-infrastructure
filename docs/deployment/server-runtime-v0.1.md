@@ -230,10 +230,14 @@ No service daemon caches the file: each oneshot invocation reads it again.
 - Do not downgrade or alter the production schema unless a separately reviewed
   migration plan explicitly requires it.
 
-## Mac and server responsibilities
+## Development and production responsibilities
 
-The Mac is for development, isolated testing, artifact review, and administration.
-It is not part of the production data path and does not need to remain online.
+The workstation remains available for review and administration, but primary
+development may run on `pdi-server` in the separate user-owned checkout
+`/home/harry/projects/personal-ai-infrastructure`.
 
-`pdi-server` owns the formal checkout, virtual environment, secrets, scheduling,
-provider connectivity, PDI synchronization, and production PostgreSQL access.
+`/srv/projects/PDI` remains the formal production checkout. It owns the
+production virtual environment, deployment artifacts, scheduling, Provider
+connectivity, synchronization, and production PostgreSQL access. Never use it
+as a Codex development worktree or pytest target. See
+`docs/development/codex-cli-on-pdi-server.md` for the isolated host workflow.

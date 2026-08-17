@@ -1,173 +1,160 @@
 # PDI Architecture
 
-## Project Position
+## Position
 
 PDI is Personal Digital Infrastructure: a durable foundation for a person's
-digital life that remains useful independently of any one Provider, storage
-product, AI model, or interface.
+digital life, independent of any one Provider, storage product, model, or AI
+interface. Jarvis is the first validated consumer; Codex is a development
+tool. Neither is part of PDI Core.
 
-Jarvis is the first AI Interface built on top of PDI. Keeping it outside PDI
-Core preserves the distinction between infrastructure and consumer:
-
-```text
-Jarvis → PDI
-```
-
-The reverse dependency is prohibited. PDI must remain usable when Jarvis is
-removed or replaced.
-
-## Overall Architecture
+The dependency rule is one-way:
 
 ```text
-User
-  ↓
-Consumer / AI Interface
-  ↓
-PDI Application Service
-  ↓
-PDI Core and Repository Contracts
-  ↓
-PostgreSQL World Model
-
-Providers
-  ↓
-Adapters
-  ↓
-PDI Write Pipeline
+Consumer / AI runtime -> PDI
 ```
 
-The architecture separates changing edges from stable internal contracts.
-Providers enter through Adapters. Consumers enter through Application
-Services. Neither side defines the World Model or bypasses its boundaries.
+PDI must remain useful if every current consumer and model is replaced.
 
-PDI contains two distinct data paths:
+## System map
 
 ```text
-Write: ProviderFact → SyncEngine → Decision → DecisionRepository
-
-Read:  QueryService → QueryRepository → immutable Read Model
+Nextcloud / Immich
+        |
+     Adapters
+        |
+  Provider Facts
+        |
+    Write Pipeline --------------------+
+                                      |
+Provider metadata/content             v
+        |                         PostgreSQL World Model
+ Observation Extraction               ^        ^
+        |                              |        |
+ Typed evidenced Statements ----------+   Query / Retrieval
+                                               |
+                                   PDI MCP / Resource Access
+                                               |
+                                     Consumer / AI runtime
 ```
 
-The same PostgreSQL Repository may implement both repository contracts, but
-the contracts and responsibilities remain separate.
+The implementation separates four paths so a richer consumer cannot rewrite
+identity rules and a richer Provider cannot leak into public contracts.
 
-## PDI Core
-
-PDI Core maintains provider-independent identity and lifecycle rules.
-
-The Write Pipeline translates observations into controlled World Model
-changes:
+## Write path
 
 ```text
-Provider
-  ↓
-Adapter
-  ↓
-ProviderFact
-  ↓
-SyncEngine
-  ├── Identity / Matcher
-  ├── Requirement / Capability
-  └── Decision
-        ↓
-DecisionRepository
+Provider -> Adapter -> ProviderFact -> SyncEngine
+                                      |-> Identity / Matcher
+                                      |-> Requirement
+                                      `-> Decision -> DecisionRepository
 ```
 
-The Core owns concepts such as Asset, Blob, and AssetSource. Provider-specific
-concepts stay behind Adapter boundaries, while AI-specific concepts stay in
-consumer packages.
+Adapters translate Provider observations and open content only when the Sync
+Engine requests evidence. They do not create World Model entities, decide
+identity, or access repositories.
 
-This prevents a richer Provider or a newer AI model from forcing unnecessary
-changes into stable personal identity semantics.
+The Core owns Asset, Blob, and AssetSource identity and lifecycle. Synchronism
+is incremental and idempotent; full scans can reconcile missing sources by
+soft deactivation without destroying durable identity.
 
-## Jarvis
-
-Jarvis is a consumer application in the separate `src/jarvis` package. Its
-current execution path is:
+## Observation path
 
 ```text
-ToolCall
-  ↓
-JarvisApplication
-  ↓
-ToolRegistry
-  ↓
-Tool
-  ↓
-PDI QueryService
+Resource + Source metadata/content
+        |
+ deterministic Extractor
+        |
+ ObservationBatch
+        |
+ ObservationService -> ObservationRepository -> PostgreSQL
 ```
 
-`JarvisApplication` only resolves and executes Tools. It does not understand
-specific Tool arguments, query PDI directly, or access persistence.
+Observations add typed, evidenced statements to a Resource without changing
+its identity. Predicate definitions fix value type and cardinality. Each batch
+records generator identity, covered predicates, input fingerprint, evidence,
+and statement lifecycle so reruns are deterministic and supersession is
+explicit.
 
-Each Tool owns its parameter validation and translates expected business
-outcomes into stable `ToolResult` errors. Unexpected failures are contained at
-the Application boundary and logged without exposing internal details to the
-caller.
+Current extractors cover Immich provider metadata, OCR and geo labels, file
+modification time, Nextcloud text, and PDF/DOCX/ODT content. Extractors do not
+make open-ended AI interpretations.
 
-New Tools should require only a new Tool implementation, registration in the
-Composition Root, and tests. They should not require changes to the execution
-core.
+## Read and retrieval path
 
-## Provider
+```text
+Consumer -> Application Service -> Repository contract -> PostgreSQL
+                    |
+             immutable Read Model
+```
 
-A Provider is an external system that owns its own representation and
-behavior. Nextcloud and Immich are the current real Providers.
+The read surface consists of:
 
-An Adapter translates Provider observations into `ProviderFact` and opens
-content only when the SyncEngine requests additional evidence. It does not
-create World Model entities, make identity decisions, or access a Repository.
+- `QueryService` for recent/search/detail, aggregation, filters, and cursor
+  pagination;
+- `RetrievalService` for Provider-semantic retrieval; and
+- `RichRetrievalService` for primary text retrieval combined with typed
+  Observation filters.
 
-Providers remain replaceable because PDI Core consumes the shared Adapter
-contract rather than Provider APIs directly.
+Resource references use `pdi:resource:<uuid>`. Time semantics distinguish PDI
+first-observed time, captured time, and file-modified time. Repository mapping
+finishes while a SQLAlchemy Session is active; ORM objects, sessions, engines,
+and concrete repositories never cross the service boundary.
 
-## Application Service
+## Resource access path
 
-Application Services are the public use-case boundary for consumers.
+Resource access is separate from query and retrieval:
 
-The current Read Application Service is `QueryService`, which provides:
+```text
+Resource reference + representation kind
+        |
+ResourceAccessService -> eligible Provider source -> bounded byte stream
+```
 
-- `list_assets()`;
-- `get_asset(asset_id)`.
+It returns controlled representations rather than filesystem paths or Provider
+credentials. Eligibility, size limits, upstream validation, concurrency, and
+stream cleanup are enforced at the service boundary. The deployed process uses
+its own launcher and Unix-domain-socket/HTTP boundary.
 
-It returns immutable Query Read Models rather than ORM or Domain objects. This
-gives consumers a stable contract while allowing persistence and internal
-models to evolve independently.
+## MCP boundary
 
-Jarvis Tools depend on this service. They must not import a concrete
-Repository, SQLAlchemy, Session, Engine, database model, or Adapter.
+PDI MCP is the read-only consumer boundary. It composes the public services and
+serializes stable results. It currently exposes seven Tools for recent,
+search, aggregation, Provider-semantic retrieval, rich retrieval, Resource
+detail, and Resource observations.
 
-## Repository
+MCP Tool handlers must not import ORM types, open database sessions directly,
+or receive Provider credentials. A runtime may expose a deliberately smaller
+subset; the validated Jarvis/Hermes profile exposes exactly three Tools.
 
-Repository contracts isolate persistence from business and consumer logic.
+## Runtime and deployment
 
-The Write side uses a Decision Repository to execute already-decided changes.
-The Read side uses `QueryRepository` to produce stable Read Models. These
-interfaces remain separate even though `PostgreSQLRepository` implements both.
+The formal runtime host is `pdi-server`. Production state is rooted in
+`/srv/projects/PDI`, `/etc/pdi`, systemd units, and the production PostgreSQL
+service. Jarvis/Hermes is an SSH-on-demand reference runtime with isolated LLM
+and PDI MCP credentials; it is not a daemon and is not required by PDI.
 
-SQLAlchemy ORM objects and Sessions stay inside the PostgreSQL Repository.
-Read Model mapping is completed while a Session is active, and returned values
-remain usable after that Session closes.
+Host-based development uses a separate user checkout under
+`/home/harry/projects/personal-ai-infrastructure`. The production checkout is
+never a development worktree or test target.
 
-This design keeps transaction and query mechanics out of the Core,
-Application Services, Jarvis, and Tools.
+## Invariants
 
-## Future Extension Direction
+- PDI Core depends on no AI runtime or model.
+- Provider-specific behavior remains behind Adapters or access providers.
+- Identity changes only through the Write Pipeline.
+- Observation enrichment never mutates Resource identity.
+- Public services return stable immutable models or bounded streams.
+- MCP is read-only until a separately reviewed write/action boundary exists.
+- Production secrets never enter Git, prompts, logs, or test processes.
+- Production updates are clean and fast-forward-only.
 
-Future capabilities should extend the established boundaries instead of
-bypassing them:
+## Future extension
 
-- new Providers enter through new Adapters;
-- new consumer operations enter through public Application Services;
-- new Jarvis capabilities enter through registered Tools;
-- external transports call the Jarvis Application boundary;
-- persistence changes remain behind Repository contracts.
+New Providers enter through Adapters. New deterministic knowledge enters
+through registered predicates and extractors. New query behavior enters public
+Application Services and repository contracts. New AI capabilities enter as
+consumer Tools over those services.
 
-HTTP transport, content access, search, relationships, tasks, and LLM
-integration are not part of the current architecture until their respective
-designs are discussed and frozen.
-
-The governing rule remains:
-
-> Architecture before implementation. A new abstraction must reduce total
-> complexity.
+Relationships, long-term user-controlled memory, write actions, task systems,
+and a Web transport require their own trust and architecture freeze before
+implementation. A new abstraction must reduce total complexity.

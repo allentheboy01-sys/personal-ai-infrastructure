@@ -1,204 +1,136 @@
 # PDI 当前开发上下文
 
-**当前版本：** `v0.4.0`
+**当前版本：** `v0.5.0`
+
+**冻结日期：** 2026-08-17
 
 **文档性质：** 当前真实实现状态，不是版本历史或永久架构规范。
 
 ## 1. 项目定位
 
-PDI（Personal Digital Infrastructure）是项目本体，是个人数字生活的稳定基础设施。
+PDI 是个人数字生活的稳定基础设施；Provider、LLM 与 AI Interface 都是可替换边缘。
+Jarvis 是第一个经过服务器验证的 AI Interface，不定义 PDI Core。
 
-Jarvis 是建立在 PDI 之上的第一个 AI Interface。Jarvis 是消费者，不定义 PDI Core，
-也不是项目名称。
-
-当前冻结依赖方向：
+当前依赖方向：
 
 ```text
-Jarvis
-  ↓
-PDI Application Service
-  ↓
-Query Repository
-  ↓
-PostgreSQL Repository
+Provider -> Adapter -> Write Pipeline -> PostgreSQL
+                                      <- Query / Retrieval <- PDI MCP <- Consumer
+                                      <- Resource Access
+
+Provider metadata/content -> Observation Enrichment -> typed Statements
 ```
 
 必须保持：
 
-- PDI 不依赖 Jarvis；
-- Jarvis 只能通过 PDI 的公开 Application Service 读取数据；
-- Tool 不直接访问 Repository、ORM、Session、Engine 或数据库；
-- Write Pipeline 与 Read Pipeline 职责分离；
-- Provider 和 AI 可以替换，PDI World Model 保持稳定。
+- PDI 不依赖 Jarvis、Hermes、DeepSeek 或 Codex；
+- Consumer 只能使用公开 Application Service、MCP 或受控 Resource Access；
+- ORM、Session、Engine、Repository 与 Provider credential 不越过公开边界；
+- Observation 增强 Resource 的可理解性，但不改变 Resource identity；
+- Write、Observation、Read/Retrieval 与 Resource Access 职责分离。
 
-## 2. 当前冻结架构
+## 2. 已实现能力
 
-### Write Pipeline
+### Write 与 Provider
 
-```text
-Provider
-  ↓
-Adapter
-  ↓
-ProviderFact
-  ↓
-SyncEngine
-  ├── Identity / Matcher
-  ├── Requirement
-  └── Decision
-        ↓
-DecisionRepository
-        ↓
-PostgreSQLRepository
-```
+- Nextcloud 与 Immich 真实 Adapter；
+- 增量、幂等同步与完整扫描 reconcile；
+- Asset、Blob、AssetSource identity 与 source lifecycle；
+- Provider 选择和 Nextcloud 递归扫描；
+- PostgreSQL Repository 与 Alembic migration。
 
-Write Pipeline 已冻结，不应因为消费者能力而重构。
+### Resource Query
 
-### Read Pipeline
+- 稳定 `pdi:resource:<uuid>` reference；
+- recent、search、aggregate、detail 与 cursor page；
+- Provider、MIME、Resource type 与时间范围过滤；
+- captured time 与 file-modified time 语义；
+- immutable Read Model 与 Session 内映射。
 
-```text
-QueryService
-  ↓
-QueryRepository
-  ↓
-PostgreSQLRepository
-  ↓
-SQLAlchemy ORM
-  ↓
-PostgreSQL
-```
+### Observation
 
-Read Pipeline 返回不可变 Read Model，不返回 ORM、Domain Model、Session 或 Engine。
+- typed Statement、predicate registry、cardinality、Evidence、generator identity；
+- current/superseded lifecycle、input fingerprint 与幂等 publish；
+- Immich metadata、OCR 与 Provider geo label extractor；
+- file modified metadata；
+- Nextcloud plain text、PDF、DOCX 与 ODT extraction；
+- Observation PostgreSQL Repository 与 MCP detail exposure。
 
-当前公开读取能力：
+### Retrieval 与 Resource Access
 
-- `QueryService.list_assets()`；
-- `QueryService.get_asset(asset_id)`。
+- Provider-semantic retrieval；
+- rich retrieval：primary text 加 typed statement filters；
+- captured/file-modified temporal statement matching；
+- bounded streamed Resource representation；
+- 独立 resource-access process、UDS/HTTP 边界与并发/大小限制。
 
-### Jarvis Tool Execution
+### PDI MCP
 
-```text
-ToolCall
-  ↓
-JarvisApplication
-  ↓
-ToolRegistry
-  ↓
-Tool
-  ↓
-QueryService
-```
+当前提供七个 read-only Tool：
 
-`JarvisApplication` 只负责编排 Tool 执行。参数解析和业务错误由具体 Tool 负责。
+1. `pdi_list_recent_resources`
+2. `pdi_search_resources`
+3. `pdi_aggregate_resources`
+4. `pdi_retrieve_resources`
+5. `pdi_rich_retrieve_resources`
+6. `pdi_get_resource`
+7. `pdi_get_resource_observations`
 
-Jarvis 与 PDI 位于同一仓库中的两个独立 Python 包：
+### Server Runtime
 
-```text
-src/
-├── pdi/
-└── jarvis/
-```
+- 正式主机：`pdi-server`；
+- 正式 production checkout：`/srv/projects/PDI`；
+- production PostgreSQL、Provider sync、enrichment timers 与 resource-access
+  service 均在主机运行；
+- Jarvis/Hermes reference runtime 通过 SSH on-demand 启动；
+- Hermes 仅启用三个冻结的 PDI MCP Tool，Memory 与 write capability 关闭；
+- DeepSeek 是当前远程 inference Provider，PDI 不依赖它。
 
-唯一正式 Jarvis 装配入口为：
+## 3. 开发工作流
 
-```python
-create_jarvis_application(settings)
-```
-
-## 3. 当前完成能力
-
-### Provider 与 Write
-
-- Nextcloud 与 Immich 两个真实 Provider；
-- 统一 ProviderFact 输入；
-- Identity、Requirement 和 Decision；
-- SHA-256 内容身份验证；
-- 增量同步和完整扫描 Reconcile；
-- Source 软停用；
-- 幂等同步；
-- PostgreSQL Repository；
-- Alembic Migration。
-
-### Read
-
-- `AssetSummary`；
-- `AssetDetail`；
-- `BlobView`；
-- `SourceView`；
-- 稳定排序；
-- Metadata 递归不可变；
-- Session 内完成 ORM 到 Read Model 映射。
-
-### Jarvis Tool
-
-当前支持：
-
-- `list_assets`：返回 PDI 中可用的 Asset 摘要；
-- `get_asset`：根据 Asset UUID 返回详细 Read Model。
-
-当前执行边界还包括：
-
-- 不可变 `ToolCall`、`ToolResult` 和 `ToolError`；
-- 稳定且拒绝重复注册的 `ToolRegistry`；
-- `unknown_tool`、`invalid_arguments`、`asset_not_found` 和
-  `internal_error` 错误语义；
-- 不记录参数值的 Tool 执行日志；
-- 显式 Composition Root。
-
-## 4. 测试状态
-
-当前发布状态：
+主机开发采用独立 checkout：
 
 ```text
-81 passed
+/home/harry/projects/personal-ai-infrastructure  # development
+/srv/projects/PDI                               # production only
 ```
 
-已通过真实 PostgreSQL Integration Test，覆盖：
+Codex CLI 可以在开发 checkout 中读取 `AGENTS.md`、本文件与 release 文档。
+生产 checkout 只接受从 `origin/main` 的 clean fast-forward promotion，不用于日常开发或
+pytest。完整操作见 `docs/development/codex-cli-on-pdi-server.md`。
 
-- PostgreSQL → PostgreSQLRepository → QueryService → Tool →
-  ToolRegistry → JarvisApplication；
-- `list_assets` 的真实数据和确定性顺序；
-- `get_asset` 的 Asset、Blob、Source 与 `blob_id` 关系；
-- Session 关闭后的 Read Model 可用性；
-- 不存在 Asset 的稳定 `asset_not_found` 结果。
+## 4. Chat 与 Memory 边界
 
-现有 Write Pipeline、Provider、Migration 与数据库测试继续通过。
+- Codex chat transcript 是运行 Codex 的 host-local session state；
+- 新主机上的 chat 可用 `codex resume` 恢复，但现有 Mac-only chat 不视为已迁移；
+- Codex local memory 与 ChatGPT web memory 分离，默认关闭；
+- 必须长期保留的架构、命令、测试与安全规则写进 Git 中的 `AGENTS.md` 和文档；
+- 不复制整个 `~/.codex`，也不提交 `auth.json`、sessions 或 memories。
 
-## 5. 当前未完成
+## 5. 验证状态
 
-以下能力不属于 `v0.4.0`：
-
-- Jarvis HTTP API；
-- Content Access；
-- Search；
-- Relation；
-- Task System；
-- LLM Integration；
-- Agent Loop；
-- Conversation 与 Chat History；
-- RAG、Vector、Cache、Permission 与用户系统。
-
-这些能力不能被当前代码或文档视为已经存在。
-
-## 6. 下一阶段讨论
-
-下一阶段首先讨论 `v0.5`。
-
-当前方向是 Jarvis HTTP API，但在架构冻结前不提前定义 Transport、认证、请求模型、
-部署方式或新的 Tool 能力。
-
-默认流程仍然是：
+2026-08-17 本地完整测试：
 
 ```text
-讨论问题
-  ↓
-冻结架构
-  ↓
-更新 Specification / ADR
-  ↓
-实现
-  ↓
-测试
+412 passed, 66 skipped
 ```
 
-不要提前实现 `v0.5`。
+66 个 skip 是显式的数据库/真实 Provider integration gate。本轮没有让 pytest 连接
+production `pdi` 数据库。服务器 Runtime 与 Jarvis E2E 的已冻结证据记录在对应
+deployment/design 文档中。
+
+## 6. 当前限制
+
+- 没有通用 Jarvis/PDI long-term memory；
+- 没有 write Tool、任务系统或 proactive agent loop；
+- 没有正式 HTTP/Web UI；
+- Codex CLI 是开发工具，不进入 production data path；
+- Immich geo extractor 已实现，但独立 production scheduling 属于 v0.6 operational
+  hardening；
+- production integration validation 必须使用隔离数据库，不能复用 production secret。
+
+## 7. 下一阶段
+
+下一阶段是 v0.6 operational retrieval hardening：生产规模验证、geo scheduling、
+retrieval UX 与可重复 release/development automation。任何关系推理、Memory、写操作或
+Web transport 都必须先冻结 trust boundary 与架构，再实现。
