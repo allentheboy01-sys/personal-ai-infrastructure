@@ -1,0 +1,10 @@
+[Unit]
+Description=Run PDI Immich geo observation enrichment daily
+
+[Timer]
+OnCalendar=*-*-* 05:30:00
+Persistent=true
+Unit=pdi-enrichment-immich-geo.service
+
+[Install]
+WantedBy=timers.target
