@@ -127,6 +127,11 @@ def test_scan_paginates_and_maps_provider_facts(
             "fileSizeInByte": 123456,
             "make": "Camera Co.",
             "model": "Camera Model",
+            "latitude": 31.2,
+            "longitude": 121.5,
+            "country": "People's Republic of China",
+            "state": "Shanghai",
+            "city": "Shanghai",
         },
     }
     second_asset = {
@@ -249,6 +254,11 @@ def test_scan_paginates_and_maps_provider_facts(
             "fileSizeInByte": 123456,
             "make": "Camera Co.",
             "model": "Camera Model",
+            "latitude": 31.2,
+            "longitude": 121.5,
+            "country": "People's Republic of China",
+            "state": "Shanghai",
+            "city": "Shanghai",
         },
         "fileModifiedAt": "2026-07-19T01:02:03.456Z",
         "favorite": True,

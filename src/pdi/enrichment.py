@@ -11,6 +11,7 @@ from pdi.database import create_postgres_engine
 from pdi.observation import (
     EnrichmentWorker,
     FileMetadataExtractor,
+    ImmichGeoExtractor,
     ImmichMetadataExtractor,
     ImmichOCRExtractor,
     ImmichOCRReader,
@@ -31,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--extractor",
         choices=(
             "immich-metadata",
+            "immich-geo",
             "immich-ocr",
             "file-metadata",
             "nextcloud-text",
@@ -60,6 +62,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         provider = "immich"
         if args.extractor == "immich-metadata":
             extractor = ImmichMetadataExtractor()
+        elif args.extractor == "immich-geo":
+            extractor = ImmichGeoExtractor()
         elif args.extractor == "file-metadata":
             extractor = FileMetadataExtractor()
             provider = extractor.discovery_providers

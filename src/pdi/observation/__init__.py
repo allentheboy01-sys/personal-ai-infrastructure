@@ -23,9 +23,17 @@ from .models import (
     StatementView,
     WorkerResult,
 )
-from .predicates import FILE_MODIFIED_AT, PREDICATES, get_predicate
+from .predicates import (
+    FILE_MODIFIED_AT,
+    GEO_ADMIN1,
+    GEO_COUNTRY,
+    GEO_LOCALITY,
+    PREDICATES,
+    get_predicate,
+)
 from .extractor import ImmichMetadataExtractor
 from .file_metadata import FileMetadataExtractor
+from .immich_geo import ImmichGeoExtractor
 from .ocr import ImmichOCRExtractor, ImmichOCRReader, OCRRegion
 from .nextcloud_text import (
     MAX_DECODED_CHARACTERS,
@@ -52,6 +60,9 @@ __all__ = [
     "EvidenceSourceKind",
     "FILE_MODIFIED_AT",
     "FileMetadataExtractor",
+    "GEO_ADMIN1",
+    "GEO_COUNTRY",
+    "GEO_LOCALITY",
     "GeneratorIdentity",
     "ObservationBatch",
     "ObservationError",
@@ -71,6 +82,7 @@ __all__ = [
     "get_predicate",
     "EnrichmentWorker",
     "ImmichMetadataExtractor",
+    "ImmichGeoExtractor",
     "ImmichOCRExtractor",
     "ImmichOCRReader",
     "OCRRegion",

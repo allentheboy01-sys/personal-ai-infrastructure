@@ -160,6 +160,26 @@ def test_file_metadata_selector_uses_one_union_worker(
     assert engine.disposed is True
 
 
+def test_immich_geo_selector_uses_existing_immich_worker(
+    monkeypatch,
+    composition,
+) -> None:
+    engine, repository = composition
+    extractor = object()
+    monkeypatch.setattr(
+        enrichment,
+        "ImmichGeoExtractor",
+        lambda: extractor,
+    )
+
+    assert enrichment.main(
+        ["--extractor", "immich-geo", "--batch-size", "23"]
+    ) == 0
+    assert FakeWorker.calls == [(repository, extractor, 23)]
+    assert FakeWorker.providers == ["immich"]
+    assert engine.disposed is True
+
+
 def test_ocr_configuration_failure_still_disposes_engine(
     monkeypatch,
     composition,
