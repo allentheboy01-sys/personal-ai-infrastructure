@@ -83,7 +83,7 @@ git clone https://github.com/allentheboy01-sys/personal-ai-infrastructure.git \
   ~/projects/personal-ai-infrastructure
 cd ~/projects/personal-ai-infrastructure
 python3.13 -m venv .venv
-.venv/bin/python -m pip install -e .
+.venv/bin/python -m pip install -e . pytest
 .venv/bin/python -m pytest -q
 codex
 ```

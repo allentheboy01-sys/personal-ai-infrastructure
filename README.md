@@ -68,7 +68,7 @@ Use Python 3.13 and an isolated environment:
 
 ```bash
 python3.13 -m venv .venv
-.venv/bin/python -m pip install -e .
+.venv/bin/python -m pip install -e . pytest
 .venv/bin/python -m pytest -q
 ```
 
