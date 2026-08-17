@@ -97,7 +97,7 @@ After the release commit is on GitHub:
 
 ```bash
 mkdir -p ~/projects
-git clone https://github.com/allentheboy01-sys/personal-ai-infrastructure.git \
+git clone git@github.com:allentheboy01-sys/personal-ai-infrastructure.git \
   ~/projects/personal-ai-infrastructure
 cd ~/projects/personal-ai-infrastructure
 python3.13 -m venv .venv
@@ -109,6 +109,10 @@ codex
 For database integration tests, set `PDI_TEST_DATABASE_URL` to the isolated
 test database only. Never source `/etc/pdi/pdi.env` and never use production
 database `pdi` as a test target.
+
+GitHub SSH authentication is configured with a dedicated host key. The
+development checkout uses the SSH remote and passed `git push --dry-run`; the
+production checkout deliberately retains its HTTPS pull-only workflow.
 
 ## Chats, project context, and memory
 
@@ -146,13 +150,15 @@ only a recall layer.
 
 ```bash
 ssh -t harry@pdi-server
-cd ~/projects/personal-ai-infrastructure
-git status --short --branch
-git pull --ff-only
-codex
+pdi-dev
 ```
 
-Use `codex resume` to reopen a host-local chat. Before publishing, run the
+`pdi-dev` enters the development checkout, fetches `origin/main`, performs a
+fast-forward only when the worktree is clean, and starts Codex. If local
+changes exist, it preserves them, skips the automatic merge, prints status,
+and still starts Codex for review.
+
+Use `pdi-dev resume --last` to reopen the latest host-local PDI chat. Before publishing, run the
 repository tests, review the diff, update current context/release documents
 when behavior changed, and keep `/srv/projects/PDI` untouched until the commit
 is reviewed and pushed.
