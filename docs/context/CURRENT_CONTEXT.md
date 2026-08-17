@@ -99,11 +99,15 @@ Codex CLI 可以在开发 checkout 中读取 `AGENTS.md`、本文件与 release 
 生产 checkout 只接受从 `origin/main` 的 clean fast-forward promotion，不用于日常开发或
 pytest。完整操作见 `docs/development/codex-cli-on-pdi-server.md`。
 
+主机 Codex CLI 已使用独立常驻 Xray user service，通过仅监听
+`127.0.0.1:10808` 的本机代理访问 ChatGPT 与 GitHub。ChatGPT 登录已完成，Xray
+service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线。
+
 ## 4. Chat 与 Memory 边界
 
 - Codex chat transcript 是运行 Codex 的 host-local session state；
 - 新主机上的 chat 可用 `codex resume` 恢复，但现有 Mac-only chat 不视为已迁移；
-- Codex local memory 与 ChatGPT web memory 分离，默认关闭；
+- Codex local memory 与 ChatGPT web memory 分离；主机 local memory 当前已启用；
 - 必须长期保留的架构、命令、测试与安全规则写进 Git 中的 `AGENTS.md` 和文档；
 - 不复制整个 `~/.codex`，也不提交 `auth.json`、sessions 或 memories。
 

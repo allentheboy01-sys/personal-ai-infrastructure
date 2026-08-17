@@ -37,6 +37,21 @@ SHA-512 integrity was verified before extraction. The complete platform bundle,
 including sandbox resources, bundled `rg`, zsh, and code-mode host, is kept
 under `~/.local/share/codex/0.147.0`.
 
+The host now has a separate persistent Xray `26.3.27` user service. It uses a
+private VLESS/REALITY configuration at `~/.config/pdi-proxy/config.json`, mode
+`600`, and exposes a mixed proxy only at `127.0.0.1:10808`. The service is
+enabled, the user has lingering enabled, and the `codex` wrapper plus Git HTTPS
+use this host-local proxy. It does not depend on the Mac remaining online.
+
+Inspect without displaying credentials:
+
+```bash
+systemctl --user is-active pdi-xray.service
+systemctl --user is-enabled pdi-xray.service
+loginctl show-user harry -p Linger
+ss -lnt | grep '127.0.0.1:10808'
+```
+
 The official macOS/Linux path is the standalone installer:
 
 ```bash
@@ -49,7 +64,10 @@ installer or release CDN, stop rather than using an unverified mirror. A
 GitHub release artifact is an acceptable fallback only after checking its
 published digest and installing it into `~/.local/bin/codex`.
 
-## One human authentication step
+## Authentication
+
+ChatGPT device-code authentication completed successfully on 2026-08-17.
+`codex login status` reports `Logged in using ChatGPT`.
 
 The host is headless, so authenticate with the device-code flow:
 
@@ -100,7 +118,7 @@ These are three different layers:
 |---|---|---|
 | Project facts and rules | Git: `AGENTS.md`, architecture, context, release docs | Available in every clean checkout and every new chat |
 | Chat transcript | Local Codex session state | New host chats can be resumed with `codex resume`; existing Mac-only chats are not assumed to migrate |
-| Codex memory | Host-local generated files under `~/.codex/memories/` | Optional, separate from ChatGPT web memory, and off by default |
+| Codex memory | Host-local generated files under `~/.codex/memories/` | Enabled on this host, separate from ChatGPT web memory |
 
 Do not copy the entire Mac `~/.codex` directory to the server. It can contain
 credentials, platform-specific config, plugins, absolute paths, sessions, and
@@ -112,8 +130,7 @@ Read AGENTS.md, README.md, docs/context/CURRENT_CONTEXT.md, and the latest
 release notes. Then inspect git status and summarize the next safe task.
 ```
 
-Enable local Codex memory only if you want host chats to contribute to future
-host chats:
+Local Codex memory is enabled on this host:
 
 ```toml
 # ~/.codex/config.toml
