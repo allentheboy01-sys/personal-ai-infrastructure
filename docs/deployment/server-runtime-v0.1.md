@@ -31,8 +31,8 @@ fast-forward-only from the authoritative Git remote.
 
 ## Runtime user
 
-Both services run as `harry`. V0.1 does not introduce a dedicated service user.
-The services do not require access to the Docker socket.
+The PDI runtime services run as `harry`. V0.1 does not introduce a dedicated
+service user. The services do not require access to the Docker socket.
 
 ## Python and virtual environment
 
@@ -88,6 +88,23 @@ environment source. Resource access is a separate long-running service.
 All timers use `Persistent=true`. Staggering plus the shared lock prevents
 normal overlap. The cadence is deployment configuration, not a PDI Core
 contract.
+
+## Immich Geo production freeze
+
+Immich Geo Enrichment V0.1 is production validated and frozen at commit
+`9538e26442a5051f7cd83e1608ef3c6123f3ddfb`.
+
+- canonical and installed service/timer files have matching SHA-256 digests;
+- production full enrichment completed for `geo.country`, `geo.admin1`, and
+  `geo.locality`;
+- a full rerun validated idempotency with 15,213 skips, zero writes, and zero
+  failures;
+- the 2026-08-18 05:30 run completed successfully with exit status zero; and
+- the timer is loaded, enabled, active, persistent, and scheduled daily at
+  05:30 Asia/Shanghai.
+
+Production read-only verification on 2026-08-18 found 15,214 completed
+`immich_geo` enrichment states and no non-completed state.
 
 ## Global lock
 
@@ -183,7 +200,8 @@ sudo install -o root -g root -m 0644 deployment/systemd/pdi-enrichment-immich-ge
 sudo systemctl daemon-reload
 ```
 
-Do not enable the timers until both services pass manual smoke validation.
+Do not enable a new timer until its relevant services pass manual smoke
+validation.
 
 ## Smoke validation
 

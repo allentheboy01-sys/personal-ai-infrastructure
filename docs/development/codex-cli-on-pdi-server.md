@@ -2,8 +2,8 @@
 
 ## Decision
 
-Primary PDI development may run on `pdi-server`, close to the real Linux
-runtime and isolated PostgreSQL test infrastructure. Development must use a
+Primary PDI Codex development runs on `pdi-server`, close to the real Linux
+runtime and isolated PostgreSQL test infrastructure. Development uses a
 separate user-owned checkout. The production checkout remains deploy-only.
 
 ```text
@@ -114,6 +114,30 @@ GitHub SSH authentication is configured with a dedicated host key. The
 development checkout uses the SSH remote and passed `git push --dry-run`; the
 production checkout deliberately retains its HTTPS pull-only workflow.
 
+## Workspace model
+
+The long-term model is intentionally simple:
+
+- a directory/Git repository is a Codex workspace;
+- a Codex session is one chat within that workspace;
+- `AGENTS.md` plus project documentation is authoritative durable context; and
+- Codex Memory is an auxiliary recall layer, not a replacement for Git docs.
+
+Ordinary projects do not require a registry or launcher. Create or enter a
+directory and run `codex`. Launchers are only convenience commands for frequent
+workspaces.
+
+## Frequent workspace launchers
+
+- `pdi-dev` → `/home/harry/projects/personal-ai-infrastructure`
+- `ai-learning` → `/home/harry/projects/ai-learning`
+- `feng-mbp` → `/home/harry/projects/ai-learning/projects/feng-mbp-time-series`
+- `ai-learn` → legacy/deprecated compatibility name for `feng-mbp`
+
+All launchers pass arguments unchanged to Codex. Therefore `resume --last`
+resumes within the workspace selected by the launcher. AI launchers do not
+read, print, move, or upload raw medical data.
+
 ## Chats, project context, and memory
 
 These are three different layers:
@@ -158,10 +182,15 @@ fast-forward only when the worktree is clean, and starts Codex. If local
 changes exist, it preserves them, skips the automatic merge, prints status,
 and still starts Codex for review.
 
-Use `pdi-dev resume --last` to reopen the latest host-local PDI chat. Before publishing, run the
-repository tests, review the diff, update current context/release documents
-when behavior changed, and keep `/srv/projects/PDI` untouched until the commit
-is reviewed and pushed.
+Use `pdi-dev resume --last` to reopen the latest host-local PDI chat. Before
+publishing, run the repository tests, review the diff, update current
+context/release documents when behavior changed, and keep `/srv/projects/PDI`
+untouched until the commit is reviewed and pushed.
+
+Architecture and product discussion remains human-led with ChatGPT. PDI
+implementation, tests, and Git run in the server development checkout. The Mac
+is a client for SSH and optional review; it is no longer the primary PDI Codex
+development environment. Existing Mac repositories and history are retained.
 
 ## Production promotion
 

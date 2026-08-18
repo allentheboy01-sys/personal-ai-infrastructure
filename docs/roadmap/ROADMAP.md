@@ -18,10 +18,11 @@ details live in their dedicated documents.
 
 ## Current
 
-- **v0.6 — Operational retrieval hardening:** validate the v0.5 contracts at
-  production scale, promote and validate the implemented geo enrichment timer,
-  improve retrieval UX, and improve release/development automation without
-  weakening production isolation.
+- **v0.6 — Operational hardening:** Immich Geo Enrichment V0.1 production
+  enrichment, idempotency, service installation, and daily 05:30 timer are
+  complete and frozen. Server-first Codex migration is complete. The next
+  formal architecture stage requires human discussion and is not selected by
+  this roadmap update.
 
 ## Future
 

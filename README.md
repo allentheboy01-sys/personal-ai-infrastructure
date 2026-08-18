@@ -58,9 +58,10 @@ The release includes:
   and
 - a server-first Codex CLI development workflow with production isolation.
 
-Current `main` validation: `414 passed, 66 skipped`. Skipped tests are the
-explicit external/database integration gates and are not run against production
-data. The v0.5.0 release-preparation baseline was `412 passed, 66 skipped`.
+Current host-safe/default validation: `414 passed, 66 skipped`. Integration,
+live-Provider, and database tests are explicitly gated and are not run against
+production data. This is distinct from a full isolated integration validation.
+The v0.5.0 release-preparation baseline was `412 passed, 66 skipped`.
 
 ## Development
 

@@ -2,7 +2,7 @@
 
 **当前版本：** `v0.5.0`
 
-**冻结日期：** 2026-08-17
+**冻结日期：** 2026-08-18
 
 **文档性质：** 当前真实实现状态，不是版本历史或永久架构规范。
 
@@ -82,13 +82,16 @@ Provider metadata/content -> Observation Enrichment -> typed Statements
 - 正式 production checkout：`/srv/projects/PDI`；
 - production PostgreSQL、Provider sync、enrichment timers 与 resource-access
   service 均在主机运行；
+- Immich Geo Enrichment V0.1 已完成 production full enrichment、full
+  idempotency、正式 unit 安装与每日 05:30 Asia/Shanghai timer 验证；
+- 当前 Geo predicates 为 `geo.country`、`geo.admin1`、`geo.locality`；
 - Jarvis/Hermes reference runtime 通过 SSH on-demand 启动；
 - Hermes 仅启用三个冻结的 PDI MCP Tool，Memory 与 write capability 关闭；
 - DeepSeek 是当前远程 inference Provider，PDI 不依赖它。
 
 ## 3. 开发工作流
 
-主机开发采用独立 checkout：
+主机独立 development checkout 是 PDI 的主要 Codex 开发环境：
 
 ```text
 /home/harry/projects/personal-ai-infrastructure  # development
@@ -113,15 +116,16 @@ service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线
 
 ## 5. 验证状态
 
-2026-08-17 本地完整测试：
+2026-08-18 host-safe/default test profile：
 
 ```text
 414 passed, 66 skipped
 ```
 
-66 个 skip 是显式的数据库/真实 Provider integration gate。本轮没有让 pytest 连接
-production `pdi` 数据库。服务器 Runtime 与 Jarvis E2E 的已冻结证据记录在对应
-deployment/design 文档中。
+66 个 skip 是显式的 database、live Provider 与 integration gate；该结果不能描述为
+完整 isolated integration validation。本轮没有让 pytest 连接 production `pdi`
+数据库。服务器 Runtime 与 Jarvis E2E 的已冻结证据记录在对应 deployment/design
+文档中。
 
 ## 6. 当前限制
 
@@ -129,12 +133,10 @@ deployment/design 文档中。
 - 没有 write Tool、任务系统或 proactive agent loop；
 - 没有正式 HTTP/Web UI；
 - Codex CLI 是开发工具，不进入 production data path；
-- Immich geo extractor 与独立 05:30 systemd scheduling artifacts 已实现；production
-  安装、首次运行与 timer enable 仍需按 deployment gate 完成；
 - production integration validation 必须使用隔离数据库，不能复用 production secret。
 
 ## 7. 下一阶段
 
-下一阶段是 v0.6 operational retrieval hardening：生产规模验证并启用 geo scheduling、
-改进 retrieval UX 与可重复 release/development automation。任何关系推理、Memory、
+Server-first Codex migration 与 Geo production freeze 已完成。下一正式 PDI
+architecture stage 由人工讨论后决定；本上下文不预选新功能。任何关系推理、Memory、
 写操作或 Web transport 都必须先冻结 trust boundary 与架构，再实现。
