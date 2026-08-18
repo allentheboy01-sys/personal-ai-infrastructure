@@ -23,12 +23,14 @@ import pdi.repository.orm.asset
 import pdi.repository.orm.asset_source
 import pdi.repository.orm.blob
 import pdi.repository.orm.observation
+import pdi.repository.orm.pipeline_run
 
 
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_SQL = ROOT / "src/pdi/database/schema.sql"
 QUERY_V0_2_REVISION = "1c7b2f9e4a6d"
 OBSERVATION_V0_1_REVISION = "8f3a1d2c4b5e"
+DATA_STATUS_V0_1_REVISION = "4d8a2c6e9f10"
 
 
 def _alembic_config(connection) -> Config:
@@ -51,6 +53,7 @@ def _run_alembic(
 
 def _drop_test_schema(engine: Engine) -> None:
     with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS pipeline_runs"))
         connection.execute(text("DROP TABLE IF EXISTS resource_enrichments"))
         connection.execute(text("DROP TABLE IF EXISTS resource_statements"))
         connection.execute(
@@ -137,6 +140,7 @@ def test_metadata_registration() -> None:
         "asset_sources",
         "resource_statements",
         "resource_enrichments",
+        "pipeline_runs",
     }
 
 
@@ -181,7 +185,7 @@ def test_empty_database_upgrade_and_schema(
                 "SELECT version_num "
                 "FROM alembic_version"
             )
-        ).scalar_one() == OBSERVATION_V0_1_REVISION
+        ).scalar_one() == DATA_STATUS_V0_1_REVISION
 
 
 def test_query_v0_2_indexes_upgrade_reflection_and_downgrade(
@@ -329,6 +333,63 @@ def test_observation_schema_constraints_indexes_and_downgrade(
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one() == QUERY_V0_2_REVISION
+
+
+def test_data_status_schema_constraints_indexes_and_downgrade(
+    migration_engine: Engine,
+) -> None:
+    _run_alembic(migration_engine, command.upgrade, "head")
+
+    with migration_engine.connect() as connection:
+        inspector = inspect(connection)
+        assert "pipeline_runs" in inspector.get_table_names()
+        assert {
+            check["name"]
+            for check in inspector.get_check_constraints("pipeline_runs")
+        } == {
+            "ck_pipeline_runs_error_code",
+            "ck_pipeline_runs_key_nonempty",
+            "ck_pipeline_runs_kind",
+            "ck_pipeline_runs_lifecycle",
+            "ck_pipeline_runs_status",
+        }
+        columns = {
+            column["name"]: column
+            for column in inspector.get_columns("pipeline_runs")
+        }
+        assert set(columns) == {
+            "id",
+            "pipeline_key",
+            "kind",
+            "status",
+            "started_at",
+            "finished_at",
+            "error_code",
+        }
+        assert "error_message" not in columns
+        indexes = {
+            index["name"]: index
+            for index in inspector.get_indexes("pipeline_runs")
+        }
+        assert set(indexes) == {
+            "ix_pipeline_runs_key_started_at",
+            "uq_pipeline_runs_running_key",
+        }
+        assert indexes["uq_pipeline_runs_running_key"]["unique"] is True
+        assert indexes["uq_pipeline_runs_running_key"][
+            "dialect_options"
+        ]["postgresql_where"] is not None
+
+    _run_alembic(
+        migration_engine,
+        command.downgrade,
+        OBSERVATION_V0_1_REVISION,
+    )
+    with migration_engine.connect() as connection:
+        assert "pipeline_runs" not in inspect(connection).get_table_names()
+        assert connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one() == OBSERVATION_V0_1_REVISION
 
 
 def test_upgrade_downgrade_upgrade(

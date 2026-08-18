@@ -6,6 +6,7 @@ from pdi.config.settings import (
     load_immich_settings,
 )
 from pdi.database import create_postgres_engine
+from pdi.data_status import DataStatusService, PipelineRunRepository
 from pdi.query import QueryService
 from pdi.observation import (
     ObservationService,
@@ -43,6 +44,7 @@ def create_runtime_server(
         observation_service,
         retrieval_service,
         RichRetrievalService(repository, retrieval_service),
+        DataStatusService(PipelineRunRepository(engine)),
     )
 
 

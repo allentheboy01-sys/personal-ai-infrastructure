@@ -66,7 +66,7 @@ Provider metadata/content -> Observation Enrichment -> typed Statements
 
 ### PDI MCP
 
-当前提供七个 read-only Tool：
+当前正式 PDI MCP 提供八个 read-only Tool：
 
 1. `pdi_list_recent_resources`
 2. `pdi_search_resources`
@@ -75,6 +75,14 @@ Provider metadata/content -> Observation Enrichment -> typed Statements
 5. `pdi_rich_retrieve_resources`
 6. `pdi_get_resource`
 7. `pdi_get_resource_observations`
+8. `pdi_get_data_status`
+
+Data Status V0.1 使用独立 `pipeline_runs` ledger、八项 static registry、
+`DataStatusService` 与 formal `pdi.operational` runner。runner 是
+`/run/lock/pdi-sync.lock` 的唯一 owner；裸 sync/enrichment CLI 不加锁、不写
+ledger。Status 只派生 `last_success_at`、`success_age_seconds` 与 dependency
+validation，不持久化 fresh/stale，也不返回 ResourceEnrichment coverage count。
+Hermes/Jarvis 的三 Tool profile 本阶段保持不变。
 
 ### Server Runtime
 

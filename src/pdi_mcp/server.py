@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from mcp.server import MCPServer
 from pydantic import Field
 
+from pdi.data_status import DataStatusError, DataStatusService
 from pdi.query import InvalidQueryError, QueryError, QueryService
 from pdi.observation import ObservationError, ObservationService
 from pdi.rich_retrieval import (
@@ -26,6 +27,7 @@ from .serialization import (
     serialize_retrieval_result,
     serialize_resource_summary,
     serialize_statement,
+    serialize_status_snapshot,
 )
 
 
@@ -84,6 +86,7 @@ def create_server(
     observation_service: ObservationService | None = None,
     retrieval_service: RetrievalService | None = None,
     rich_retrieval_service: RichRetrievalService | None = None,
+    data_status_service: DataStatusService | None = None,
 ) -> MCPServer:
     server = MCPServer(
         name="pdi-personal-retrieval",
@@ -361,5 +364,36 @@ def create_server(
             }
 
         return _query_call(operation)
+
+    @server.tool(structured_output=True)
+    def pdi_get_data_status() -> ToolResult:
+        """Report PDI data-pipeline execution and objective freshness signals.
+
+        This does not report CPU, disk, Docker, network, systemd/service
+        health, or live Provider state. A Provider sync success means PDI last
+        completed its observation/sync; it does not guarantee the Provider is
+        currently identical to PDI. Dependency validation only means the
+        latest successful dependent execution happened at or after every
+        latest upstream success; it does not mean fresh=true.
+        """
+        if data_status_service is None:
+            return {
+                "ok": False,
+                "error": {
+                    "code": "data_status_unavailable",
+                    "message": "PDI data status service is unavailable",
+                },
+            }
+        try:
+            snapshot = data_status_service.get_status()
+        except DataStatusError as error:
+            return {
+                "ok": False,
+                "error": {
+                    "code": error.code,
+                    "message": str(error),
+                },
+            }
+        return {"ok": True, **serialize_status_snapshot(snapshot)}
 
     return server

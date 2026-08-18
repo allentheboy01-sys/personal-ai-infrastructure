@@ -10,6 +10,7 @@ import pdi.repository.orm.asset
 import pdi.repository.orm.asset_source
 import pdi.repository.orm.blob
 import pdi.repository.orm.observation
+import pdi.repository.orm.pipeline_run
 
 
 config = context.config
@@ -28,6 +29,7 @@ _EXPECTED_TABLES = {
     "asset_sources",
     "resource_statements",
     "resource_enrichments",
+    "pipeline_runs",
 }
 
 if set(target_metadata.tables) != _EXPECTED_TABLES:

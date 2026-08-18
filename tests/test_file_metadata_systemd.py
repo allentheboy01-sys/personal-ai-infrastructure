@@ -15,10 +15,8 @@ def test_file_metadata_service_uses_frozen_runtime_contract() -> None:
     assert "WorkingDirectory=/srv/projects/PDI" in service
     assert "EnvironmentFile=/etc/pdi/pdi.env" in service
     assert (
-        "ExecStart=/usr/bin/flock --exclusive --wait 3600 "
-        "/run/lock/pdi-sync.lock "
-        "/srv/projects/PDI/.venv/bin/python -m pdi.enrichment "
-        "--extractor file-metadata --batch-size 20000"
+        "ExecStart=/srv/projects/PDI/.venv/bin/python -m pdi.operational "
+        "--pipeline-key enrichment.file_metadata --lock-timeout 3600"
     ) in service
     assert "TimeoutStartSec=1h" in service
     assert "UMask=0077" in service

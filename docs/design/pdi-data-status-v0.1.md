@@ -1,0 +1,102 @@
+# PDI Data Status & Freshness V0.1
+
+## Scope
+
+Data Status is a read-only application capability for PDI's own batch data
+maintenance state. It is separate from World/Domain facts,
+`ResourceEnrichment`, Resource Core, and infrastructure monitoring.
+
+V0.1 never persists or returns a `fresh` or `stale` boolean. It returns the
+objective signals `last_success_at`, `success_age_seconds`, and
+`validated_after_dependencies`.
+
+## Pipeline identity and ledger
+
+Eight static logical keys identify the two Provider sync and six enrichment
+pipelines independently of systemd or any future scheduler. The registry owns
+kind, dependencies, and current enrichment generator identity. It validates
+unique keys, registered dependencies, no self dependency, and no cycles. It is
+not a scheduler or workflow engine.
+
+`pipeline_runs` retains history with only `id`, `pipeline_key`, `kind`,
+`status`, `started_at`, `finished_at`, and `error_code`. Kinds are
+`provider_sync` and `enrichment`; states are `running`, `completed`, and
+`failed`; error codes are limited to `execution_failed` and
+`interrupted_previous_run`. Raw exceptions, messages, metrics, identifiers,
+paths, URLs, and credentials are not persisted.
+
+Run creation and terminal updates use independent short transactions. They do
+not span provider scan or enrichment work. A terminal timestamp earlier than
+the start timestamp is allowed because wall-clock correction must not prevent
+terminal persistence. History begins at rollout; journal history is not
+backfilled.
+
+## Formal operational runner
+
+```text
+scheduler
+  -> pdi.operational --pipeline-key ... --lock-timeout ...
+  -> /run/lock/pdi-sync.lock
+  -> interrupted-run recovery
+  -> durable begin_run
+  -> existing pdi.main or pdi.enrichment command
+  -> durable complete_run or fail_run
+```
+
+The runner is the only owner of the shared flock. Formal units must not wrap it
+in an outer flock. Recovery happens only after lock acquisition. The lock proves
+that no other tracked formal pipeline is executing; the database partial unique
+index separately prevents two running rows for the same key.
+
+Lock timeout and database failure before `begin_run` create no row. If terminal
+persistence fails after pipeline execution, the running row may remain; the
+next formal run recovers it as `interrupted_previous_run` after acquiring the
+lock.
+
+Bare `python -m pdi.main` and `python -m pdi.enrichment` remain development and
+debug entrypoints. They do not acquire the formal lock, write PipelineRun, or
+recover interrupted runs, and must not substitute for the formal production
+runner.
+
+The existing exit contract is authoritative: exit 0 is `completed`; nonzero or
+an uncaught top-level exception is `failed/execution_failed`. Resource-level
+state remains in `ResourceEnrichment`; its timestamps are never pipeline
+success timestamps. Counts are deferred because historical states do not equal
+current active eligible coverage.
+
+The runner starts the application child in its own process group. For SIGTERM,
+SIGINT, or interactive `KeyboardInterrupt`, it forwards termination to that
+whole group, waits for the child to exit, escalates to SIGKILL after a bounded
+grace period if necessary, and reaps it before the ledger terminal update and
+lock release. A catchable interruption therefore cannot release the formal
+lock while an orphan pipeline continues.
+
+Python cannot clean up after SIGKILL or host power loss. Under the formal
+systemd path, the effective `KillMode=control-group`, `KillSignal=SIGTERM`, and
+`SendSIGKILL=yes` contract also covers runner descendants. A direct manual
+`pdi.operational` process killed with SIGKILL has no equivalent cgroup promise;
+production manual runs must use `systemctl start` for the corresponding formal
+service. Any stale running ledger row remains recoverable on the next
+lock-owning formal run.
+
+## Snapshot and MCP semantics
+
+`DataStatusService` takes one aware UTC `generated_at`, performs one batched
+latest-run read and one batched last-success read, and returns all registry
+entries. `last_success_at` is the latest completed `finished_at`.
+`success_age_seconds` is derived; if success is in the future, the raw timestamp
+is preserved and age is `null`.
+
+Dependency validation is `null` without dependencies. Otherwise it is true only
+when the pipeline and every dependency have a success and the pipeline success
+is at or after all upstream successes. It is not a `fresh` assertion.
+
+`pdi_get_data_status()` exposes only the bounded snapshot. Provider sync success
+means PDI last completed observation/sync, not guaranteed current identity with
+the live Provider. The formal MCP surface has eight read-only Tools; the
+separately constrained Jarvis/Hermes profile is unchanged.
+
+CPU, memory, disk, network, Docker, PostgreSQL/systemd/service health, Resource
+Access process health, alerts, notifications, and retries are outside V0.1. If
+PostgreSQL is unavailable, the ledger and Tool may be unavailable; systemd and
+journald remain infrastructure diagnostic authorities.

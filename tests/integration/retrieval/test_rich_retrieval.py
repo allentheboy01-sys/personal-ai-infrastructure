@@ -747,7 +747,7 @@ def test_mcp_in_memory_client_reaches_real_postgresql_without_leakage(
         return tools, result
 
     tools, result = asyncio.run(exercise())
-    assert len(tools) == 7
+    assert len(tools) == 8
     payload = result.structured_content
     assert payload["ok"] is True
     assert [

@@ -15,10 +15,8 @@ def test_immich_geo_service_uses_frozen_runtime_contract() -> None:
     assert "WorkingDirectory=/srv/projects/PDI" in service
     assert "EnvironmentFile=/etc/pdi/pdi.env" in service
     assert (
-        "ExecStart=/usr/bin/flock --exclusive --wait 3600 "
-        "/run/lock/pdi-sync.lock "
-        "/srv/projects/PDI/.venv/bin/python -m pdi.enrichment "
-        "--extractor immich-geo --batch-size 20000"
+        "ExecStart=/srv/projects/PDI/.venv/bin/python -m pdi.operational "
+        "--pipeline-key enrichment.immich_geo --lock-timeout 3600"
     ) in service
     assert "TimeoutStartSec=90m" in service
     assert "UMask=0077" in service

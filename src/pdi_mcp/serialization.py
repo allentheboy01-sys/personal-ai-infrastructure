@@ -1,5 +1,6 @@
 from datetime import UTC
 
+from pdi.data_status import StatusSnapshot
 from pdi.query import (
     ContentSummary,
     ResourceAggregationResult,
@@ -11,6 +12,49 @@ from pdi.query import (
 from pdi.observation import StatementValueType, StatementView
 from pdi.rich_retrieval import RichRetrievalResult
 from pdi.retrieval import ResourceRetrievalResult
+
+
+def serialize_status_snapshot(snapshot: StatusSnapshot) -> dict[str, object]:
+    return {
+        "generated_at": snapshot.generated_at.isoformat(),
+        "pipelines": [
+            {
+                "pipeline_key": pipeline.pipeline_key,
+                "kind": pipeline.kind.value,
+                "latest_status": (
+                    pipeline.latest_status.value
+                    if pipeline.latest_status is not None
+                    else None
+                ),
+                "latest_started_at": (
+                    pipeline.latest_started_at.isoformat()
+                    if pipeline.latest_started_at is not None
+                    else None
+                ),
+                "latest_finished_at": (
+                    pipeline.latest_finished_at.isoformat()
+                    if pipeline.latest_finished_at is not None
+                    else None
+                ),
+                "latest_error_code": (
+                    pipeline.latest_error_code.value
+                    if pipeline.latest_error_code is not None
+                    else None
+                ),
+                "last_success_at": (
+                    pipeline.last_success_at.isoformat()
+                    if pipeline.last_success_at is not None
+                    else None
+                ),
+                "success_age_seconds": pipeline.success_age_seconds,
+                "dependencies": list(pipeline.dependencies),
+                "validated_after_dependencies": (
+                    pipeline.validated_after_dependencies
+                ),
+            }
+            for pipeline in snapshot.pipelines
+        ],
+    }
 
 
 def _serialize_filters(filters: ResourceFilters) -> dict[str, object]:

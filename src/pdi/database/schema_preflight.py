@@ -365,7 +365,11 @@ def collect_v0_1_schema_differences(
     if not require_unversioned:
         expected_tables.add("alembic_version")
         expected_tables.update(
-            {"resource_statements", "resource_enrichments"}
+            {
+                "resource_statements",
+                "resource_enrichments",
+                "pipeline_runs",
+            }
         )
 
     if actual_tables != expected_tables:

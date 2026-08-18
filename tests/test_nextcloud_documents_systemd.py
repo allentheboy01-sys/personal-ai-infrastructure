@@ -15,10 +15,8 @@ def test_nextcloud_documents_service_uses_frozen_runtime_contract() -> None:
     assert "WorkingDirectory=/srv/projects/PDI" in service
     assert "EnvironmentFile=/etc/pdi/pdi.env" in service
     assert (
-        "ExecStart=/usr/bin/flock --exclusive --wait 1800 "
-        "/run/lock/pdi-sync.lock "
-        "/srv/projects/PDI/.venv/bin/python -m pdi.enrichment "
-        "--extractor nextcloud-documents --batch-size 100"
+        "ExecStart=/srv/projects/PDI/.venv/bin/python -m pdi.operational "
+        "--pipeline-key enrichment.nextcloud_documents --lock-timeout 1800"
     ) in service
     assert "TimeoutStartSec=30m" in service
     assert "UMask=0077" in service

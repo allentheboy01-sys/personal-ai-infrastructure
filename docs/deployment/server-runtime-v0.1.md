@@ -9,9 +9,9 @@ systemd timer (when)
         ↓
 systemd oneshot service
         ↓
-global flock (mutual exclusion)
+pdi.operational (formal execution + sole global flock owner)
         ↓
-pdi.main --provider (what)
+pdi.main / pdi.enrichment (existing application command)
         ↓
 existing PDI Core
 ```
@@ -108,9 +108,23 @@ Production read-only verification on 2026-08-18 found 15,214 completed
 
 ## Global lock
 
-All sync and enrichment services take an exclusive lock on
-`/run/lock/pdi-sync.lock`. A contender waits for its unit-specific bounded
-period, then exits non-zero instead of running concurrently or waiting forever.
+All sync and enrichment services invoke `pdi.operational`, which is the only
+owner of the exclusive `/run/lock/pdi-sync.lock`. A contender waits for its
+unit-specific bounded period, then exits non-zero without creating a
+PipelineRun. Unit `ExecStart` must not add an outer flock around the runner.
+
+After acquiring the lock, the runner recovers any same-pipeline interrupted
+row, durably begins a PipelineRun, invokes the existing command, and records
+its terminal state. Bare `python -m pdi.main` and `python -m pdi.enrichment`
+commands bypass both the formal lock and ledger and are development/debug
+entrypoints only.
+
+The runner launches the application child in a separate process group. On
+SIGTERM or SIGINT it terminates that group, waits and reaps it, and only then
+records failure and releases the lock. The effective systemd contract is
+`KillMode=control-group`, `KillSignal=SIGTERM`, `SendSIGKILL=yes`, so hard-stop
+cleanup also covers all unit descendants. SIGKILL and host power loss cannot
+run Python cleanup; a stale running row is recovered by the next formal run.
 
 ## Logging
 
@@ -136,6 +150,10 @@ sudo systemctl start pdi-enrichment-immich-geo.service
 ```
 
 Run Immich only after the Nextcloud smoke test passes.
+
+Production manual operations must use these installed formal services. Direct
+manual invocation of `python -m pdi.operational` is not the supported production
+operations path because it does not receive systemd cgroup hard-kill cleanup.
 
 ## Status inspection
 

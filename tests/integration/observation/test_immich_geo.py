@@ -206,7 +206,7 @@ def test_geo_lifecycle_mcp_idempotency_history_and_retirement(
                 "pdi_get_resource_observations",
                 {"resource_ref": resource_ref},
             )
-        assert len(tools) == 7
+        assert len(tools) == 8
         geo = {
             item["predicate"]: item
             for item in result.structured_content["observations"]

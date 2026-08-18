@@ -52,15 +52,17 @@ The release includes:
 - provider-semantic and rich retrieval, including captured/file-modified time
   predicates;
 - bounded streamed Resource representations;
-- seven read-only PDI MCP Tools;
+- eight read-only PDI MCP Tools, including bounded data-pipeline status;
 - a validated on-demand Jarvis/Hermes reference runtime on `pdi-server`;
 - systemd synchronization, enrichment, and resource-access deployment assets;
+- a formal PipelineRun ledger with one scheduler-independent lock owner;
   and
 - a server-first Codex CLI development workflow with production isolation.
 
-Current host-safe/default validation: `414 passed, 66 skipped`. Integration,
-live-Provider, and database tests are explicitly gated and are not run against
-production data. This is distinct from a full isolated integration validation.
+Current host-safe/default validation: `435 passed, 82 skipped`. The full
+isolated PostgreSQL validation is `515 passed, 2 skipped`; the two skips require
+live Immich credentials. Integration, live-Provider, and database tests are
+explicitly gated and are never run against production data.
 The v0.5.0 release-preparation baseline was `412 passed, 66 skipped`.
 
 ## Development

@@ -91,9 +91,11 @@ The read surface consists of:
 
 - `QueryService` for recent/search/detail, aggregation, filters, and cursor
   pagination;
-- `RetrievalService` for Provider-semantic retrieval; and
+- `RetrievalService` for Provider-semantic retrieval;
 - `RichRetrievalService` for primary text retrieval combined with typed
-  Observation filters.
+  Observation filters; and
+- `DataStatusService` for bounded pipeline execution and objective freshness
+  signals from the PipelineRun ledger.
 
 Resource references use `pdi:resource:<uuid>`. Time semantics distinguish PDI
 first-observed time, captured time, and file-modified time. Repository mapping
@@ -118,9 +120,9 @@ its own launcher and Unix-domain-socket/HTTP boundary.
 ## MCP boundary
 
 PDI MCP is the read-only consumer boundary. It composes the public services and
-serializes stable results. It currently exposes seven Tools for recent,
-search, aggregation, Provider-semantic retrieval, rich retrieval, Resource
-detail, and Resource observations.
+serializes stable results. It currently exposes eight Tools for data status,
+recent, search, aggregation, Provider-semantic retrieval, rich retrieval,
+Resource detail, and Resource observations.
 
 MCP Tool handlers must not import ORM types, open database sessions directly,
 or receive Provider credentials. A runtime may expose a deliberately smaller
@@ -136,6 +138,11 @@ and PDI MCP credentials; it is not a daemon and is not required by PDI.
 Host-based development uses a separate user checkout under
 `/home/harry/projects/personal-ai-infrastructure`. The production checkout is
 never a development worktree or test target.
+
+Formal batch execution is scheduler-independent: `pdi.operational` is the sole
+owner of `/run/lock/pdi-sync.lock`, records independently committed PipelineRun
+start and terminal states, and invokes the existing Provider sync or enrichment
+CLI. Bare CLIs remain untracked development/debug entrypoints.
 
 ## Invariants
 
