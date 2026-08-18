@@ -20,9 +20,11 @@ details live in their dedicated documents.
 
 - **v0.6 — Operational hardening:** Immich Geo Enrichment V0.1 production
   enrichment, idempotency, service installation, and daily 05:30 timer are
-  complete and frozen. Server-first Codex migration is complete. The next
-  formal architecture stage requires human discussion and is not selected by
-  this roadmap update.
+  complete and frozen. Data Status & Freshness V0.1 is production active with
+  a historical PipelineRun ledger, eight tracked formal pipelines, derived
+  freshness signals, and the eighth read-only MCP Tool. Server-first Codex
+  migration is complete. The next formal architecture stage requires human
+  discussion and is not selected by this roadmap update.
 
 ## Future
 

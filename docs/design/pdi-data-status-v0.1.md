@@ -100,3 +100,25 @@ CPU, memory, disk, network, Docker, PostgreSQL/systemd/service health, Resource
 Access process health, alerts, notifications, and retries are outside V0.1. If
 PostgreSQL is unavailable, the ledger and Tool may be unavailable; systemd and
 journald remain infrastructure diagnostic authorities.
+
+## Production freeze
+
+The implementation candidate `2fd531dd7d77dad7b5040dad7253e28ccbc33528`
+was promoted on 2026-08-18. Production was migrated once to Alembic head
+`4d8a2c6e9f10`; no history was backfilled. The eight committed service units
+were installed without an outer flock and retained their existing timers.
+
+The eight pipelines were then run through their formal systemd services in
+dependency-safe order. All completed successfully. A second formal
+`enrichment.immich_geo` run processed and wrote no business data while still
+adding one completed ledger entry. The resulting production ledger contained
+nine completed rows, no running rows, and no failed rows.
+
+The resulting bounded snapshot contained all eight registry entries. Both
+provider pipelines had not-applicable dependency validation and all six
+enrichment pipelines validated after their upstream successes, including
+`enrichment.file_metadata` after both provider syncs. Fifty production
+read-only samples used two batched database reads each, with 2.301 ms p50,
+3.087 ms p95, and a 3,173-byte serialized payload. Local stdio MCP exposed
+exactly eight Tools and the prior seven passed smoke validation. The
+Hermes/Jarvis profile was not changed.

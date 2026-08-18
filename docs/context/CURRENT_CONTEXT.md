@@ -97,6 +97,18 @@ Hermes/Jarvis 的三 Tool profile 本阶段保持不变。
 - Hermes 仅启用三个冻结的 PDI MCP Tool，Memory 与 write capability 关闭；
 - DeepSeek 是当前远程 inference Provider，PDI 不依赖它。
 
+### Data Status production freeze
+
+Data Status & Freshness V0.1 已于 2026-08-18 在 production 启用。Alembic head
+为 `4d8a2c6e9f10`，八个正式 batch service 均通过 `pdi.operational` 进入唯一
+shared flock owner。历史没有回填；首轮按 dependency 顺序执行八个 pipeline，随后
+额外执行一次 Immich Geo no-op 验证，共形成九条真实 `completed` PipelineRun，零
+`running`、零 `failed`。
+
+production StatusSnapshot 返回八个 registry pipeline；两个 Provider pipeline 的
+dependency validation 为 `null`，六个 enrichment pipeline 均为 `true`。本地正式
+stdio MCP 已验证八个 read-only Tool。Hermes/Jarvis allowlist 未随本次上线扩展。
+
 ## 3. 开发工作流
 
 主机独立 development checkout 是 PDI 的主要 Codex 开发环境：
@@ -124,16 +136,16 @@ service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线
 
 ## 5. 验证状态
 
-2026-08-18 host-safe/default test profile：
+2026-08-18 Data Status freeze validation：
 
 ```text
-414 passed, 66 skipped
+host-safe/default: 435 passed, 82 skipped
+isolated PostgreSQL: 515 passed, 2 skipped
 ```
 
-66 个 skip 是显式的 database、live Provider 与 integration gate；该结果不能描述为
-完整 isolated integration validation。本轮没有让 pytest 连接 production `pdi`
-数据库。服务器 Runtime 与 Jarvis E2E 的已冻结证据记录在对应 deployment/design
-文档中。
+skip 均来自显式 database、live Provider 或 integration gate；isolated suite 使用
+独立测试数据库，本轮没有让 pytest 连接 production `pdi` 数据库。runner 的
+SIGTERM、SIGINT、child reap 与第二运行互斥已在隔离集成测试中验证。
 
 ## 6. 当前限制
 
@@ -145,6 +157,7 @@ service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线
 
 ## 7. 下一阶段
 
-Server-first Codex migration 与 Geo production freeze 已完成。下一正式 PDI
+Server-first Codex migration、Geo production freeze 与 Data Status V0.1 production
+freeze 已完成。下一正式 PDI
 architecture stage 由人工讨论后决定；本上下文不预选新功能。任何关系推理、Memory、
 写操作或 Web transport 都必须先冻结 trust boundary 与架构，再实现。

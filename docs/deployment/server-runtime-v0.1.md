@@ -126,6 +126,21 @@ records failure and releases the lock. The effective systemd contract is
 cleanup also covers all unit descendants. SIGKILL and host power loss cannot
 run Python cleanup; a stale running row is recovered by the next formal run.
 
+## Data Status production activation
+
+Data Status V0.1 is active in production as of 2026-08-18 at Alembic head
+`4d8a2c6e9f10`. The migration created an empty `pipeline_runs` ledger and did
+not backfill journal history. All eight committed formal service artifacts were
+installed and verified byte-for-byte before the first tracked execution;
+timers and schedules were unchanged.
+
+The initial dependency-ordered seed produced one completed row per registered
+pipeline. A subsequent formal Immich Geo no-op run produced the ninth completed
+row while making no business-layer writes. At freeze there were no running or
+failed rows. Reads through `DataStatusService` and local stdio MCP are the
+supported status boundary; operators retain systemd and journald for detailed
+infrastructure diagnostics.
+
 ## Logging
 
 Standard output and error go to journald. Provider credentials and complete
