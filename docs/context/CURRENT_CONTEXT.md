@@ -109,6 +109,18 @@ production StatusSnapshot 返回八个 registry pipeline；两个 Provider pipel
 dependency validation 为 `null`，六个 enrichment pipeline 均为 `true`。本地正式
 stdio MCP 已验证八个 read-only Tool。Hermes/Jarvis allowlist 未随本次上线扩展。
 
+### Person Identity production freeze
+
+Person Identity V0.1 已在 production 启用。它只同步 Immich standard
+`/api/people` enumerable inventory；Provider total 仅是诊断信号，不定义同步完整性。
+首次完整同步创建 417 个 `Person` 与 417 个 active `PersonSource`，第二次完整同步
+创建、恢复和 inactive 均为零，全部 417 个 mapping 保持不变。
+
+Person 只包含 UUID identity 与 `created_at`；PersonSource 使用
+`(provider, external_id)` composite primary key，并只用 nullable `inactive_at` 表达
+enumerable membership lifecycle。display name、metadata、face/vector、cross-provider
+matching、Relation、public reference、MCP 与 operational schedule 均未引入。
+
 ## 3. 开发工作流
 
 主机独立 development checkout 是 PDI 的主要 Codex 开发环境：
@@ -157,7 +169,7 @@ SIGTERM、SIGINT、child reap 与第二运行互斥已在隔离集成测试中�
 
 ## 7. 下一阶段
 
-Server-first Codex migration、Geo production freeze 与 Data Status V0.1 production
-freeze 已完成。下一正式 PDI
+Server-first Codex migration、Geo、Data Status V0.1 与 Person Identity V0.1
+production freeze 已完成。下一正式 PDI
 architecture stage 由人工讨论后决定；本上下文不预选新功能。任何关系推理、Memory、
 写操作或 Web transport 都必须先冻结 trust boundary 与架构，再实现。

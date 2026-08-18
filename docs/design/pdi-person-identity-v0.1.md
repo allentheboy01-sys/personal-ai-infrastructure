@@ -54,9 +54,16 @@ Person ID remains the same. A disappeared ID becomes inactive; a newly observed
 ID creates a new Person. Merge, split, delete, re-clustering, redirect, alias,
 and cross-provider continuity are not inferred.
 
-Stage 1 creates the migration and validates isolated persistence only. It does
-not apply the migration or import People in production, and it does not add a
-formal operational schedule.
+The production migration is active at Alembic head `6a7c8d9e0f12`. It created
+empty tables and performed no backfill. The initial explicit complete sync
+enumerated 417 People and created 417 Persons and 417 active PersonSources. An
+immediate second sync created, reactivated, and inactivated zero rows; all 417
+source-to-Person mappings were unchanged. Integrity validation found no
+duplicate source identities, orphan sources, or orphan Persons.
+
+Counts for Assets, Blobs, AssetSources, ResourceStatements,
+ResourceEnrichments, and PipelineRuns were unchanged across the production
+sync. No Provider mutation was used for validation.
 
 ## Explicit execution
 
@@ -66,3 +73,7 @@ prints aggregate counts and duration, and exits. Failure output is sanitized;
 it never prints Person IDs, names, Provider payloads, paths, or credentials.
 The entrypoint has no scheduler, daemon, shared-lock, PipelineRun, or retry
 behavior. Operational scheduling remains deferred.
+
+There is intentionally no formal service, timer, PipelineRun registry entry,
+or automatic cadence in V0.1. Production execution is explicit. MCP remains at
+eight read-only Tools and exposes no Person capability.

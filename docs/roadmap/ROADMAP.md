@@ -23,8 +23,10 @@ details live in their dedicated documents.
   complete and frozen. Data Status & Freshness V0.1 is production active with
   a historical PipelineRun ledger, eight tracked formal pipelines, derived
   freshness signals, and the eighth read-only MCP Tool. Server-first Codex
-  migration is complete. The next formal architecture stage requires human
-  discussion and is not selected by this roadmap update.
+  migration is complete. Minimal Person Identity V0.1 is also production active
+  for the standard Immich enumerable People inventory, without names, face
+  data, Relation, MCP exposure, or scheduling. The next formal architecture
+  stage requires human discussion and is not selected by this roadmap update.
 
 ## Future
 
