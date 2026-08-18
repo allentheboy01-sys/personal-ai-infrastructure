@@ -25,6 +25,7 @@ import pdi.repository.orm.blob
 import pdi.repository.orm.observation
 import pdi.repository.orm.person
 import pdi.repository.orm.pipeline_run
+import pdi.repository.orm.resource_person_relation
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -33,6 +34,7 @@ QUERY_V0_2_REVISION = "1c7b2f9e4a6d"
 OBSERVATION_V0_1_REVISION = "8f3a1d2c4b5e"
 DATA_STATUS_V0_1_REVISION = "4d8a2c6e9f10"
 PERSON_IDENTITY_V0_1_REVISION = "6a7c8d9e0f12"
+RESOURCE_PERSON_RELATION_V0_1_REVISION = "9c4e1a7b2d30"
 
 
 def _alembic_config(connection) -> Config:
@@ -55,6 +57,7 @@ def _run_alembic(
 
 def _drop_test_schema(engine: Engine) -> None:
     with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS resource_person_relations"))
         connection.execute(text("DROP TABLE IF EXISTS person_sources"))
         connection.execute(text("DROP TABLE IF EXISTS persons"))
         connection.execute(text("DROP TABLE IF EXISTS pipeline_runs"))
@@ -147,6 +150,7 @@ def test_metadata_registration() -> None:
         "pipeline_runs",
         "persons",
         "person_sources",
+        "resource_person_relations",
     }
 
 
@@ -191,7 +195,7 @@ def test_empty_database_upgrade_and_schema(
                 "SELECT version_num "
                 "FROM alembic_version"
             )
-        ).scalar_one() == PERSON_IDENTITY_V0_1_REVISION
+        ).scalar_one() == RESOURCE_PERSON_RELATION_V0_1_REVISION
 
 
 def test_query_v0_2_indexes_upgrade_reflection_and_downgrade(
@@ -481,6 +485,43 @@ def test_upgrade_downgrade_upgrade(
             connection,
             require_unversioned=False,
         )
+
+
+def test_resource_person_relation_schema_constraints_and_downgrade(
+    migration_engine: Engine,
+) -> None:
+    _run_alembic(migration_engine, command.upgrade, "head")
+    with migration_engine.connect() as connection:
+        inspector = inspect(connection)
+        columns = {
+            column["name"]
+            for column in inspector.get_columns("resource_person_relations")
+        }
+        assert columns == {"resource_id", "person_id", "provider", "inactive_at"}
+        assert inspector.get_pk_constraint("resource_person_relations")[
+            "constrained_columns"
+        ] == ["resource_id", "person_id", "provider"]
+        assert {
+            check["name"]
+            for check in inspector.get_check_constraints("resource_person_relations")
+        } == {"ck_resource_person_relations_provider_nonempty"}
+        assert {
+            key["name"]: key["options"].get("ondelete")
+            for key in inspector.get_foreign_keys("resource_person_relations")
+        } == {
+            "fk_resource_person_relations_person": "RESTRICT",
+            "fk_resource_person_relations_resource": "RESTRICT",
+        }
+        assert inspector.get_indexes("resource_person_relations") == []
+
+    _run_alembic(
+        migration_engine, command.downgrade, PERSON_IDENTITY_V0_1_REVISION
+    )
+    with migration_engine.connect() as connection:
+        assert "resource_person_relations" not in inspect(connection).get_table_names()
+        assert connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one() == PERSON_IDENTITY_V0_1_REVISION
 
 
 def test_stamp_existing_v0_1_schema_preserves_data(

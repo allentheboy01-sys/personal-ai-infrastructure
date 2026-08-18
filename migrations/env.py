@@ -12,6 +12,7 @@ import pdi.repository.orm.blob
 import pdi.repository.orm.observation
 import pdi.repository.orm.person
 import pdi.repository.orm.pipeline_run
+import pdi.repository.orm.resource_person_relation
 
 
 config = context.config
@@ -33,6 +34,7 @@ _EXPECTED_TABLES = {
     "pipeline_runs",
     "persons",
     "person_sources",
+    "resource_person_relations",
 }
 
 if set(target_metadata.tables) != _EXPECTED_TABLES:

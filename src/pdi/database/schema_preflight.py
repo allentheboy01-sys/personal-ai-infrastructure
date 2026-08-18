@@ -371,6 +371,7 @@ def collect_v0_1_schema_differences(
                 "pipeline_runs",
                 "persons",
                 "person_sources",
+                "resource_person_relations",
             }
         )
 
