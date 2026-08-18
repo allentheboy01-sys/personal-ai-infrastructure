@@ -23,6 +23,7 @@ import pdi.repository.orm.asset
 import pdi.repository.orm.asset_source
 import pdi.repository.orm.blob
 import pdi.repository.orm.observation
+import pdi.repository.orm.person
 import pdi.repository.orm.pipeline_run
 
 
@@ -31,6 +32,7 @@ SCHEMA_SQL = ROOT / "src/pdi/database/schema.sql"
 QUERY_V0_2_REVISION = "1c7b2f9e4a6d"
 OBSERVATION_V0_1_REVISION = "8f3a1d2c4b5e"
 DATA_STATUS_V0_1_REVISION = "4d8a2c6e9f10"
+PERSON_IDENTITY_V0_1_REVISION = "6a7c8d9e0f12"
 
 
 def _alembic_config(connection) -> Config:
@@ -53,6 +55,8 @@ def _run_alembic(
 
 def _drop_test_schema(engine: Engine) -> None:
     with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS person_sources"))
+        connection.execute(text("DROP TABLE IF EXISTS persons"))
         connection.execute(text("DROP TABLE IF EXISTS pipeline_runs"))
         connection.execute(text("DROP TABLE IF EXISTS resource_enrichments"))
         connection.execute(text("DROP TABLE IF EXISTS resource_statements"))
@@ -141,6 +145,8 @@ def test_metadata_registration() -> None:
         "resource_statements",
         "resource_enrichments",
         "pipeline_runs",
+        "persons",
+        "person_sources",
     }
 
 
@@ -185,7 +191,7 @@ def test_empty_database_upgrade_and_schema(
                 "SELECT version_num "
                 "FROM alembic_version"
             )
-        ).scalar_one() == DATA_STATUS_V0_1_REVISION
+        ).scalar_one() == PERSON_IDENTITY_V0_1_REVISION
 
 
 def test_query_v0_2_indexes_upgrade_reflection_and_downgrade(
@@ -390,6 +396,56 @@ def test_data_status_schema_constraints_indexes_and_downgrade(
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one() == OBSERVATION_V0_1_REVISION
+
+
+def test_person_identity_schema_constraints_and_downgrade(
+    migration_engine: Engine,
+) -> None:
+    _run_alembic(migration_engine, command.upgrade, "head")
+
+    with migration_engine.connect() as connection:
+        inspector = inspect(connection)
+        assert {"persons", "person_sources"}.issubset(
+            inspector.get_table_names()
+        )
+        assert {
+            column["name"] for column in inspector.get_columns("persons")
+        } == {"id", "created_at"}
+        source_columns = {
+            column["name"]
+            for column in inspector.get_columns("person_sources")
+        }
+        assert source_columns == {
+            "provider", "external_id", "person_id", "inactive_at"
+        }
+        assert "id" not in source_columns
+        assert {
+            check["name"]
+            for check in inspector.get_check_constraints("person_sources")
+        } == {
+            "ck_person_sources_external_id_nonempty",
+            "ck_person_sources_provider_nonempty",
+        }
+        assert inspector.get_pk_constraint("person_sources")[
+            "constrained_columns"
+        ] == ["provider", "external_id"]
+        assert {
+            foreign_key["name"]: foreign_key["options"].get("ondelete")
+            for foreign_key in inspector.get_foreign_keys("person_sources")
+        } == {"fk_person_sources_person": "RESTRICT"}
+        assert inspector.get_indexes("persons") == []
+        assert inspector.get_indexes("person_sources") == []
+
+    _run_alembic(
+        migration_engine, command.downgrade, DATA_STATUS_V0_1_REVISION
+    )
+    with migration_engine.connect() as connection:
+        tables = set(inspect(connection).get_table_names())
+        assert "persons" not in tables
+        assert "person_sources" not in tables
+        assert connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one() == DATA_STATUS_V0_1_REVISION
 
 
 def test_upgrade_downgrade_upgrade(

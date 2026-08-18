@@ -10,6 +10,7 @@ import pdi.repository.orm.asset
 import pdi.repository.orm.asset_source
 import pdi.repository.orm.blob
 import pdi.repository.orm.observation
+import pdi.repository.orm.person
 import pdi.repository.orm.pipeline_run
 
 
@@ -30,6 +31,8 @@ _EXPECTED_TABLES = {
     "resource_statements",
     "resource_enrichments",
     "pipeline_runs",
+    "persons",
+    "person_sources",
 }
 
 if set(target_metadata.tables) != _EXPECTED_TABLES:

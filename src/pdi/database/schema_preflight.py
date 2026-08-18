@@ -369,6 +369,8 @@ def collect_v0_1_schema_differences(
                 "resource_statements",
                 "resource_enrichments",
                 "pipeline_runs",
+                "persons",
+                "person_sources",
             }
         )
 
