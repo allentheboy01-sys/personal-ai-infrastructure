@@ -39,7 +39,7 @@ The current implementation has four explicit paths:
 
 ## Current status
 
-**Current release:** `v0.5.0` — Personal Retrieval Runtime
+**Current release:** `v0.6` — Operational Hardening
 
 The release includes:
 
@@ -56,11 +56,13 @@ The release includes:
 - a validated on-demand Jarvis/Hermes reference runtime on `pdi-server`;
 - systemd synchronization, enrichment, and resource-access deployment assets;
 - a formal PipelineRun ledger with one scheduler-independent lock owner;
+- stable Person identity plus one dedicated Immich-derived Resource-depicts-
+  Person relation table, without face/vector persistence or a generic graph;
   and
 - a server-first Codex CLI development workflow with production isolation.
 
-Current host-safe/default validation: `435 passed, 82 skipped`. The full
-isolated PostgreSQL validation is `515 passed, 2 skipped`; the two skips require
+Current host-safe/default validation: `447 passed`. The full
+isolated PostgreSQL validation is `93 passed, 2 skipped`; the two skips require
 live Immich credentials. Integration, live-Provider, and database tests are
 explicitly gated and are never run against production data.
 The v0.5.0 release-preparation baseline was `412 passed, 66 skipped`.
@@ -86,6 +88,7 @@ authentication boundary are documented in
 - [Current Context](docs/context/CURRENT_CONTEXT.md)
 - [Roadmap](docs/roadmap/ROADMAP.md)
 - [v0.5.0 release notes](docs/releases/v0.5.md)
+- [v0.6 operational hardening notes](docs/releases/v0.6.md)
 - [Production server runtime](docs/deployment/server-runtime-v0.1.md)
 - [Jarvis reference runtime](docs/deployment/jarvis-runtime-server-v0.1.md)
 

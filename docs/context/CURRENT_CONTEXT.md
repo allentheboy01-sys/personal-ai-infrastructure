@@ -119,7 +119,26 @@ Person Identity V0.1 已在 production 启用。它只同步 Immich standard
 Person 只包含 UUID identity 与 `created_at`；PersonSource 使用
 `(provider, external_id)` composite primary key，并只用 nullable `inactive_at` 表达
 enumerable membership lifecycle。display name、metadata、face/vector、cross-provider
-matching、Relation、public reference、MCP 与 operational schedule 均未引入。
+matching、public reference、MCP 与 operational schedule 均未引入。Person
+Identity 本身仍不保存 Relation；Resource-Person Relation 由后续独立专用表承载。
+
+### Resource-Person Relation production freeze
+
+Resource-Person Relation V0.1 已在 production 启用，只表达 Provider-derived
+`Resource depicts Person`。专用 `resource_person_relations` 表仅包含
+`resource_id`、`person_id`、`provider`、`inactive_at`，并以三者 identity columns
+作为 composite primary key；没有 Relation UUID、predicate、confidence、face、
+bounding box、embedding 或 generic graph。
+
+Immich 显式同步只查询 active enumerable PersonSources，并通过 metadata search
+的 `personIds` 完整分页获取资产；normal sync 不调用 Faces API。production 当前有
+10,460 条 active relations，覆盖 5,267 个 Resources 与 417 个 Persons。完整只读
+审计另发现 84 个 Person V0.1 inventory 外 Provider identities、114 个 pairs；它们
+不创建隐藏 Person/PersonSource，也不持久化 relation。
+
+首次同步创建 10,460 行；立即第二次同步全部 unchanged，created、reactivated、
+inactivated 均为零，mapping digest 不变。MCP 仍为八个 read-only Tools，且没有
+Relation/Person query、systemd、timer 或 PipelineRun registry entry。
 
 ## 3. 开发工作流
 
@@ -148,11 +167,11 @@ service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线
 
 ## 5. 验证状态
 
-2026-08-18 Data Status freeze validation：
+2026-08-18 Resource-Person Relation freeze validation：
 
 ```text
-host-safe/default: 435 passed, 82 skipped
-isolated PostgreSQL: 515 passed, 2 skipped
+host-safe/default: 447 passed
+isolated PostgreSQL: 93 passed, 2 skipped
 ```
 
 skip 均来自显式 database、live Provider 或 integration gate；isolated suite 使用
@@ -169,7 +188,7 @@ SIGTERM、SIGINT、child reap 与第二运行互斥已在隔离集成测试中�
 
 ## 7. 下一阶段
 
-Server-first Codex migration、Geo、Data Status V0.1 与 Person Identity V0.1
-production freeze 已完成。下一正式 PDI
+Server-first Codex migration、Geo、Data Status V0.1、Person Identity V0.1 与
+Resource-Person Relation V0.1 production freeze 已完成。下一正式 PDI
 architecture stage 由人工讨论后决定；本上下文不预选新功能。任何关系推理、Memory、
 写操作或 Web transport 都必须先冻结 trust boundary 与架构，再实现。

@@ -24,13 +24,16 @@ details live in their dedicated documents.
   a historical PipelineRun ledger, eight tracked formal pipelines, derived
   freshness signals, and the eighth read-only MCP Tool. Server-first Codex
   migration is complete. Minimal Person Identity V0.1 is also production active
-  for the standard Immich enumerable People inventory, without names, face
-  data, Relation, MCP exposure, or scheduling. The next formal architecture
+  for the standard Immich enumerable People inventory, without names or face
+  data. Resource-Person Relation V0.1 is production active through one dedicated
+  provider-owned `depicts` table, with 10,460 active Immich-derived mappings,
+  no generic graph, MCP exposure, or scheduling. The next formal architecture
   stage requires human discussion and is not selected by this roadmap update.
 
 ## Future
 
-- Relationship and cross-resource reasoning over evidenced observations.
+- Consumer-facing relationship retrieval and broader cross-resource reasoning,
+  only after a separate architecture review.
 - User-controlled memory derived from PDI rather than owned by an AI runtime.
 - Explicit permission and write/action boundaries before any write-capable
   consumer Tool is introduced.
