@@ -158,13 +158,16 @@ table. There are no cross-database foreign keys.
 The Jarvis-owned RuntimeAdapter contract accepts normalized conversation
 context and emits only product-level Turn events. Runtime event history and
 provisional text remain ephemeral. Only a successful completion transaction
-creates the canonical assistant Message. Hermes remains a replaceable Stage 3
-implementation and is not imported by this contract. Stage 2 uses only a
-deterministic MockRuntimeAdapter while Resource and Provider views remain
-frontend synthetic data; real PDI access remains outside this stage.
-The mock is selected only through application composition. No browser/API
-input can choose a Runtime implementation or test scenario; Stage 3 replaces
-the composed mock with HermesRuntimeAdapter behind the unchanged contract.
+creates the canonical assistant Message. Hermes is a replaceable implementation
+and is never imported by the contract or Web environment. Stage 3 provides a
+one-process-per-Turn HermesRuntimeAdapter and a private structured bridge run by
+the separate Hermes Python environment. Every Turn reconstructs history from
+canonical Jarvis Messages; Hermes sessions and execution artifacts are
+non-authoritative. Bridge commands and sanitized environments are supplied only
+at application composition, never by browser/API input. MockRuntimeAdapter
+remains the deterministic test/development implementation. Resource and
+Provider views remain frontend synthetic data; real deterministic PDI access
+remains Stage 4.
 
 Formal batch execution is scheduler-independent: `pdi.operational` is the sole
 owner of `/run/lock/pdi-sync.lock`, records independently committed PipelineRun

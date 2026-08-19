@@ -67,10 +67,14 @@ The release includes:
   product mark;
 - the implemented, not-yet-deployed Stage 2 Jarvis State/FastAPI skeleton with
   a composition-only MockRuntimeAdapter and persistent same-origin Chat
-  boundary, frozen after human architecture review; and
+  boundary, frozen after human architecture review;
+- the frozen Stage 3 one-process-per-Turn
+  HermesRuntimeAdapter with a private bounded JSONL bridge, canonical Jarvis
+  history input, exact process-group cancellation/cleanup, live phase events,
+  and safe final-only response delivery; and
 - a server-first Codex CLI development workflow with production isolation.
 
-Current host-safe/default validation: `491 passed, 98 skipped`. The Stage 2
+Current host-safe/default validation: `512 passed, 98 skipped`. The Stage 3
 Jarvis migration validation is `1 passed` against a disposable isolated
 PostgreSQL database. The prior full PDI isolated validation is `99 passed, 2
 skipped`; the two skips require live Immich credentials. Integration,

@@ -210,17 +210,17 @@ service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线
 
 ## 5. 验证状态
 
-2026-08-19 当前 host-safe 与 Stage 2 Jarvis validation：
+2026-08-19 当前 host-safe 与 Stage 3 Jarvis validation：
 
 ```text
-host-safe/default: 491 passed, 98 skipped
+host-safe/default: 512 passed, 98 skipped
 Jarvis isolated PostgreSQL migration: 1 passed
 prior PDI isolated PostgreSQL suite: 99 passed, 2 skipped
 ```
 
 skip 均来自显式 database、live Provider 或 integration gate；isolated suite 使用
 一次性 PostgreSQL 16 测试容器；Jarvis migration 使用独立的
-`jarvis_stage2_test`，本轮没有让 pytest 连接 production `pdi` 或 production
+`jarvis_stage3_migration_test`，本轮没有让 pytest 连接 production `pdi` 或 production
 Jarvis database。
 Codex 默认 command sandbox 会阻塞 MCP SDK `Client.call_tool` worker path；相同
 standalone/minimal pytest 在 host-native execution 正常通过，因此正式回归使用
@@ -232,8 +232,11 @@ host-native execution 完成。
 - 没有 write Tool、任务系统或 proactive agent loop；
 - Jarvis Web UI V0.1 Stage 1 的视觉与 Beacon / Guide identity 保持冻结；Stage 2
   已通过 human architecture review 并冻结 FastAPI product skeleton、独立 Jarvis
-  state/migration、MockRuntimeAdapter、SSE 与 persistent Chat API boundary；仍没有
-  Hermes/PDI integration、production Jarvis database 或 production Web service；
+  state/migration、MockRuntimeAdapter、SSE 与 persistent Chat API boundary；Stage 3
+  已通过 human runtime review 并冻结 isolated HermesRuntimeAdapter，使用每 Turn
+  独立 subprocess 与 private JSONL bridge，Hermes session 不具权威性；仍没有
+  deterministic PDI Web integration、production Jarvis database 或 production Web
+  service；
 - Codex CLI 是开发工具，不进入 production data path；
 - production integration validation 必须使用隔离数据库，不能复用 production secret。
 
@@ -243,7 +246,8 @@ Server-first Codex migration、Geo、Data Status V0.1、Person Identity V0.1 与
 Resource-Person Relation V0.1、Typed Resource V0.1 与单账号 Gmail Provider V0.1
 production freeze 已完成。Jarvis Web UI V0.1 Stage 1 static frontend 与
 Beacon / Guide identity 也已通过 human visual/brand review 并冻结；Stage 2 skeleton
-也已通过 human architecture review 并冻结；真实 Hermes/PDI/production deployment
-分别保持 Stage 3/Stage 4/Stage 5 deferred。
+也已通过 human architecture review 并冻结；Stage 3 HermesRuntimeAdapter 已通过
+human runtime review 并冻结；deterministic PDI integration 与 production deployment
+分别保持 Stage 4/Stage 5 deferred。
 任何关系推理、Memory、写操作或 Web backend/deployment 都必须遵守各自已批准或后续
 单独冻结的 trust boundary 与架构。

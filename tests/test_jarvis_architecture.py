@@ -37,6 +37,21 @@ def test_runtime_contract_is_framework_and_hermes_independent() -> None:
     assert not any(name.startswith(("fastapi", "sqlalchemy", "hermes")) for name in imports)
 
 
+def test_hermes_adapter_has_no_hermes_or_web_framework_import() -> None:
+    imports = _imports(ROOT / "src/jarvis/runtime/hermes_adapter.py")
+    assert not any(name.startswith(("fastapi", "sqlalchemy", "hermes", "run_agent")) for name in imports)
+
+
+def test_only_private_bridge_may_import_hermes_runtime() -> None:
+    violations = []
+    for path in (ROOT / "src/jarvis").rglob("*.py"):
+        if path.name == "hermes_bridge.py":
+            continue
+        if any(name.startswith(("hermes_cli", "run_agent")) for name in _imports(path)):
+            violations.append(str(path.relative_to(ROOT)))
+    assert violations == []
+
+
 def test_jarvis_state_never_imports_pdi() -> None:
     violations = [str(path.relative_to(ROOT)) for path in (ROOT / "src/jarvis/state").rglob("*.py") if any(name == "pdi" or name.startswith("pdi.") for name in _imports(path))]
     assert violations == []

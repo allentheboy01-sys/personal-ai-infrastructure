@@ -35,8 +35,10 @@ details live in their dedicated documents.
   adds no scheduler, timer, systemd service, or MCP Tool; unattended operation
   remains blocked on the OAuth lifecycle. Jarvis Web UI V0.1 Stage 1 is frozen
   as a frontend-only static React product shell with synthetic data and no
-  production service. Stage 2 backend, state, Runtime, and PDI integration have
-  not started.
+  production service. Stage 2 state/FastAPI contracts and the Stage 3 isolated
+  HermesRuntimeAdapter are frozen after human architecture/runtime review.
+  Deterministic PDI integration and production deployment remain Stage 4 and
+  Stage 5 work.
 
 ## Future
 
