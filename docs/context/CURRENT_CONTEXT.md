@@ -128,7 +128,10 @@ shared flock owner。历史没有回填；初次 freeze 按 dependency 顺序执
 当前 production StatusSnapshot 返回十个 registry pipeline；三个 Provider pipeline 的
 dependency validation 为 `null`，七个 enrichment pipeline 可按各自最新 upstream
 success 派生 validation。初次 freeze 时六个 enrichment pipeline 均为 `true`。本地正式
-stdio MCP 已验证八个 read-only Tool。Hermes/Jarvis allowlist 未随本次上线扩展。
+stdio MCP 已验证八个 read-only Tool。Jarvis Web UI V0.1 的当前正式
+Hermes/PDI read allowlist 已单独冻结为七项：recent、search、Resource detail、
+aggregation、Observations、Provider-semantic retrieval 与 rich retrieval；本阶段
+不增删 Tool。
 
 ### Person Identity production freeze
 
@@ -224,7 +227,9 @@ host-native execution 完成。
 
 - 没有通用 Jarvis/PDI long-term memory；
 - 没有 write Tool、任务系统或 proactive agent loop；
-- 没有正式 HTTP/Web UI；
+- Jarvis Web UI V0.1 Stage 1 只有已冻结的静态 React frontend 与 synthetic mock；
+  没有 HTTP backend、Jarvis database、Hermes/PDI integration 或 production Web
+  service；
 - Codex CLI 是开发工具，不进入 production data path；
 - production integration validation 必须使用隔离数据库，不能复用 production secret。
 
@@ -232,6 +237,7 @@ host-native execution 完成。
 
 Server-first Codex migration、Geo、Data Status V0.1、Person Identity V0.1 与
 Resource-Person Relation V0.1、Typed Resource V0.1 与单账号 Gmail Provider V0.1
-production freeze 已完成。下一正式 PDI
-architecture stage 由人工讨论后决定；本上下文不预选新功能。任何关系推理、Memory、
-写操作或 Web transport 都必须先冻结 trust boundary 与架构，再实现。
+production freeze 已完成。Jarvis Web UI V0.1 Stage 1 static frontend 与
+Beacon / Guide identity 也已通过 human visual/brand review 并冻结；Stage 2 尚未开始。
+任何关系推理、Memory、写操作或 Web backend/deployment 都必须遵守各自已批准或后续
+单独冻结的 trust boundary 与架构。

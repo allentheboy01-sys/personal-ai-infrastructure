@@ -33,8 +33,10 @@ details live in their dedicated documents.
   account with 283 production Message Resources, RAW RFC 2822 Blobs, four
   deterministic predicates, and two manually invoked tracked pipelines. It
   adds no scheduler, timer, systemd service, or MCP Tool; unattended operation
-  remains blocked on the OAuth lifecycle. The next formal architecture stage
-  requires human discussion and is not selected by this roadmap update.
+  remains blocked on the OAuth lifecycle. Jarvis Web UI V0.1 Stage 1 is frozen
+  as a frontend-only static React product shell with synthetic data and no
+  production service. Stage 2 backend, state, Runtime, and PDI integration have
+  not started.
 
 ## Future
 
@@ -43,8 +45,8 @@ details live in their dedicated documents.
 - User-controlled memory derived from PDI rather than owned by an AI runtime.
 - Explicit permission and write/action boundaries before any write-capable
   consumer Tool is introduced.
-- A transport/UI only after its trust, authentication, and deployment model is
-  frozen.
+- Jarvis Web backend, state, Runtime, PDI integration, authentication, and
+  deployment only through their separately reviewed Stage 2+ boundaries.
 - **v1.0 — Stable Personal Digital Infrastructure:** stabilize proven provider,
   observation, retrieval, access, and consumer contracts for long-term use.
 

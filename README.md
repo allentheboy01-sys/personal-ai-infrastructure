@@ -62,6 +62,9 @@ The release includes:
   and `message` types while Blob remains mandatory;
 - frozen single-account Gmail ingestion for 283 production Message Resources,
   exact RAW RFC 2822 Blobs, and four deterministic metadata predicates; and
+- the frozen Jarvis Web UI V0.1 Stage 1 static React frontend, with synthetic
+  data only, responsive Chat/Resources/Providers surfaces, and the Beacon / Guide
+  product mark; and
 - a server-first Codex CLI development workflow with production isolation.
 
 Current host-safe/default validation: `466 passed, 98 skipped`. The full
@@ -97,6 +100,7 @@ authentication boundary are documented in
 - [Gmail Provider V0.1 design](docs/design/pdi-gmail-provider-v0.1.md)
 - [Production server runtime](docs/deployment/server-runtime-v0.1.md)
 - [Jarvis reference runtime](docs/deployment/jarvis-runtime-server-v0.1.md)
+- [Jarvis Web UI V0.1 Stage 1 freeze](docs/design/jarvis-web-ui-v0.1-stage1-freeze.md)
 
 ## License
 

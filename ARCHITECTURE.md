@@ -133,7 +133,9 @@ Resource detail, and Resource observations.
 
 MCP Tool handlers must not import ORM types, open database sessions directly,
 or receive Provider credentials. A runtime may expose a deliberately smaller
-subset; the validated Jarvis/Hermes profile exposes exactly three Tools.
+subset. The current Jarvis Web UI V0.1 runtime-integration baseline exposes
+seven read-only Tools: recent, search, Resource detail, aggregation,
+Observations, Provider-semantic retrieval, and rich retrieval.
 
 ## Runtime and deployment
 
@@ -172,3 +174,9 @@ consumer Tools over those services.
 Relationships, long-term user-controlled memory, write actions, task systems,
 and a Web transport require their own trust and architecture freeze before
 implementation. A new abstraction must reduce total complexity.
+
+The existing `src/jarvis/bootstrap.py` is a legacy proof of concept that
+directly composes PDI persistence. It is not an approved basis for the Jarvis
+Web architecture; new Jarvis consumers must use public Application Services or
+MCP and must not import PDI repository, ORM, session, engine, or database
+modules.
