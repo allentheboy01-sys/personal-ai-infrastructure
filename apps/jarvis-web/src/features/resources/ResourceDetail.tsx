@@ -5,7 +5,7 @@ export function ResourceDetail({ resource }: { resource: ResourceView }) {
   const Icon = resource.presentation.kind === 'image' ? Image : resource.presentation.kind === 'message' ? Mail : FileText
   return (
     <div className="detail-content resource-detail">
-      {resource.presentation.kind === 'image' && resource.presentation.thumbnail ? <div className="detail-image"><img src={resource.presentation.thumbnail} alt="Synthetic misty mountain lake with a wooden rowboat" loading="lazy" /></div> : <div className={`detail-hero ${resource.presentation.kind}`}><Icon size={28} /><span>{resource.presentation.label}</span></div>}
+      {resource.presentation.kind === 'image' && resource.presentation.thumbnail ? <div className="detail-image"><img src={resource.presentation.thumbnail} alt={resource.title} loading="lazy" /></div> : <div className={`detail-hero ${resource.presentation.kind}`}><Icon size={28} /><span>{resource.presentation.label}</span></div>}
       <div className="detail-heading"><span className="detail-kicker">{resource.presentation.label}</span><h2>{resource.title}</h2><p>{resource.secondary}</p></div>
       <div className="capability-row">
         <span className={resource.capabilities.preview ? 'available' : ''}><Eye size={15} />{resource.capabilities.preview ? 'Preview available' : 'No preview'}</span>

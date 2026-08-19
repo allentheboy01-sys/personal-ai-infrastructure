@@ -37,8 +37,9 @@ details live in their dedicated documents.
   as a frontend-only static React product shell with synthetic data and no
   production service. Stage 2 state/FastAPI contracts and the Stage 3 isolated
   HermesRuntimeAdapter are frozen after human architecture/runtime review.
-  Deterministic PDI integration and production deployment remain Stage 4 and
-  Stage 5 work.
+  Stage 4 deterministic read-only PDI views, Provider status projection, and
+  bounded Resource Access proxy are frozen after human integration review and
+  real-browser validation. Production deployment remains Stage 5 work.
 
 ## Future
 

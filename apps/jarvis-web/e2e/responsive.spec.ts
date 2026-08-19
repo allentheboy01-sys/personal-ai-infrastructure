@@ -19,7 +19,7 @@ test('mobile uses a drawer and has no horizontal overflow', async ({ page, isMob
 
 test('resource detail is a full-screen accessible dialog on mobile', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'mobile-only behavior')
-  await page.goto('/?page=resources&detail=message')
+  await page.goto('/?page=resources&detail=message&scene=review')
   const detail = page.getByRole('dialog', { name: 'Resource detail' })
   await expect(detail).toBeVisible()
   await expect(detail.getByText(/message body is unavailable/i)).toBeVisible()

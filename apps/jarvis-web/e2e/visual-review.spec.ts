@@ -27,8 +27,8 @@ test.describe('deterministic visual review', () => {
 
   test('desktop Providers', async ({ page, isMobile }) => {
     test.skip(isMobile)
-    await page.goto('/?page=providers')
-    await expect(page.getByRole('heading', { name: 'Providers', level: 2 })).toBeVisible()
+    await page.goto('/?page=providers&scene=review')
+    await expect(page.getByRole('heading', { name: 'Providers', level: 2, exact: true })).toBeVisible()
     await page.screenshot({ path: review('desktop-providers.png'), fullPage: true })
   })
 
@@ -41,15 +41,15 @@ test.describe('deterministic visual review', () => {
 
   test('mobile Resource Detail', async ({ page, isMobile }) => {
     test.skip(!isMobile)
-    await page.goto('/?page=resources&detail=image')
+    await page.goto('/?page=resources&detail=image&scene=review')
     await expect(page.getByRole('dialog', { name: 'Resource detail' })).toBeVisible()
     await page.screenshot({ path: review('mobile-resource-detail.png'), fullPage: true })
   })
 
   test('mobile Providers', async ({ page, isMobile }) => {
     test.skip(!isMobile)
-    await page.goto('/?page=providers')
-    await expect(page.getByRole('heading', { name: 'Providers', level: 2 })).toBeVisible()
+    await page.goto('/?page=providers&scene=review')
+    await expect(page.getByRole('heading', { name: 'Providers', level: 2, exact: true })).toBeVisible()
     await page.screenshot({ path: review('mobile-providers.png'), fullPage: true })
   })
 })

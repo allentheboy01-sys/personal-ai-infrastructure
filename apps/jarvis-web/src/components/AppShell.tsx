@@ -15,6 +15,9 @@ import { useJarvisChat } from '../features/chat/useJarvisChat'
 import { HomePage } from '../pages/HomePage'
 import { ProvidersPage } from '../pages/ProvidersPage'
 import { ResourcesPage } from '../pages/ResourcesPage'
+import { jarvisApi } from '../api/jarvis'
+import { providerDetail, resourceDetail } from '../api/productViews'
+import { ErrorState } from './States'
 
 type Scene = 'home' | 'conversation' | 'working'
 
@@ -34,8 +37,8 @@ export function AppShell() {
   const [panel, setPanel] = useState<PanelContent | null>(null)
   const liveChat = useJarvisChat(initial.review ? null : initial.conversation, initial.review ? null : initial.turn)
 
-  const showResource = (resource: ResourceView) => setPanel({ eyebrow: resource.provider, title: 'Resource detail', content: <ResourceDetail resource={resource} /> })
-  const showProvider = (provider: ProviderView) => setPanel({ eyebrow: provider.category, title: 'Provider detail', content: <ProviderDetail provider={provider} /> })
+  const showResource = (resource: ResourceView) => { if (initial.review) setPanel({ eyebrow: resource.provider, title: 'Resource detail', content: <ResourceDetail resource={resource} /> }); else void jarvisApi.getResource(resource.resourceRef).then((detail) => { const view = resourceDetail(detail); setPanel({ eyebrow: view.provider, title: 'Resource detail', content: <ResourceDetail resource={view} /> }) }).catch(() => setPanel({ eyebrow: 'Resource', title: 'Resource detail', content: <ErrorState title="Resource unavailable" body="Jarvis could not prepare this resource." /> })) }
+  const showProvider = (provider: ProviderView) => { if (initial.review) setPanel({ eyebrow: provider.category, title: 'Provider detail', content: <ProviderDetail provider={provider} /> }); else void jarvisApi.getProvider(provider.providerRef).then((detail) => { const view = providerDetail(detail); setPanel({ eyebrow: view.category, title: 'Provider detail', content: <ProviderDetail provider={view} /> }) }).catch(() => setPanel({ eyebrow: 'Provider', title: 'Provider detail', content: <ErrorState title="Provider unavailable" body="Jarvis could not prepare this provider." /> })) }
   const showExecution = () => setPanel({ eyebrow: 'Live execution', title: 'Working', content: <ExecutionPanel steps={executionSteps} /> })
 
   useEffect(() => {
@@ -59,8 +62,8 @@ export function AppShell() {
       <TopBar title={title} eyebrow={eyebrow} onMenu={() => setDrawer(true)} panelAvailable={scene === 'working'} onPanel={showExecution} />
       {page === 'chat' && scene === 'home' && <HomePage onStart={(prompt) => { setScene('conversation'); if (!initial.review) void liveChat.submit(prompt) }} />}
       {page === 'chat' && scene !== 'home' && <ChatPage working={initial.review ? scene === 'working' : liveChat.running} onResource={showResource} messages={initial.review ? undefined : liveChat.messages} phase={initial.review ? 'reviewing' : liveChat.phase} onSubmit={initial.review ? undefined : liveChat.submit} onStop={initial.review ? undefined : liveChat.cancel} />}
-      {page === 'resources' && <ResourcesPage onResource={showResource} />}
-      {page === 'providers' && <ProvidersPage onProvider={showProvider} />}
+      {page === 'resources' && <ResourcesPage onResource={showResource} review={initial.review} />}
+      {page === 'providers' && <ProvidersPage onProvider={showProvider} review={initial.review} />}
     </section>
     <WorkPanel panel={panel} onClose={() => setPanel(null)} />
   </div>

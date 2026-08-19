@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { jarvisApi, type RuntimeEvent } from '../../api/jarvis'
 import type { AgentPhase, ConversationMessage } from '../../models/chat'
+import { resourceSummary } from '../../api/productViews'
 
 const eventTypes: RuntimeEvent['type'][] = ['turn.started', 'phase.changed', 'message.delta', 'turn.completed', 'turn.failed', 'turn.cancelled']
 
@@ -15,7 +16,7 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
 
   const load = useCallback(async (id: string) => {
     const conversation = await jarvisApi.getConversation(id)
-    setMessages(conversation.messages.map(({ id: messageId, role, body }) => ({ id: messageId, role, body })))
+    setMessages(conversation.messages.map(({ id: messageId, role, body, resources }) => ({ id: messageId, role, body, resources: resources.map(resourceSummary) })))
   }, [])
 
   useEffect(() => {

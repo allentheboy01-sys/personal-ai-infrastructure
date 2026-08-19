@@ -2,7 +2,7 @@ import { File, FileText, Mail, MoreHorizontal } from 'lucide-react'
 import type { ResourceView } from '../../models/resource'
 
 function ImageRenderer({ resource }: { resource: ResourceView }) {
-  return <div className="resource-visual image-renderer"><img src={resource.presentation.thumbnail} alt="Synthetic misty mountain lake with a wooden rowboat" loading="lazy" /></div>
+  return <div className="resource-visual image-renderer"><img src={resource.presentation.thumbnail} alt={resource.title} loading="lazy" /></div>
 }
 
 function DocumentRenderer({ resource }: { resource: ResourceView }) {

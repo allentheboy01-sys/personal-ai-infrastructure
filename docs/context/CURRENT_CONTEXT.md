@@ -2,7 +2,7 @@
 
 **当前版本：** `v0.5.0`
 
-**冻结日期：** 2026-08-19
+**冻结日期：** 2026-08-20
 
 **文档性质：** 当前真实实现状态，不是版本历史或永久架构规范。
 
@@ -82,7 +82,8 @@ Data Status V0.1 使用独立 `pipeline_runs` ledger、十项 static registry、
 `/run/lock/pdi-sync.lock` 的唯一 owner；裸 sync/enrichment CLI 不加锁、不写
 ledger。Status 只派生 `last_success_at`、`success_age_seconds` 与 dependency
 validation，不持久化 fresh/stale，也不返回 ResourceEnrichment coverage count。
-Hermes/Jarvis 的三 Tool profile 本阶段保持不变。
+通用 PDI MCP public surface 为八个 read-only Tools；正式 Hermes PDI
+allowlist 独立冻结为其中七项（不含 Data Status），二者不可混同。
 
 ### Gmail Provider production freeze
 
@@ -104,6 +105,21 @@ registry 共十项，MCP 仍为八个 read-only Tools。没有 Gmail systemd uni
 或 scheduler。OAuth application 仍处于 Testing：bounded/manual execution 已支持，
 long-lived unattended operation 尚未 ready。
 
+### Jarvis Web Stage 4
+
+Jarvis Web Stage 4 已实现待人工审查的 deterministic read-only PDI
+integration：Backend 通过一个 persistent、serialized MCP stdio client 消费八项
+公开 Tool，并投影非持久化 ResourceView 与 ProviderView。Provider 状态由一次
+generic DataStatus snapshot 与一次 Provider aggregation 批量派生。Browser 只能
+通过 allowlisted Jarvis proxy 访问现有 Resource Access UDS 的 Immich image
+thumbnail/preview；Nextcloud document preview 与 Gmail body 均保持 unavailable。
+
+Jarvis 不导入 PDI database/repository/ORM 或 pdi_mcp composition，不获得 PDI DB
+credential，不直连 Provider。Agent-linked Resource refs 因 Hermes callback 尚无
+稳定的 opaque-ref-only structured boundary 而继续 deferred；没有 prose 或 generic
+JSON scan。本阶段未创建 production Jarvis DB/role/service，未修改 systemd 或
+Tailscale。
+
 ### Server Runtime
 
 - 正式主机：`pdi-server`；
@@ -114,7 +130,7 @@ long-lived unattended operation 尚未 ready。
   idempotency、正式 unit 安装与每日 05:30 Asia/Shanghai timer 验证；
 - 当前 Geo predicates 为 `geo.country`、`geo.admin1`、`geo.locality`；
 - Jarvis/Hermes reference runtime 通过 SSH on-demand 启动；
-- Hermes 仅启用三个冻结的 PDI MCP Tool，Memory 与 write capability 关闭；
+- Hermes 仅启用七个冻结的 PDI MCP read Tool，Memory 与 write capability 关闭；
 - DeepSeek 是当前远程 inference Provider，PDI 不依赖它。
 
 ### Data Status production freeze
@@ -210,10 +226,10 @@ service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线
 
 ## 5. 验证状态
 
-2026-08-19 当前 host-safe 与 Stage 3 Jarvis validation：
+2026-08-20 当前 host-safe 与 Stage 4 Jarvis validation：
 
 ```text
-host-safe/default: 512 passed, 98 skipped
+host-safe/default: 522 passed, 98 skipped
 Jarvis isolated PostgreSQL migration: 1 passed
 prior PDI isolated PostgreSQL suite: 99 passed, 2 skipped
 ```
@@ -224,7 +240,10 @@ skip 均来自显式 database、live Provider 或 integration gate；isolated su
 Jarvis database。
 Codex 默认 command sandbox 会阻塞 MCP SDK `Client.call_tool` worker path；相同
 standalone/minimal pytest 在 host-native execution 正常通过，因此正式回归使用
-host-native execution 完成。
+host-native execution 完成。Stage 4 完整 Playwright suite 在一次性隔离 browser
+runtime 中为 11 passed、9 个 device-matrix expected skips、0 failures；真实只读浏览器
+smoke 验证 Resources、Resource Detail、Immich image proxy 与三个 Provider views，未
+保存真实内容截图。
 
 ## 6. 当前限制
 
@@ -234,9 +253,10 @@ host-native execution 完成。
   已通过 human architecture review 并冻结 FastAPI product skeleton、独立 Jarvis
   state/migration、MockRuntimeAdapter、SSE 与 persistent Chat API boundary；Stage 3
   已通过 human runtime review 并冻结 isolated HermesRuntimeAdapter，使用每 Turn
-  独立 subprocess 与 private JSONL bridge，Hermes session 不具权威性；仍没有
-  deterministic PDI Web integration、production Jarvis database 或 production Web
-  service；
+  独立 subprocess 与 private JSONL bridge，Hermes session 不具权威性；Stage 4
+  deterministic read-only PDI Web views、Provider status projection 与 Resource
+  Access proxy 已通过 human integration review 和真实浏览器验证并冻结；仍没有
+  production Jarvis database 或 production Web service；
 - Codex CLI 是开发工具，不进入 production data path；
 - production integration validation 必须使用隔离数据库，不能复用 production secret。
 
@@ -246,8 +266,8 @@ Server-first Codex migration、Geo、Data Status V0.1、Person Identity V0.1 与
 Resource-Person Relation V0.1、Typed Resource V0.1 与单账号 Gmail Provider V0.1
 production freeze 已完成。Jarvis Web UI V0.1 Stage 1 static frontend 与
 Beacon / Guide identity 也已通过 human visual/brand review 并冻结；Stage 2 skeleton
-也已通过 human architecture review 并冻结；Stage 3 HermesRuntimeAdapter 已通过
-human runtime review 并冻结；deterministic PDI integration 与 production deployment
-分别保持 Stage 4/Stage 5 deferred。
+  也已通过 human architecture review 并冻结；Stage 3 HermesRuntimeAdapter 已通过
+  human runtime review 并冻结；Stage 4 deterministic PDI integration 已通过真实浏览器
+  validation 并冻结；production deployment 保持 Stage 5 deferred。
 任何关系推理、Memory、写操作或 Web backend/deployment 都必须遵守各自已批准或后续
 单独冻结的 trust boundary 与架构。

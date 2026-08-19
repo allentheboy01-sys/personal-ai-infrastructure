@@ -18,8 +18,8 @@ class MockEventSource {
 const canonical = {
   id: 'conversation-1', title: 'Hello', created_at: '2026-08-19T00:00:00Z', updated_at: '2026-08-19T00:00:01Z', archived_at: null,
   messages: [
-    { id: 'user-1', role: 'user', body: 'Hello', created_at: '2026-08-19T00:00:00Z', resource_refs: [] },
-    { id: 'assistant-1', role: 'assistant', body: 'Canonical response', created_at: '2026-08-19T00:00:01Z', resource_refs: [] },
+    { id: 'user-1', role: 'user', body: 'Hello', created_at: '2026-08-19T00:00:00Z', resource_refs: [], resources: [] },
+    { id: 'assistant-1', role: 'assistant', body: 'Canonical response', created_at: '2026-08-19T00:00:01Z', resource_refs: [], resources: [] },
   ],
 }
 

@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 from jarvis.state import Base
 from jarvis.runtime import MockRuntimeAdapter
 from jarvis.web import JarvisWebSettings, TestAuthAdapter, create_app
+from jarvis.pdi_client import ResourceAccessClient
 
 
 ORIGIN = "https://jarvis.test"
@@ -20,10 +21,10 @@ def app_factory(tmp_path: Path):
     static.mkdir()
     (static / "index.html").write_text("<!doctype html><title>Jarvis</title>", encoding="utf-8")
     (static / "app.js").write_text("console.log('synthetic')", encoding="utf-8")
-    def build(runtime: MockRuntimeAdapter | None = None):
+    def build(runtime: MockRuntimeAdapter | None = None, *, pdi_client=None, resource_access: ResourceAccessClient | None = None):
         engine = create_engine("sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         Base.metadata.create_all(engine)
-        return create_app(engine=engine, settings=JarvisWebSettings(allowed_origin=ORIGIN, static_dir=static), auth_adapter=TestAuthAdapter(), runtime=runtime or MockRuntimeAdapter())
+        return create_app(engine=engine, settings=JarvisWebSettings(allowed_origin=ORIGIN, static_dir=static), auth_adapter=TestAuthAdapter(), runtime=runtime or MockRuntimeAdapter(), pdi_client=pdi_client, resource_access=resource_access)
     return build
 
 

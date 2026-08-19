@@ -57,8 +57,17 @@ def test_jarvis_state_never_imports_pdi() -> None:
     assert violations == []
 
 
+def test_jarvis_pdi_client_uses_only_transport_contracts() -> None:
+    violations = []
+    for path in (ROOT / "src/jarvis/pdi_client").rglob("*.py"):
+        for imported in _imports(path):
+            if imported == "pdi" or imported.startswith(("pdi.", "pdi_mcp")):
+                violations.append(f"{path.relative_to(ROOT)}: {imported}")
+    assert violations == []
+
+
 def test_frontend_has_no_direct_service_or_secret_boundary() -> None:
-    forbidden = ("gmail.googleapis", "/run/pdi", "postgresql://", "remote.php", "navigator.serviceWorker", "new WebSocket")
+    forbidden = ("gmail.googleapis", "/run/pdi", "postgresql://", "remote.php", "navigator.serviceWorker", "new WebSocket", "pdi_mcp", "MCPClient", ".sock")
     violations = []
     for path in (ROOT / "apps/jarvis-web/src").rglob("*"):
         if path.is_file() and path.suffix in {".ts", ".tsx", ".css"}:
@@ -78,3 +87,10 @@ def test_runtime_implementation_is_not_a_browser_contract() -> None:
     frontend = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "apps/jarvis-web/src").rglob("*.ts*"))
     assert "MockRuntimeAdapter" not in frontend
     assert "HermesRuntimeAdapter" not in frontend
+
+
+def test_live_product_pages_do_not_fallback_to_mocks() -> None:
+    for name in ("ResourcesPage.tsx", "ProvidersPage.tsx"):
+        text = (ROOT / "apps/jarvis-web/src/pages" / name).read_text(encoding="utf-8")
+        assert "catch(() => setState('error'))" in text
+        assert "review ?" in text
