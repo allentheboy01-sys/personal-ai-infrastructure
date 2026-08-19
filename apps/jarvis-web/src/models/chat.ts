@@ -1,6 +1,6 @@
 import type { ResourceView } from './resource'
 
-export type AgentPhase = 'searching' | 'reviewing' | 'composing'
+export type AgentPhase = 'thinking' | 'searching' | 'reviewing' | 'computing' | 'composing'
 
 export interface ConversationMessage {
   id: string

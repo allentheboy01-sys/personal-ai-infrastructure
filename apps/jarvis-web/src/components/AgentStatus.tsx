@@ -2,7 +2,7 @@ import { CircleCheck, LoaderCircle } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import type { AgentPhase } from '../models/chat'
 
-const labels: Record<AgentPhase, string> = { searching: 'Searching your resources', reviewing: 'Reviewing likely matches', composing: 'Composing an answer' }
+const labels: Record<AgentPhase, string> = { thinking: 'Considering your request', searching: 'Searching your resources', reviewing: 'Reviewing likely matches', computing: 'Working through the details', composing: 'Composing an answer' }
 
 export function AgentStatus({ phase }: { phase: AgentPhase }) {
   const reduced = useReducedMotion()

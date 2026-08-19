@@ -64,12 +64,17 @@ The release includes:
   exact RAW RFC 2822 Blobs, and four deterministic metadata predicates; and
 - the frozen Jarvis Web UI V0.1 Stage 1 static React frontend, with synthetic
   data only, responsive Chat/Resources/Providers surfaces, and the Beacon / Guide
-  product mark; and
+  product mark;
+- the implemented, not-yet-deployed Stage 2 Jarvis State/FastAPI skeleton with
+  a composition-only MockRuntimeAdapter and persistent same-origin Chat
+  boundary, frozen after human architecture review; and
 - a server-first Codex CLI development workflow with production isolation.
 
-Current host-safe/default validation: `466 passed, 98 skipped`. The full
-isolated PostgreSQL validation is `99 passed, 2 skipped`; the two skips require
-live Immich credentials. Integration, live-Provider, and database tests are
+Current host-safe/default validation: `491 passed, 98 skipped`. The Stage 2
+Jarvis migration validation is `1 passed` against a disposable isolated
+PostgreSQL database. The prior full PDI isolated validation is `99 passed, 2
+skipped`; the two skips require live Immich credentials. Integration,
+live-Provider, and database tests are
 explicitly gated and are never run against production data. Gmail V0.1 is
 functionally frozen for bounded manual execution; unattended operation remains
 blocked on the OAuth application lifecycle.
@@ -101,6 +106,7 @@ authentication boundary are documented in
 - [Production server runtime](docs/deployment/server-runtime-v0.1.md)
 - [Jarvis reference runtime](docs/deployment/jarvis-runtime-server-v0.1.md)
 - [Jarvis Web UI V0.1 Stage 1 freeze](docs/design/jarvis-web-ui-v0.1-stage1-freeze.md)
+- [Jarvis Web UI V0.1 Stage 2 skeleton](docs/design/jarvis-web-ui-v0.1-stage2.md)
 
 ## License
 

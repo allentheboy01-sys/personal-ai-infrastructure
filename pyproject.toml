@@ -26,6 +26,11 @@ dependencies = [
     "uvicorn>=0.35,<1.0",
 ]
 
+[project.optional-dependencies]
+jarvis-web = [
+    "fastapi>=0.141,<0.142",
+]
+
 
 [tool.setuptools.packages.find]
 where = ["src"]

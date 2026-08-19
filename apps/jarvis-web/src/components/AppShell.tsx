@@ -11,6 +11,7 @@ import { resources } from '../mocks/resources'
 import type { ProviderView } from '../models/provider'
 import type { ResourceView } from '../models/resource'
 import { ChatPage } from '../pages/ChatPage'
+import { useJarvisChat } from '../features/chat/useJarvisChat'
 import { HomePage } from '../pages/HomePage'
 import { ProvidersPage } from '../pages/ProvidersPage'
 import { ResourcesPage } from '../pages/ResourcesPage'
@@ -20,8 +21,9 @@ type Scene = 'home' | 'conversation' | 'working'
 function readInitial() {
   const params = new URLSearchParams(window.location.search)
   const page = (params.get('page') as AppPage | null) ?? 'chat'
-  const scene = (params.get('scene') as Scene | null) ?? 'home'
-  return { page: ['chat', 'resources', 'providers'].includes(page) ? page : 'chat', scene: ['home', 'conversation', 'working'].includes(scene) ? scene : 'home', detail: params.get('detail') }
+  const conversation = params.get('conversation')
+  const scene = (params.get('scene') as Scene | null) ?? (conversation ? 'conversation' : 'home')
+  return { page: ['chat', 'resources', 'providers'].includes(page) ? page : 'chat', scene: ['home', 'conversation', 'working'].includes(scene) ? scene : 'home', detail: params.get('detail'), conversation, turn: params.get('turn'), review: params.has('scene') }
 }
 
 export function AppShell() {
@@ -30,6 +32,7 @@ export function AppShell() {
   const [scene, setScene] = useState<Scene>(initial.scene)
   const [drawer, setDrawer] = useState(false)
   const [panel, setPanel] = useState<PanelContent | null>(null)
+  const liveChat = useJarvisChat(initial.review ? null : initial.conversation, initial.review ? null : initial.turn)
 
   const showResource = (resource: ResourceView) => setPanel({ eyebrow: resource.provider, title: 'Resource detail', content: <ResourceDetail resource={resource} /> })
   const showProvider = (provider: ProviderView) => setPanel({ eyebrow: provider.category, title: 'Provider detail', content: <ProviderDetail provider={provider} /> })
@@ -54,8 +57,8 @@ export function AppShell() {
     <Dialog.Root open={drawer} onOpenChange={setDrawer}><Dialog.Portal><Dialog.Overlay className="drawer-overlay" /><Dialog.Content className="drawer-content" aria-describedby={undefined}><Dialog.Title className="sr-only">Navigation</Dialog.Title><Sidebar page={page} onNavigate={navigate} onClose={() => setDrawer(false)} /></Dialog.Content></Dialog.Portal></Dialog.Root>
     <section className="main-column">
       <TopBar title={title} eyebrow={eyebrow} onMenu={() => setDrawer(true)} panelAvailable={scene === 'working'} onPanel={showExecution} />
-      {page === 'chat' && scene === 'home' && <HomePage onStart={() => setScene('conversation')} />}
-      {page === 'chat' && scene !== 'home' && <ChatPage working={scene === 'working'} onResource={showResource} />}
+      {page === 'chat' && scene === 'home' && <HomePage onStart={(prompt) => { setScene('conversation'); if (!initial.review) void liveChat.submit(prompt) }} />}
+      {page === 'chat' && scene !== 'home' && <ChatPage working={initial.review ? scene === 'working' : liveChat.running} onResource={showResource} messages={initial.review ? undefined : liveChat.messages} phase={initial.review ? 'reviewing' : liveChat.phase} onSubmit={initial.review ? undefined : liveChat.submit} onStop={initial.review ? undefined : liveChat.cancel} />}
       {page === 'resources' && <ResourcesPage onResource={showResource} />}
       {page === 'providers' && <ProvidersPage onProvider={showProvider} />}
     </section>

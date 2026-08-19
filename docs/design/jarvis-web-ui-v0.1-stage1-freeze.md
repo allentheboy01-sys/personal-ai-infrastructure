@@ -83,4 +83,5 @@ user-local Node runtime are excluded from Git.
 Backend, Jarvis state database, Hermes RuntimeAdapter, PDI consumer client,
 Resource Access proxy, Memory, Tasks, Actions, Approval, Proactive behavior,
 Add Provider, Marketplace, public authentication, PWA, push, and production
-deployment remain deferred. Stage 2 implementation has not started.
+deployment remain deferred. At the time of this historical Stage 1 freeze,
+Stage 2 implementation had not started.

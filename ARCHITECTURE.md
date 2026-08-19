@@ -148,6 +148,24 @@ Host-based development uses a separate user checkout under
 `/home/harry/projects/personal-ai-infrastructure`. The production checkout is
 never a development worktree or test target.
 
+Jarvis Web is a separate consumer boundary. Its FastAPI product layer owns
+Conversation, user-visible Message, Turn, and opaque MessageResourceRef state
+in independent SQLAlchemy metadata and an independent Alembic tree. A future
+production deployment may use the same PostgreSQL server as PDI, but it must
+use a separate `jarvis` logical database, credentials, migrations, and version
+table. There are no cross-database foreign keys.
+
+The Jarvis-owned RuntimeAdapter contract accepts normalized conversation
+context and emits only product-level Turn events. Runtime event history and
+provisional text remain ephemeral. Only a successful completion transaction
+creates the canonical assistant Message. Hermes remains a replaceable Stage 3
+implementation and is not imported by this contract. Stage 2 uses only a
+deterministic MockRuntimeAdapter while Resource and Provider views remain
+frontend synthetic data; real PDI access remains outside this stage.
+The mock is selected only through application composition. No browser/API
+input can choose a Runtime implementation or test scenario; Stage 3 replaces
+the composed mock with HermesRuntimeAdapter behind the unchanged contract.
+
 Formal batch execution is scheduler-independent: `pdi.operational` is the sole
 owner of `/run/lock/pdi-sync.lock`, records independently committed PipelineRun
 start and terminal states, and invokes the existing Provider sync or enrichment
@@ -171,12 +189,12 @@ through registered predicates and extractors. New query behavior enters public
 Application Services and repository contracts. New AI capabilities enter as
 consumer Tools over those services.
 
-Relationships, long-term user-controlled memory, write actions, task systems,
-and a Web transport require their own trust and architecture freeze before
-implementation. A new abstraction must reduce total complexity.
+Relationships, long-term user-controlled memory, write actions, and task
+systems require their own trust and architecture freeze before implementation.
+A new abstraction must reduce total complexity.
 
-The existing `src/jarvis/bootstrap.py` is a legacy proof of concept that
-directly composes PDI persistence. It is not an approved basis for the Jarvis
-Web architecture; new Jarvis consumers must use public Application Services or
-MCP and must not import PDI repository, ORM, session, engine, or database
-modules.
+The former `src/jarvis/bootstrap.py` legacy proof of concept directly composed
+PDI persistence. No formal runtime or production path depended on it, so Stage
+2 removed it from the active package. New Jarvis consumers must use public
+Application Services or MCP and must not import PDI repository, ORM, session,
+engine, or database modules.
