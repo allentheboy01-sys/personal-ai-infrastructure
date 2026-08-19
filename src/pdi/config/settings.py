@@ -23,6 +23,12 @@ class ImmichSettings(BaseModel):
     api_key: str
 
 
+class GmailSettings(BaseModel):
+    """Gmail read-only runtime configuration."""
+
+    token_file: str = "/etc/pdi/gmail-oauth-token.json"
+
+
 class LoggingSettings(BaseModel):
     """PDI 日志配置。"""
 
@@ -35,6 +41,7 @@ class Settings(BaseSettings):
     database: DatabaseSettings
     nextcloud: NextcloudSettings
     immich: ImmichSettings | None = None
+    gmail: GmailSettings = GmailSettings()
     logging: LoggingSettings = LoggingSettings()
 
     model_config = SettingsConfigDict(

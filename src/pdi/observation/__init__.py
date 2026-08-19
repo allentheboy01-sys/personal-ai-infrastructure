@@ -28,12 +28,17 @@ from .predicates import (
     GEO_ADMIN1,
     GEO_COUNTRY,
     GEO_LOCALITY,
+    GMAIL_FROM,
+    GMAIL_INTERNAL_DATE,
+    GMAIL_SUBJECT,
+    GMAIL_TO,
     PREDICATES,
     get_predicate,
 )
 from .extractor import ImmichMetadataExtractor
 from .file_metadata import FileMetadataExtractor
 from .immich_geo import ImmichGeoExtractor
+from .gmail_metadata import GmailMetadataExtractor, GmailRawReader
 from .ocr import ImmichOCRExtractor, ImmichOCRReader, OCRRegion
 from .nextcloud_text import (
     MAX_DECODED_CHARACTERS,
@@ -63,6 +68,12 @@ __all__ = [
     "GEO_ADMIN1",
     "GEO_COUNTRY",
     "GEO_LOCALITY",
+    "GMAIL_FROM",
+    "GMAIL_INTERNAL_DATE",
+    "GMAIL_SUBJECT",
+    "GMAIL_TO",
+    "GmailMetadataExtractor",
+    "GmailRawReader",
     "GeneratorIdentity",
     "ObservationBatch",
     "ObservationError",

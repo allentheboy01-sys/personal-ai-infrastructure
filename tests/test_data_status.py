@@ -46,12 +46,14 @@ def test_registry_has_frozen_keys_kinds_dependencies_and_generators() -> None:
     assert tuple(by_key) == (
         "provider.nextcloud.sync",
         "provider.immich.sync",
+        "provider.gmail.sync",
         "enrichment.nextcloud_text",
         "enrichment.nextcloud_documents",
         "enrichment.file_metadata",
         "enrichment.immich_geo",
         "enrichment.immich_metadata",
         "enrichment.immich_ocr",
+        "enrichment.gmail_metadata",
     )
     assert {pipeline.kind for pipeline in PIPELINES} == {
         PipelineKind.PROVIDER_SYNC,
@@ -65,6 +67,9 @@ def test_registry_has_frozen_keys_kinds_dependencies_and_generators() -> None:
         generator.generator_name
         for generator in documents.enrichment_generators
     ) == ("nextcloud_pdf", "nextcloud_odt", "nextcloud_docx")
+    assert by_key["enrichment.gmail_metadata"].dependencies == (
+        "provider.gmail.sync",
+    )
 
 
 @pytest.mark.parametrize(
@@ -103,9 +108,9 @@ def test_empty_status_snapshot_is_bounded_and_uses_two_batch_reads() -> None:
     repository = FakeRepository()
     snapshot = DataStatusService(repository, clock=lambda: NOW).get_status()
     assert snapshot.generated_at == NOW
-    assert len(snapshot.pipelines) == 8
+    assert len(snapshot.pipelines) == 10
     assert len(repository.calls) == 2
-    assert all(len(call[1]) == 8 for call in repository.calls)
+    assert all(len(call[1]) == 10 for call in repository.calls)
     roots = [item for item in snapshot.pipelines if not item.dependencies]
     dependents = [item for item in snapshot.pipelines if item.dependencies]
     assert all(item.latest_status is None for item in snapshot.pipelines)

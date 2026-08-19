@@ -459,6 +459,9 @@ class Matcher:
         if not fact.name:
             return "Untitled Asset"
 
+        if fact.kind == ResourceType.MESSAGE:
+            return fact.name
+
         suffix = Path(fact.name).suffix
 
         if suffix:

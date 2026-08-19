@@ -277,7 +277,10 @@ class PostgreSQLObservationRepository:
         self,
         *,
         provider: str | tuple[str, ...],
+        resource_type: str = "file",
     ) -> tuple[EnrichmentResource, ...]:
+        if resource_type not in {"file", "message"}:
+            raise ValueError("resource_type must be file or message")
         providers = (provider,) if isinstance(provider, str) else provider
         with self._session_factory() as session:
             rows = session.execute(
@@ -297,7 +300,7 @@ class PostgreSQLObservationRepository:
                 .join(BlobORM, BlobORM.asset_id == AssetORM.id)
                 .join(AssetSourceORM, AssetSourceORM.blob_id == BlobORM.id)
                 .where(
-                    AssetORM.resource_type == "file",
+                    AssetORM.resource_type == resource_type,
                     AssetSourceORM.provider.in_(providers),
                     AssetSourceORM.is_active.is_(True),
                 )

@@ -67,11 +67,9 @@ class SyncEngine:
                 seen_external_ids.add(fact.external_id)
 
             logger.debug(
-                "Matching fact provider=%s "
-                "external_id=%s name=%s",
+                "Matching fact provider=%s kind=%s",
                 fact.provider,
-                fact.external_id,
-                fact.name,
+                fact.kind,
             )
 
             decision = self.matcher.match(
@@ -84,11 +82,9 @@ class SyncEngine:
                 in decision.requirements
             ):
                 logger.debug(
-                    "Content hash required provider=%s "
-                    "external_id=%s name=%s",
+                    "Content hash required provider=%s kind=%s",
                     fact.provider,
-                    fact.external_id,
-                    fact.name,
+                    fact.kind,
                 )
 
                 content_hash = calculate_sha256(
@@ -96,14 +92,14 @@ class SyncEngine:
                 )
 
                 fact.attributes["content_hash"] = content_hash
+                if fact.kind == "message":
+                    fact.attributes["version_tag"] = content_hash
                 hash_count += 1
 
                 logger.debug(
-                    "Content hash calculated provider=%s "
-                    "external_id=%s name=%s",
+                    "Content hash calculated provider=%s kind=%s",
                     fact.provider,
-                    fact.external_id,
-                    fact.name,
+                    fact.kind,
                 )
 
                 decision = self.matcher.match(
@@ -114,9 +110,9 @@ class SyncEngine:
             if decision.requirements:
                 logger.error(
                     "Requirements could not be satisfied "
-                    "provider=%s external_id=%s requirements=%s",
+                    "provider=%s kind=%s requirements=%s",
                     fact.provider,
-                    fact.external_id,
+                    fact.kind,
                     decision.requirements,
                 )
 
@@ -129,10 +125,9 @@ class SyncEngine:
             action_count += len(decision.actions)
 
             logger.debug(
-                "Decision executed provider=%s "
-                "external_id=%s actions=%d",
+                "Decision executed provider=%s kind=%s actions=%d",
                 fact.provider,
-                fact.external_id,
+                fact.kind,
                 len(decision.actions),
             )
 
@@ -152,13 +147,8 @@ class SyncEngine:
                     missing_count += 1
 
                     logger.warning(
-                        "Source missing from completed scan "
-                        "provider=%s external_id=%s "
-                        "source_id=%s path=%s",
+                        "Source missing from completed scan provider=%s",
                         source.provider,
-                        source.external_id,
-                        source.id,
-                        source.path,
                     )
 
                     decision = self.matcher.deactivate_source(source)
@@ -166,12 +156,8 @@ class SyncEngine:
                     action_count += len(decision.actions)
 
                     logger.info(
-                        "Source deactivated provider=%s "
-                        "external_id=%s source_id=%s path=%s",
+                        "Source deactivated provider=%s",
                         source.provider,
-                        source.external_id,
-                        source.id,
-                        source.path,
                     )
 
         duration = time.perf_counter() - started_at

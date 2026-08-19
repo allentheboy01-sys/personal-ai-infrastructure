@@ -18,6 +18,10 @@ FILE_MODIFIED_AT = "file.modified_at"
 GEO_COUNTRY = "geo.country"
 GEO_ADMIN1 = "geo.admin1"
 GEO_LOCALITY = "geo.locality"
+GMAIL_SUBJECT = "gmail.subject"
+GMAIL_FROM = "gmail.from"
+GMAIL_TO = "gmail.to"
+GMAIL_INTERNAL_DATE = "gmail.internal_date"
 
 
 PREDICATES = MappingProxyType(
@@ -75,6 +79,26 @@ PREDICATES = MappingProxyType(
         GEO_LOCALITY: PredicateDefinition(
             name=GEO_LOCALITY,
             value_type=StatementValueType.STRING,
+            cardinality=PredicateCardinality.SINGLE,
+        ),
+        GMAIL_SUBJECT: PredicateDefinition(
+            name=GMAIL_SUBJECT,
+            value_type=StatementValueType.STRING,
+            cardinality=PredicateCardinality.SINGLE,
+        ),
+        GMAIL_FROM: PredicateDefinition(
+            name=GMAIL_FROM,
+            value_type=StatementValueType.STRING,
+            cardinality=PredicateCardinality.SINGLE,
+        ),
+        GMAIL_TO: PredicateDefinition(
+            name=GMAIL_TO,
+            value_type=StatementValueType.STRING,
+            cardinality=PredicateCardinality.SINGLE,
+        ),
+        GMAIL_INTERNAL_DATE: PredicateDefinition(
+            name=GMAIL_INTERNAL_DATE,
+            value_type=StatementValueType.DATETIME,
             cardinality=PredicateCardinality.SINGLE,
         ),
     }

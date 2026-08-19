@@ -31,6 +31,7 @@ CHILD_TERMINATION_GRACE_SECONDS = 10.0
 PIPELINE_COMMANDS: dict[str, tuple[str, ...]] = {
     "provider.nextcloud.sync": ("-m", "pdi.main", "--provider", "nextcloud"),
     "provider.immich.sync": ("-m", "pdi.main", "--provider", "immich"),
+    "provider.gmail.sync": ("-m", "pdi.main", "--provider", "gmail"),
     "enrichment.nextcloud_text": (
         "-m", "pdi.enrichment", "--extractor", "nextcloud-text",
         "--batch-size", "100",
@@ -53,6 +54,10 @@ PIPELINE_COMMANDS: dict[str, tuple[str, ...]] = {
     "enrichment.immich_ocr": (
         "-m", "pdi.enrichment", "--extractor", "immich-ocr",
         "--batch-size", "20000",
+    ),
+    "enrichment.gmail_metadata": (
+        "-m", "pdi.enrichment", "--extractor", "gmail-metadata",
+        "--batch-size", "500",
     ),
 }
 

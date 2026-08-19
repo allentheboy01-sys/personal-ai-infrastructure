@@ -13,6 +13,7 @@ requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.18,<2.0",
     "defusedxml>=0.7,<1.0",
+    "google-auth>=2.56,<3.0",
     "httpx>=0.28,<1.0",
     "mcp>=2.0,<3.0",
     "psycopg[binary]>=3.2,<4.0",

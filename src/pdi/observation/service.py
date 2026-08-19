@@ -28,7 +28,7 @@ class ObservationService:
 class EnrichmentWorker:
     DEFAULT_STALE_AFTER = timedelta(minutes=30)
 
-    def __init__(self, repository: ObservationRepository, extractor, *, provider: str | tuple[str, ...] = "immich", clock: Callable[[], datetime] | None = None, stale_after: timedelta = DEFAULT_STALE_AFTER) -> None:
+    def __init__(self, repository: ObservationRepository, extractor, *, provider: str | tuple[str, ...] = "immich", resource_type: str = "file", clock: Callable[[], datetime] | None = None, stale_after: timedelta = DEFAULT_STALE_AFTER) -> None:
         self._repository = repository; self._extractor = extractor
         valid_provider = (
             isinstance(provider, str)
@@ -47,14 +47,23 @@ class EnrichmentWorker:
                 "provider must be a non-empty name or tuple of names"
             )
         self._provider = provider
+        if resource_type not in {"file", "message"}:
+            raise ValueError("resource_type must be file or message")
+        self._resource_type = resource_type
         self._clock = clock or (lambda: datetime.now(UTC)); self._stale_after = stale_after
 
     def run_once(self, *, batch_size: int) -> WorkerResult:
         if type(batch_size) is not int or batch_size < 1:
             raise ValueError("batch_size must be positive")
-        resources = self._repository.list_enrichment_resources(
-            provider=self._provider
-        )
+        if self._resource_type == "file":
+            resources = self._repository.list_enrichment_resources(
+                provider=self._provider
+            )
+        else:
+            resources = self._repository.list_enrichment_resources(
+                provider=self._provider,
+                resource_type=self._resource_type,
+            )
         is_eligible = getattr(self._extractor, "is_eligible", None)
         if callable(is_eligible):
             resources = tuple(

@@ -2,6 +2,7 @@ import argparse
 from collections.abc import Sequence
 
 from pdi.adapters.nextcloud.adapter import NextcloudAdapter
+from pdi.adapters.gmail import GmailAdapter
 from pdi.config.settings import (
     load_database_url,
     load_immich_settings,
@@ -11,6 +12,8 @@ from pdi.database import create_postgres_engine
 from pdi.observation import (
     EnrichmentWorker,
     FileMetadataExtractor,
+    GmailMetadataExtractor,
+    GmailRawReader,
     ImmichGeoExtractor,
     ImmichMetadataExtractor,
     ImmichOCRExtractor,
@@ -37,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
             "file-metadata",
             "nextcloud-text",
             "nextcloud-documents",
+            "gmail-metadata",
         ),
         default="immich-metadata",
         help=(
@@ -82,6 +86,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 NextcloudContentReader(adapter)
             )
             provider = "nextcloud"
+        elif args.extractor == "gmail-metadata":
+            extractor = GmailMetadataExtractor(
+                GmailRawReader(GmailAdapter())
+            )
+            provider = "gmail"
         else:
             extractor = None
             provider = "nextcloud"
@@ -120,6 +129,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0 if all(result.failed == 0 for result in results) else 1
         if provider == "immich":
             worker = EnrichmentWorker(repository, extractor)
+        elif provider == "gmail":
+            worker = EnrichmentWorker(
+                repository,
+                extractor,
+                provider="gmail",
+                resource_type="message",
+            )
         else:
             worker = EnrichmentWorker(
                 repository,

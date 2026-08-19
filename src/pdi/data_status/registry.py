@@ -23,6 +23,10 @@ PIPELINES = (
         PipelineKind.PROVIDER_SYNC,
     ),
     PipelineDefinition(
+        "provider.gmail.sync",
+        PipelineKind.PROVIDER_SYNC,
+    ),
+    PipelineDefinition(
         "enrichment.nextcloud_text",
         PipelineKind.ENRICHMENT,
         ("provider.nextcloud.sync",),
@@ -61,6 +65,12 @@ PIPELINES = (
         PipelineKind.ENRICHMENT,
         ("provider.immich.sync",),
         (GeneratorIdentity("provider_native_ml", "immich_ocr", "1"),),
+    ),
+    PipelineDefinition(
+        "enrichment.gmail_metadata",
+        PipelineKind.ENRICHMENT,
+        ("provider.gmail.sync",),
+        (GeneratorIdentity("deterministic_extractor", "gmail_metadata", "1"),),
     ),
 )
 

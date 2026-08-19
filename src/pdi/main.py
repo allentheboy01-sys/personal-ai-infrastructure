@@ -3,6 +3,7 @@ import logging
 from collections.abc import Sequence
 
 from pdi.adapters.base import Adapter
+from pdi.adapters.gmail import GmailAdapter
 from pdi.adapters.immich import ImmichAdapter
 from pdi.adapters.nextcloud.adapter import NextcloudAdapter
 from pdi.config import Settings
@@ -24,7 +25,7 @@ def _parse_args(
     )
     parser.add_argument(
         "--provider",
-        choices=("nextcloud", "immich"),
+        choices=("nextcloud", "immich", "gmail"),
         help=(
             "Synchronize only one provider. "
             "Without this option, all configured providers are synchronized."
@@ -66,6 +67,13 @@ def _build_adapters(
                     api_key=settings.immich.api_key,
                 )
             )
+
+    # Gmail remains an explicit development/pilot sync. It is not included
+    # in the existing implicit all-provider production path.
+    if selected_provider == "gmail":
+        adapters.append(
+            GmailAdapter(token_file=settings.gmail.token_file)
+        )
 
     return adapters
 

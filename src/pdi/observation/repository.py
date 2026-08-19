@@ -46,7 +46,10 @@ class ObservationRepository(Protocol):
     ) -> None: ...
 
     def list_enrichment_resources(
-        self, *, provider: str | tuple[str, ...]
+        self,
+        *,
+        provider: str | tuple[str, ...],
+        resource_type: str = "file",
     ) -> tuple[EnrichmentResource, ...]: ...
 
     def get_resource_statements(

@@ -28,6 +28,9 @@ def _settings(
             if immich_configured
             else None
         ),
+        gmail=SimpleNamespace(
+            token_file="/private/test-token.json",
+        ),
         logging=SimpleNamespace(
             level="INFO",
         ),
@@ -146,6 +149,27 @@ def test_main_nextcloud_selection_never_constructs_immich(
         sync_calls[0]["adapter"],
         NextcloudAdapter,
     )
+
+
+def test_main_gmail_selection_uses_explicit_read_only_adapter(
+    monkeypatch,
+) -> None:
+    sync_calls, _, _ = _configure_composition_fakes(
+        monkeypatch,
+        _settings(),
+    )
+    sentinel = object()
+    seen = {}
+
+    def fake_gmail_adapter(*, token_file):
+        seen["token_file"] = token_file
+        return sentinel
+
+    monkeypatch.setattr(pdi_main, "GmailAdapter", fake_gmail_adapter)
+    pdi_main.main(["--provider", "gmail"])
+    assert seen == {"token_file": "/private/test-token.json"}
+    assert len(sync_calls) == 1
+    assert sync_calls[0]["adapter"] is sentinel
 
 
 def test_main_immich_selection_never_constructs_nextcloud(

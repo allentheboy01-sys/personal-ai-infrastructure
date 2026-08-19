@@ -51,6 +51,13 @@ def test_formal_command_map_matches_registry_and_existing_cli_contracts() -> Non
     assert PIPELINE_COMMANDS["provider.immich.sync"] == (
         "-m", "pdi.main", "--provider", "immich"
     )
+    assert PIPELINE_COMMANDS["provider.gmail.sync"] == (
+        "-m", "pdi.main", "--provider", "gmail"
+    )
+    assert PIPELINE_COMMANDS["enrichment.gmail_metadata"] == (
+        "-m", "pdi.enrichment", "--extractor", "gmail-metadata",
+        "--batch-size", "500",
+    )
     assert PIPELINE_COMMANDS["enrichment.nextcloud_documents"] == (
         "-m", "pdi.enrichment", "--extractor", "nextcloud-documents",
         "--batch-size", "100",
