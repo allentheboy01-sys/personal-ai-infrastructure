@@ -1,6 +1,6 @@
 # PDI Typed Resource V0.1
 
-Status: Stage 1 implementation candidate; not deployed.
+Status: production active and frozen on 2026-08-19.
 
 ## Contract
 
@@ -56,8 +56,13 @@ backfilling the column, then removes it in the same migration. Production
 rollout must therefore prevent old writer code from running against the final
 schema.
 
-A later rollout review should use a bounded writer quiesce under the formal
-shared batch lock: stop new formal batch entry, wait for the current owner to
-finish, fast-forward/install the typed writer, apply the migration, verify the
-backfill and constraints, then restore formal execution. No compatibility
-framework or dual-write period is part of V0.1.
+Production rollout used bounded writer quiescence under the formal shared batch
+lock. Migration `3b1e6f8a4c20` classified all 15,325 existing Resources as
+`file`; there were no `message` or NULL rows, and the final column has no server
+default. Pre/post legacy digests confirmed no identity or content churn.
+
+The production validation used host-native pytest because the Codex command
+sandbox blocks the MCP SDK `Client.call_tool` worker path. The same standalone
+and minimal pytest controls complete normally outside that sandbox. The final
+host-safe/default suite passed with 454 tests and the isolated PostgreSQL suite
+passed with 98 tests and two expected skips.

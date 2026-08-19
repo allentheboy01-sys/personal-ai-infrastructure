@@ -58,13 +58,15 @@ The release includes:
 - a formal PipelineRun ledger with one scheduler-independent lock owner;
 - stable Person identity plus one dedicated Immich-derived Resource-depicts-
   Person relation table, without face/vector persistence or a generic graph;
-  and
+- typed Resource identity on the existing `assets.id`, with explicit `file`
+  and `message` types while Blob remains mandatory; and
 - a server-first Codex CLI development workflow with production isolation.
 
-Current host-safe/default validation: `447 passed`. The full
-isolated PostgreSQL validation is `93 passed, 2 skipped`; the two skips require
+Current host-safe/default validation: `454 passed, 97 skipped`. The full
+isolated PostgreSQL validation is `98 passed, 2 skipped`; the two skips require
 live Immich credentials. Integration, live-Provider, and database tests are
-explicitly gated and are never run against production data.
+explicitly gated and are never run against production data. Typed Resource
+support does not yet include a Gmail adapter or any production Message rows.
 The v0.5.0 release-preparation baseline was `412 passed, 66 skipped`.
 
 ## Development

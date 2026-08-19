@@ -2,7 +2,7 @@
 
 **当前版本：** `v0.5.0`
 
-**冻结日期：** 2026-08-18
+**冻结日期：** 2026-08-19
 
 **文档性质：** 当前真实实现状态，不是版本历史或永久架构规范。
 
@@ -140,6 +140,25 @@ Immich 显式同步只查询 active enumerable PersonSources，并通过 metadat
 inactivated 均为零，mapping digest 不变。MCP 仍为八个 read-only Tools，且没有
 Relation/Person query、systemd、timer 或 PipelineRun registry entry。
 
+### Typed Resource production freeze
+
+Typed Resource V0.1 已在 production 启用。`assets.id` 继续作为 canonical PDI
+Resource identity，公开 reference 仍为 `pdi:resource:<uuid>`；物理 `assets`、
+`Asset` 与 `AssetSource` 名称不变。`assets.resource_type` 是必填 Core
+discriminator，V0.1 仅允许 `file` 与 `message`。
+
+迁移 `3b1e6f8a4c20` 将既有 15,325 个 production Resources 全部确定性标记为
+`file`；`message=0`、NULL=0，最终 schema 没有 server default。Blob 与
+AssetSource schema 不变，Message 仍必须拥有 Blob。File 保留原有 global
+content-hash dedup；不同 Provider Message identity 即使 raw content hash 相同也
+不得自动合并。
+
+Observation、Resource-Person Relation 与 `pdi:resource` reference 均未改变。
+现有 enrichment、Immich retrieval、Rich Retrieval 与 Resource Access 继续显式
+file-only。Gmail adapter、OAuth、metadata predicates、MCP Tool 与 schedule 均未
+实现。上线前暴露的旧 PDI PostgreSQL credential 已确认失效，Compose/container
+配置已协调，live reference 为零。
+
 ## 3. 开发工作流
 
 主机独立 development checkout 是 PDI 的主要 Codex 开发环境：
@@ -167,16 +186,18 @@ service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线
 
 ## 5. 验证状态
 
-2026-08-18 Resource-Person Relation freeze validation：
+2026-08-19 Typed Resource freeze validation：
 
 ```text
-host-safe/default: 447 passed
-isolated PostgreSQL: 93 passed, 2 skipped
+host-safe/default: 454 passed, 97 skipped
+isolated PostgreSQL: 98 passed, 2 skipped
 ```
 
 skip 均来自显式 database、live Provider 或 integration gate；isolated suite 使用
-独立测试数据库，本轮没有让 pytest 连接 production `pdi` 数据库。runner 的
-SIGTERM、SIGINT、child reap 与第二运行互斥已在隔离集成测试中验证。
+一次性 PostgreSQL 16 测试容器，本轮没有让 pytest 连接 production `pdi` 数据库。
+Codex 默认 command sandbox 会阻塞 MCP SDK `Client.call_tool` worker path；相同
+standalone/minimal pytest 在 host-native execution 正常通过，因此正式回归使用
+host-native execution 完成。
 
 ## 6. 当前限制
 
@@ -189,6 +210,7 @@ SIGTERM、SIGINT、child reap 与第二运行互斥已在隔离集成测试中�
 ## 7. 下一阶段
 
 Server-first Codex migration、Geo、Data Status V0.1、Person Identity V0.1 与
-Resource-Person Relation V0.1 production freeze 已完成。下一正式 PDI
+Resource-Person Relation V0.1 与 Typed Resource V0.1 production freeze 已完成。
+Typed Resource Core 已支持 `message`，但 Gmail Provider 尚未实现。下一正式 PDI
 architecture stage 由人工讨论后决定；本上下文不预选新功能。任何关系推理、Memory、
 写操作或 Web transport 都必须先冻结 trust boundary 与架构，再实现。
