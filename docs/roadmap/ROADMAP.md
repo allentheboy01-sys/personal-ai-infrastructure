@@ -21,7 +21,7 @@ details live in their dedicated documents.
 - **v0.6 — Operational hardening:** Immich Geo Enrichment V0.1 production
   enrichment, idempotency, service installation, and daily 05:30 timer are
   complete and frozen. Data Status & Freshness V0.1 is production active with
-  a historical PipelineRun ledger, eight tracked formal pipelines, derived
+  a historical PipelineRun ledger, ten tracked formal pipelines, derived
   freshness signals, and the eighth read-only MCP Tool. Server-first Codex
   migration is complete. Minimal Person Identity V0.1 is also production active
   for the standard Immich enumerable People inventory, without names or face
@@ -29,9 +29,12 @@ details live in their dedicated documents.
   provider-owned `depicts` table, with 10,460 active Immich-derived mappings,
   no generic graph, MCP exposure, or scheduling. Typed Resource V0.1 is
   production active on the existing `assets.id` identity with bounded
-  `file|message` types; all 15,325 pre-existing Resources remain `file`, Blob
-  remains mandatory, and Gmail is not implemented. The next formal architecture
-  stage requires human discussion and is not selected by this roadmap update.
+  `file|message` types. Gmail Provider V0.1 is functionally frozen for one
+  account with 283 production Message Resources, RAW RFC 2822 Blobs, four
+  deterministic predicates, and two manually invoked tracked pipelines. It
+  adds no scheduler, timer, systemd service, or MCP Tool; unattended operation
+  remains blocked on the OAuth lifecycle. The next formal architecture stage
+  requires human discussion and is not selected by this roadmap update.
 
 ## Future
 

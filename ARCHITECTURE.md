@@ -18,7 +18,7 @@ PDI must remain useful if every current consumer and model is replaced.
 ## System map
 
 ```text
-Nextcloud / Immich
+Nextcloud / Immich / Gmail
         |
      Adapters
         |
@@ -57,6 +57,12 @@ The Core owns Asset, Blob, and AssetSource identity and lifecycle. Synchronism
 is incremental and idempotent; full scans can reconcile missing sources by
 soft deactivation without destroying durable identity.
 
+Every independently addressable digital object should preferentially have a
+canonical PDI Resource identity. This does not turn every fact or operational
+state into a Resource: Observation, Relation, Person, Provider source, and
+PipelineRun remain separate concepts. The physical persistence table remains
+named `assets`; conceptual and public contracts use Resource.
+
 ## Observation path
 
 ```text
@@ -76,8 +82,9 @@ and statement lifecycle so reruns are deterministic and supersession is
 explicit.
 
 Current extractors cover Immich provider metadata, OCR and geo labels, file
-modification time, Nextcloud text, and PDF/DOCX/ODT content. Extractors do not
-make open-ended AI interpretations.
+modification time, Nextcloud text and PDF/DOCX/ODT content, plus deterministic
+Gmail Subject/From/To/internal-date facts. Extractors do not make open-ended AI
+interpretations.
 
 ## Read and retrieval path
 

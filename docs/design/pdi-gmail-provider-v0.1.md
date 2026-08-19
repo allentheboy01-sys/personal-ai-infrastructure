@@ -1,6 +1,6 @@
 # PDI Gmail Provider V0.1
 
-## Stage 1 contract
+## Frozen production contract
 
 Gmail ingestion uses the existing typed Resource model. Each enumerable Gmail
 Message is represented by one `Asset(resource_type=message)`, one current Blob
@@ -44,4 +44,23 @@ Gmail discovery client. Secrets and message content must never be logged.
 The current Google OAuth application remains in Testing. Its authorization is
 suitable for development and a controlled pilot, but its refresh token is not
 a permanent unattended production credential. Long-lived OAuth lifecycle is
-a production-rollout gate, not part of Stage 1.
+an unattended-operation gate, not part of the functional data-plane freeze.
+
+## Production validation
+
+Gmail Provider V0.1 was frozen on 2026-08-19 after two formal production sync
+and enrichment passes. The validated mailbox inventory contained 283 Messages:
+283 Message Resources, 283 active Gmail Sources, and 283/283 RFC 2822 Blob
+coverage. Four current observations per Message produced 1,132 statements.
+There were no duplicate Provider identities or Message Resources.
+
+The second sync produced zero actions. The second enrichment processed zero,
+skipped all 283 unchanged Resources, and wrote no statements. Gmail API writes
+were zero throughout the pilot. The static Operational State Plane contains
+10 definitions, including `provider.gmail.sync` and its dependent
+`enrichment.gmail_metadata`; MCP remains eight read-only Tools.
+
+Explicitly deferred are additional Gmail accounts and account namespaces,
+QQ/163/IMAP abstraction, Thread and label state, attachments as Resources,
+body extraction, semantic email retrieval, Gmail Resource Access, write/send
+operations, History/PubSub, Gmail-specific MCP, and scheduling.

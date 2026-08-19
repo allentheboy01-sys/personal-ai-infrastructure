@@ -77,12 +77,32 @@ Provider metadata/content -> Observation Enrichment -> typed Statements
 7. `pdi_get_resource_observations`
 8. `pdi_get_data_status`
 
-Data Status V0.1 使用独立 `pipeline_runs` ledger、八项 static registry、
+Data Status V0.1 使用独立 `pipeline_runs` ledger、十项 static registry、
 `DataStatusService` 与 formal `pdi.operational` runner。runner 是
 `/run/lock/pdi-sync.lock` 的唯一 owner；裸 sync/enrichment CLI 不加锁、不写
 ledger。Status 只派生 `last_success_at`、`success_age_seconds` 与 dependency
 validation，不持久化 fresh/stale，也不返回 ResourceEnrichment coverage count。
 Hermes/Jarvis 的三 Tool profile 本阶段保持不变。
+
+### Gmail Provider production freeze
+
+Gmail Provider V0.1 已于 2026-08-19 完成功能与 production data-plane freeze。
+V0.1 仅支持一个配置的 Gmail account；Provider identity
+`(gmail, message.id)` 只在该单账号边界内成立，多账号 namespace 明确 deferred。
+
+完整 `users.messages.list(includeSpamTrash=true)` 同步创建 283 个
+`resource_type=message` Resources、283 个 active Gmail AssetSources，并实现
+283/283 `message/rfc822` RAW RFC 2822 Blob coverage。四个 deterministic
+predicates `gmail.subject`、`gmail.from`、`gmail.to`、`gmail.internal_date`
+共产生 1,132 条 current observations。第二轮正式 sync actions=0；第二轮
+enrichment processed=0、skipped=283、writes=0。duplicate Message Resources=0，
+Gmail API writes=0。
+
+`provider.gmail.sync` 与依赖它的 `enrichment.gmail_metadata` 复用现有 formal
+runner、shared lock、PipelineRun、DataStatusService 与 `pdi_get_data_status`；
+registry 共十项，MCP 仍为八个 read-only Tools。没有 Gmail systemd unit、timer
+或 scheduler。OAuth application 仍处于 Testing：bounded/manual execution 已支持，
+long-lived unattended operation 尚未 ready。
 
 ### Server Runtime
 
@@ -101,12 +121,13 @@ Hermes/Jarvis 的三 Tool profile 本阶段保持不变。
 
 Data Status & Freshness V0.1 已于 2026-08-18 在 production 启用。Alembic head
 为 `4d8a2c6e9f10`，八个正式 batch service 均通过 `pdi.operational` 进入唯一
-shared flock owner。历史没有回填；首轮按 dependency 顺序执行八个 pipeline，随后
+shared flock owner。历史没有回填；初次 freeze 按 dependency 顺序执行当时八个 pipeline，随后
 额外执行一次 Immich Geo no-op 验证，共形成九条真实 `completed` PipelineRun，零
 `running`、零 `failed`。
 
-production StatusSnapshot 返回八个 registry pipeline；两个 Provider pipeline 的
-dependency validation 为 `null`，六个 enrichment pipeline 均为 `true`。本地正式
+当前 production StatusSnapshot 返回十个 registry pipeline；三个 Provider pipeline 的
+dependency validation 为 `null`，七个 enrichment pipeline 可按各自最新 upstream
+success 派生 validation。初次 freeze 时六个 enrichment pipeline 均为 `true`。本地正式
 stdio MCP 已验证八个 read-only Tool。Hermes/Jarvis allowlist 未随本次上线扩展。
 
 ### Person Identity production freeze
@@ -147,16 +168,16 @@ Resource identity，公开 reference 仍为 `pdi:resource:<uuid>`；物理 `asse
 `Asset` 与 `AssetSource` 名称不变。`assets.resource_type` 是必填 Core
 discriminator，V0.1 仅允许 `file` 与 `message`。
 
-迁移 `3b1e6f8a4c20` 将既有 15,325 个 production Resources 全部确定性标记为
-`file`；`message=0`、NULL=0，最终 schema 没有 server default。Blob 与
+迁移 `3b1e6f8a4c20` 将当时既有 15,325 个 production Resources 全部确定性标记为
+`file`；迁移验证时 `message=0`、NULL=0，最终 schema 没有 server default。Blob 与
 AssetSource schema 不变，Message 仍必须拥有 Blob。File 保留原有 global
 content-hash dedup；不同 Provider Message identity 即使 raw content hash 相同也
 不得自动合并。
 
 Observation、Resource-Person Relation 与 `pdi:resource` reference 均未改变。
-现有 enrichment、Immich retrieval、Rich Retrieval 与 Resource Access 继续显式
-file-only。Gmail adapter、OAuth、metadata predicates、MCP Tool 与 schedule 均未
-实现。上线前暴露的旧 PDI PostgreSQL credential 已确认失效，Compose/container
+现有 Immich retrieval、Rich Retrieval 与 Resource Access 继续显式 file-only。
+Gmail 已在上述独立 freeze 中实现，但没有 Gmail Resource Access、专用 MCP Tool
+或 schedule。上线前暴露的旧 PDI PostgreSQL credential 已确认失效，Compose/container
 配置已协调，live reference 为零。
 
 ## 3. 开发工作流
@@ -186,11 +207,11 @@ service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线
 
 ## 5. 验证状态
 
-2026-08-19 Typed Resource freeze validation：
+2026-08-19 Gmail Provider freeze validation：
 
 ```text
-host-safe/default: 454 passed, 97 skipped
-isolated PostgreSQL: 98 passed, 2 skipped
+host-safe/default: 466 passed, 98 skipped
+isolated PostgreSQL: 99 passed, 2 skipped
 ```
 
 skip 均来自显式 database、live Provider 或 integration gate；isolated suite 使用
@@ -210,7 +231,7 @@ host-native execution 完成。
 ## 7. 下一阶段
 
 Server-first Codex migration、Geo、Data Status V0.1、Person Identity V0.1 与
-Resource-Person Relation V0.1 与 Typed Resource V0.1 production freeze 已完成。
-Typed Resource Core 已支持 `message`，但 Gmail Provider 尚未实现。下一正式 PDI
+Resource-Person Relation V0.1、Typed Resource V0.1 与单账号 Gmail Provider V0.1
+production freeze 已完成。下一正式 PDI
 architecture stage 由人工讨论后决定；本上下文不预选新功能。任何关系推理、Memory、
 写操作或 Web transport 都必须先冻结 trust boundary 与架构，再实现。

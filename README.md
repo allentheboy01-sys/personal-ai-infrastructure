@@ -28,7 +28,7 @@ Write Pipeline -> PostgreSQL <- Query / Retrieval Services
 
 The current implementation has four explicit paths:
 
-- **Write:** Nextcloud and Immich Adapters produce provider facts for the
+- **Write:** Nextcloud, Immich, and Gmail Adapters produce provider facts for the
   incremental, idempotent Sync Engine.
 - **Observation:** deterministic enrichment publishes typed, evidenced
   statements without changing Resource identity.
@@ -59,14 +59,17 @@ The release includes:
 - stable Person identity plus one dedicated Immich-derived Resource-depicts-
   Person relation table, without face/vector persistence or a generic graph;
 - typed Resource identity on the existing `assets.id`, with explicit `file`
-  and `message` types while Blob remains mandatory; and
+  and `message` types while Blob remains mandatory;
+- frozen single-account Gmail ingestion for 283 production Message Resources,
+  exact RAW RFC 2822 Blobs, and four deterministic metadata predicates; and
 - a server-first Codex CLI development workflow with production isolation.
 
-Current host-safe/default validation: `454 passed, 97 skipped`. The full
-isolated PostgreSQL validation is `98 passed, 2 skipped`; the two skips require
+Current host-safe/default validation: `466 passed, 98 skipped`. The full
+isolated PostgreSQL validation is `99 passed, 2 skipped`; the two skips require
 live Immich credentials. Integration, live-Provider, and database tests are
-explicitly gated and are never run against production data. Typed Resource
-support does not yet include a Gmail adapter or any production Message rows.
+explicitly gated and are never run against production data. Gmail V0.1 is
+functionally frozen for bounded manual execution; unattended operation remains
+blocked on the OAuth application lifecycle.
 The v0.5.0 release-preparation baseline was `412 passed, 66 skipped`.
 
 ## Development
@@ -91,6 +94,7 @@ authentication boundary are documented in
 - [Roadmap](docs/roadmap/ROADMAP.md)
 - [v0.5.0 release notes](docs/releases/v0.5.md)
 - [v0.6 operational hardening notes](docs/releases/v0.6.md)
+- [Gmail Provider V0.1 design](docs/design/pdi-gmail-provider-v0.1.md)
 - [Production server runtime](docs/deployment/server-runtime-v0.1.md)
 - [Jarvis reference runtime](docs/deployment/jarvis-runtime-server-v0.1.md)
 
