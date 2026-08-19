@@ -297,6 +297,7 @@ class PostgreSQLObservationRepository:
                 .join(BlobORM, BlobORM.asset_id == AssetORM.id)
                 .join(AssetSourceORM, AssetSourceORM.blob_id == BlobORM.id)
                 .where(
+                    AssetORM.resource_type == "file",
                     AssetSourceORM.provider.in_(providers),
                     AssetSourceORM.is_active.is_(True),
                 )

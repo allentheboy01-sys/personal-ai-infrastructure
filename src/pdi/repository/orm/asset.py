@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, Index, Text, text
+from sqlalchemy import CheckConstraint, DateTime, Index, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -10,10 +10,21 @@ from pdi.repository.orm.base import Base
 
 class AssetORM(Base):
     __tablename__ = "assets"
+    __table_args__ = (
+        CheckConstraint(
+            "resource_type IN ('file', 'message')",
+            name="ck_assets_resource_type",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         primary_key=True,
+    )
+
+    resource_type: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
     )
 
     title: Mapped[str] = mapped_column(

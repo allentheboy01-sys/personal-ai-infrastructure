@@ -1,7 +1,9 @@
+import pytest
+
 from pdi.adapters.base import ProviderFact
 from pdi.decision import ActionType
 from pdi.identity import Matcher
-from pdi.models import Asset, AssetSource, Blob
+from pdi.models import Asset, AssetSource, Blob, ResourceType
 from pdi.repository import InMemoryRepository
 
 
@@ -31,6 +33,7 @@ def test_create_new_asset():
     )
 
     assert decision.reason == "new_source_new_blob"
+    assert decision.actions[0].asset.resource_type is ResourceType.FILE
 
     assert [
         action.type
@@ -40,6 +43,96 @@ def test_create_new_asset():
         ActionType.CREATE_BLOB,
         ActionType.CREATE_SOURCE,
     ]
+
+
+def _message_fact(
+    external_id: str,
+    *,
+    content_hash: str = "same-raw-hash",
+    version_tag: str = "immutable-message",
+) -> ProviderFact:
+    return ProviderFact(
+        provider="gmail",
+        kind="message",
+        external_id=external_id,
+        name=None,
+        attributes={
+            "content_hash": content_hash,
+            "mime_type": "message/rfc822",
+            "size": 128,
+            "version_tag": version_tag,
+        },
+        raw={},
+    )
+
+
+def test_distinct_messages_with_same_content_remain_distinct_resources():
+    repository = InMemoryRepository()
+    matcher = Matcher()
+
+    for external_id in ("message-a", "message-b"):
+        decision = matcher.match(
+            fact=_message_fact(external_id),
+            repository=repository,
+        )
+        assert decision.reason == "new_message_source"
+        repository.execute(decision)
+
+    assert len(repository.assets) == 2
+    assert len(repository.blobs) == 2
+    assert len(repository.sources) == 2
+    assert {
+        asset.resource_type for asset in repository.assets.values()
+    } == {ResourceType.MESSAGE}
+    assert len({blob.asset_id for blob in repository.blobs.values()}) == 2
+
+
+def test_existing_message_preserves_resource_and_versions_inside_it():
+    repository = InMemoryRepository()
+    matcher = Matcher()
+    original = _message_fact("message-a")
+    repository.execute(matcher.match(original, repository))
+    original_asset_id = next(iter(repository.assets))
+
+    assert matcher.match(original, repository).reason == "source_unchanged"
+
+    changed = _message_fact(
+        "message-a",
+        content_hash="changed-raw-hash",
+        version_tag="changed-message",
+    )
+    repository.execute(matcher.match(changed, repository))
+
+    assert set(repository.assets) == {original_asset_id}
+    assert len(repository.blobs) == 2
+    assert {
+        blob.asset_id for blob in repository.blobs.values()
+    } == {original_asset_id}
+
+
+def test_existing_source_kind_mismatch_fails_explicitly():
+    repository = InMemoryRepository()
+    matcher = Matcher()
+    repository.execute(
+        matcher.match(_message_fact("message-a"), repository)
+    )
+
+    mismatched = ProviderFact(
+        provider="gmail",
+        kind="file",
+        external_id="message-a",
+        name="message.eml",
+        attributes={
+            "content_hash": "same-raw-hash",
+            "version_tag": "immutable-message",
+        },
+        raw={},
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="existing_source_resource_type_mismatch",
+    ):
+        matcher.match(mismatched, repository)
 
 def test_same_source_should_do_nothing():
     repository = InMemoryRepository()

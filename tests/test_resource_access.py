@@ -159,6 +159,7 @@ def test_service_validates_canonical_ref_and_kind() -> None:
     [
         (None, ResourceNotFoundError),
         ((), RepresentationUnavailableError),
+        ((_source(resource_type="message"),), RepresentationUnavailableError),
         ((_source(mime_type="video/mp4"),), RepresentationUnavailableError),
         ((_source(provider="nextcloud"),), RepresentationUnavailableError),
         ((_source(), _source("source-b")), AmbiguousAccessSourceError),

@@ -1,12 +1,12 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import Engine, case, func, or_, select, text
+from sqlalchemy import Engine, and_, case, func, or_, select, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
 from pdi.decision import Action, ActionType, Decision
-from pdi.models import Asset, AssetSource, Blob
+from pdi.models import Asset, AssetSource, Blob, ResourceType
 from pdi.query.models import (
     AssetDetail,
     AssetSummary,
@@ -84,6 +84,7 @@ class PostgreSQLRepository(
     ) -> AssetORM:
         return AssetORM(
             id=UUID(asset.id),
+            resource_type=asset.resource_type.value,
             title=asset.title,
             metadata_=asset.metadata,
             created_at=asset.created_at,
@@ -96,6 +97,7 @@ class PostgreSQLRepository(
     ) -> Asset:
         return Asset(
             id=str(asset_orm.id),
+            resource_type=ResourceType(asset_orm.resource_type),
             title=asset_orm.title,
             metadata=dict(asset_orm.metadata_),
             created_at=asset_orm.created_at,
@@ -349,9 +351,12 @@ class PostgreSQLRepository(
         with self._session_factory() as session:
             asset_orms = (
                 session.execute(
-                    select(AssetORM).order_by(
-                        AssetORM.id.asc(),
+                    select(AssetORM)
+                    .where(
+                        AssetORM.resource_type
+                        == ResourceType.FILE.value
                     )
+                    .order_by(AssetORM.id.asc())
                 )
                 .scalars()
                 .all()
@@ -373,6 +378,8 @@ class PostgreSQLRepository(
             )
 
             if asset_orm is None:
+                return None
+            if asset_orm.resource_type != ResourceType.FILE.value:
                 return None
 
             blob_orms = (
@@ -435,13 +442,15 @@ class PostgreSQLRepository(
                 return None
 
             rows = session.execute(
-                select(AssetSourceORM, BlobORM)
+                select(AssetSourceORM, BlobORM, AssetORM)
                 .join(
                     BlobORM,
                     AssetSourceORM.blob_id == BlobORM.id,
                 )
+                .join(AssetORM, BlobORM.asset_id == AssetORM.id)
                 .where(
                     BlobORM.asset_id == parsed_id,
+                    AssetORM.resource_type == ResourceType.FILE.value,
                     AssetSourceORM.is_active.is_(True),
                     AssetSourceORM.provider == "immich",
                     func.lower(BlobORM.mime_type).like("image/%"),
@@ -453,10 +462,10 @@ class PostgreSQLRepository(
                 ResourceAccessSource(
                     provider=source.provider,
                     provider_locator=source.external_id,
-                    resource_type="file",
+                    resource_type=asset.resource_type,
                     mime_type=blob.mime_type,
                 )
-                for source, blob in rows
+                for source, blob, asset in rows
             )
 
     @staticmethod
@@ -596,7 +605,7 @@ class PostgreSQLRepository(
         )
         return ResourceSummary(
             resource_ref=format_resource_ref(asset_orm.id),
-            resource_type="file",
+            resource_type=asset_orm.resource_type,
             display_name=asset_orm.title,
             pdi_first_observed_at=asset_orm.created_at,
             sources=tuple(
@@ -683,6 +692,7 @@ class PostgreSQLRepository(
                     AssetSourceORM.provider == provider,
                     AssetSourceORM.external_id.in_(unique_locators),
                     AssetSourceORM.is_active.is_(True),
+                    AssetORM.resource_type == ResourceType.FILE.value,
                 )
             ).all()
 
@@ -742,6 +752,8 @@ class PostgreSQLRepository(
                             pattern,
                             escape="\\",
                         ),
+                        AssetORM.resource_type
+                        == ResourceType.FILE.value,
                         self._active_source_exists(
                             provider=None,
                             mime_type=None,
@@ -956,12 +968,18 @@ class PostgreSQLRepository(
         *,
         search_text: str | None = None,
     ) -> ColumnElement[bool]:
-        return cls._active_source_exists(
+        filters_for_query = cls._active_source_exists(
             provider=filters.provider,
             mime_type=filters.mime_type,
             mime_category=filters.mime_category,
             path_prefix=filters.path_prefix,
             search_text=search_text,
+        )
+        if filters.resource_type is None:
+            return filters_for_query
+        return and_(
+            AssetORM.resource_type == filters.resource_type,
+            filters_for_query,
         )
 
     def list_resource_page(
@@ -1082,6 +1100,14 @@ class PostgreSQLRepository(
             observed_from=query.time_range.observed_from,
             observed_to=query.time_range.observed_to,
         )
+        type_filters = (
+            []
+            if query.filters.resource_type is None
+            else [
+                AssetORM.resource_type
+                == query.filters.resource_type
+            ]
+        )
 
         with self._session_factory() as session:
             if query.group_by is None:
@@ -1093,7 +1119,11 @@ class PostgreSQLRepository(
                         AssetSourceORM,
                         AssetSourceORM.blob_id == BlobORM.id,
                     )
-                    .where(*time_filters, *source_filters)
+                    .where(
+                        *time_filters,
+                        *type_filters,
+                        *source_filters,
+                    )
                     .distinct()
                     .subquery()
                 )
@@ -1124,7 +1154,11 @@ class PostgreSQLRepository(
                     AssetSourceORM,
                     AssetSourceORM.blob_id == BlobORM.id,
                 )
-                .where(*time_filters, *source_filters)
+                .where(
+                    *time_filters,
+                    *type_filters,
+                    *source_filters,
+                )
                 .distinct()
                 .subquery()
             )

@@ -52,6 +52,7 @@ def test_postgres_resource_access_mapping_is_read_only_and_detached() -> None:
             [
                 {
                     "id": asset_id,
+                    "resource_type": "file",
                     "title": f"resource-access-{name}",
                     "metadata": {},
                     "created_at": now,

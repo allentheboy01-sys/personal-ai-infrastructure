@@ -13,7 +13,7 @@ from sqlalchemy import Connection, Engine, event
 
 from pdi.database import create_postgres_engine
 from pdi.decision import Action, ActionType, Decision
-from pdi.models import Asset, AssetSource, Blob
+from pdi.models import Asset, AssetSource, Blob, ResourceType
 from pdi.query import (
     QueryService,
     ResourceDetail,
@@ -464,6 +464,49 @@ def test_detail_is_complete_detached_and_distinguishes_missing(
 
     with pytest.raises(ResourceNotFoundError):
         service.get_resource(format_resource_ref(UUID(int=0)))
+
+
+def test_query_returns_and_filters_stored_resource_type(
+    query_context,
+) -> None:
+    _, repository, service, data = query_context
+    token = uuid4().hex
+    message = Asset(
+        resource_type=ResourceType.MESSAGE,
+        title=f"Typed message {token}",
+        created_at=data.now - timedelta(seconds=1),
+        updated_at=data.now - timedelta(seconds=1),
+    )
+    blob, source = _create_source(
+        asset=message,
+        provider=f"typed-message-{token}",
+        name="message.eml",
+        path="",
+        mime_type="message/rfc822",
+        size=256,
+    )
+    repository.execute(Decision(actions=[
+        Action(type=ActionType.CREATE_ASSET, asset=message),
+        Action(type=ActionType.CREATE_BLOB, blob=blob),
+        Action(type=ActionType.CREATE_SOURCE, source=source),
+    ]))
+
+    message_results = service.list_recent_resources(
+        days=1,
+        resource_type="message",
+        provider=source.provider,
+    )
+    assert [item.resource_type for item in message_results] == [
+        "message"
+    ]
+    assert service.list_recent_resources(
+        days=1,
+        resource_type="file",
+        provider=source.provider,
+    ) == ()
+    assert service.get_resource(
+        format_resource_ref(message.id)
+    ).resource_type == "message"
 
 
 def test_mcp_client_reaches_real_postgresql_without_id_leaks(

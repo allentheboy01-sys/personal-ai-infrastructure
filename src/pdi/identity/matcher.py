@@ -8,7 +8,7 @@ from pdi.decision import (
     Decision,
     RequirementType,
 )
-from pdi.models import Asset, AssetSource, Blob
+from pdi.models import Asset, AssetSource, Blob, ResourceType
 from pdi.repository import Repository
 from datetime import UTC, datetime
 
@@ -46,6 +46,12 @@ class Matcher:
                 repository=repository,
             )
 
+        self._require_matching_resource_type(
+            fact=fact,
+            source=existing_source,
+            repository=repository,
+        )
+
         return self._match_existing_source(
             fact=fact,
             source=existing_source,
@@ -64,6 +70,14 @@ class Matcher:
 
         if content_hash is None:
             return self._content_hash_required()
+
+        if fact.kind == ResourceType.MESSAGE:
+            return self._create_new_resource(
+                fact=fact,
+                content_hash=content_hash,
+                resource_type=ResourceType.MESSAGE,
+                reason="new_message_source",
+            )
 
         # 新 Source 可以在整个 World Model 中复用相同内容。
         existing_blob = repository.find_blob_by_hash(
@@ -87,37 +101,38 @@ class Matcher:
                 confidence=1.0,
             )
 
-        asset = Asset(
-            title=self._build_asset_title(fact),
+        return self._create_new_resource(
+            fact=fact,
+            content_hash=content_hash,
+            resource_type=ResourceType.FILE,
+            reason="new_source_new_blob",
         )
 
+    def _create_new_resource(
+        self,
+        *,
+        fact: ProviderFact,
+        content_hash: str,
+        resource_type: ResourceType,
+        reason: str,
+    ) -> Decision:
+        asset = Asset(
+            resource_type=resource_type,
+            title=self._build_asset_title(fact),
+        )
         blob = self._build_blob(
             fact=fact,
             asset_id=asset.id,
             content_hash=content_hash,
         )
-
-        source = self._build_source(
-            fact=fact,
-            blob_id=blob.id,
-        )
-
+        source = self._build_source(fact=fact, blob_id=blob.id)
         return Decision(
             actions=[
-                Action(
-                    type=ActionType.CREATE_ASSET,
-                    asset=asset,
-                ),
-                Action(
-                    type=ActionType.CREATE_BLOB,
-                    blob=blob,
-                ),
-                Action(
-                    type=ActionType.CREATE_SOURCE,
-                    source=source,
-                ),
+                Action(type=ActionType.CREATE_ASSET, asset=asset),
+                Action(type=ActionType.CREATE_BLOB, blob=blob),
+                Action(type=ActionType.CREATE_SOURCE, source=source),
             ],
-            reason="new_source_new_blob",
+            reason=reason,
             confidence=1.0,
         )
 
@@ -290,10 +305,28 @@ class Matcher:
         if not fact.external_id:
             return "invalid_fact_missing_external_id"
 
-        if fact.kind not in {"file", "folder"}:
+        if fact.kind not in {"file", "folder", "message"}:
             return "invalid_fact_kind"
 
         return None
+
+    @staticmethod
+    def _require_matching_resource_type(
+        *,
+        fact: ProviderFact,
+        source: AssetSource,
+        repository: Repository,
+    ) -> None:
+        if source.blob_id is None:
+            raise RuntimeError("existing_source_has_no_blob")
+        blob = repository.get_blob(source.blob_id)
+        if blob is None or blob.asset_id is None:
+            raise RuntimeError("existing_source_resource_not_found")
+        asset = repository.get_asset(blob.asset_id)
+        if asset is None:
+            raise RuntimeError("existing_source_resource_not_found")
+        if asset.resource_type.value != fact.kind:
+            raise RuntimeError("existing_source_resource_type_mismatch")
 
     @staticmethod
     def _get_string_attribute(

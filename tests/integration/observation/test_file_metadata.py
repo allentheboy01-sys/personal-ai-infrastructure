@@ -245,8 +245,8 @@ def test_file_metadata_worker_union_history_idempotency_and_empty_retirement(
         connection.execute(
             text(
                 "INSERT INTO assets "
-                "(id,title,metadata,created_at,updated_at) VALUES "
-                "(:id,'temporal-consensus','{}'::jsonb,:now,:now)"
+                "(id,resource_type,title,metadata,created_at,updated_at) VALUES "
+                "(:id,'file','temporal-consensus','{}'::jsonb,:now,:now)"
             ),
             {"id": asset_id, "now": NOW},
         )
@@ -445,3 +445,50 @@ def test_file_metadata_worker_union_history_idempotency_and_empty_retirement(
             )
         ).scalar_one()
     assert enrichment_count == 1
+
+
+def test_file_enrichment_discovery_excludes_message_resources(
+    database,
+) -> None:
+    engine, token, asset_ids = database
+    asset_id, blob_id, source_id = uuid4(), uuid4(), uuid4()
+    asset_ids.add(asset_id)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO assets "
+                "(id,resource_type,title,metadata,created_at,updated_at) "
+                "VALUES (:id,'message','message','{}'::jsonb,:now,:now)"
+            ),
+            {"id": asset_id, "now": NOW},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO blobs (id,asset_id,hash,size,mime_type) "
+                "VALUES (:id,:asset,:hash,1,'message/rfc822')"
+            ),
+            {
+                "id": blob_id,
+                "asset": asset_id,
+                "hash": f"message-{token}",
+            },
+        )
+        connection.execute(
+            text(
+                "INSERT INTO asset_sources "
+                "(id,blob_id,provider,external_id,metadata,is_active) "
+                "VALUES (:id,:blob,'nextcloud',:external,'{}'::jsonb,true)"
+            ),
+            {
+                "id": source_id,
+                "blob": blob_id,
+                "external": f"message-{token}",
+            },
+        )
+
+    resources = PostgreSQLObservationRepository(
+        engine
+    ).list_enrichment_resources(provider="nextcloud")
+    assert format_resource_ref(asset_id) not in {
+        resource.resource_ref for resource in resources
+    }

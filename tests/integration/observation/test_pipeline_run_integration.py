@@ -57,8 +57,8 @@ def test_formal_noop_and_resource_failure_follow_existing_cli_exit_contract(
     with engine.begin() as connection:
         connection.execute(
             text(
-                "INSERT INTO assets (id,title,metadata,created_at,updated_at) "
-                "VALUES (:id,'ambiguous','{}'::jsonb,now(),now())"
+                "INSERT INTO assets (id,resource_type,title,metadata,created_at,updated_at) "
+                "VALUES (:id,'file','ambiguous','{}'::jsonb,now(),now())"
             ),
             {"id": asset_id},
         )

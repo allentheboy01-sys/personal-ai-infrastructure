@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 import time
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from alembic import command
 from alembic.config import Config
@@ -14,6 +14,8 @@ from sqlalchemy import Connection, func, select
 
 from pdi.config import ImmichSettings
 from pdi.database import create_postgres_engine
+from pdi.decision import Action, ActionType, Decision
+from pdi.models import Asset, AssetSource, Blob, ResourceType
 from pdi.repository import PostgreSQLRepository
 from pdi.repository.orm.asset import AssetORM
 from pdi.repository.orm.asset_source import AssetSourceORM
@@ -42,6 +44,7 @@ def retrieval_database():
     created_at = datetime.now(UTC)
     active_asset = AssetORM(
         id=uuid4(),
+        resource_type="file",
         title="retrieval-active.jpg",
         metadata_={},
         created_at=created_at,
@@ -49,6 +52,7 @@ def retrieval_database():
     )
     inactive_asset = AssetORM(
         id=uuid4(),
+        resource_type="file",
         title="retrieval-inactive.jpg",
         metadata_={},
         created_at=created_at,
@@ -101,6 +105,7 @@ def retrieval_database():
             [
                 {
                     "id": active_asset.id,
+                    "resource_type": "file",
                     "title": active_asset.title,
                     "metadata": {},
                     "created_at": created_at,
@@ -108,6 +113,7 @@ def retrieval_database():
                 },
                 {
                     "id": inactive_asset.id,
+                    "resource_type": "file",
                     "title": inactive_asset.title,
                     "metadata": {},
                     "created_at": created_at,
@@ -228,6 +234,56 @@ def test_postgresql_maps_only_active_resources_without_writes(
     assert after == before
 
 
+def test_immich_retrieval_mapping_excludes_message_resource(
+    retrieval_database,
+) -> None:
+    engine, _, _ = retrieval_database
+    repository = PostgreSQLRepository(engine)
+    locator = f"typed-message-{uuid4()}"
+    asset = Asset(
+        resource_type=ResourceType.MESSAGE,
+        title="Message",
+    )
+    blob = Blob(
+        asset_id=asset.id,
+        hash=f"typed-message-{uuid4()}",
+        size=1,
+        mime_type="image/jpeg",
+    )
+    source = AssetSource(
+        blob_id=blob.id,
+        provider="immich",
+        external_id=locator,
+    )
+    repository.execute(Decision(actions=[
+        Action(type=ActionType.CREATE_ASSET, asset=asset),
+        Action(type=ActionType.CREATE_BLOB, blob=blob),
+        Action(type=ActionType.CREATE_SOURCE, source=source),
+    ]))
+    try:
+        assert repository.map_active_resources(
+            provider="immich",
+            provider_locators=(locator,),
+        ) == {}
+    finally:
+        with engine.begin() as connection:
+            connection.execute(
+                AssetSourceORM.__table__.delete().where(
+                    AssetSourceORM.id == UUID(source.id)
+                )
+            )
+            connection.execute(
+                BlobORM.__table__.delete().where(
+                    BlobORM.id == UUID(blob.id)
+                )
+            )
+            connection.execute(
+                AssetORM.__table__.delete().where(
+                    AssetORM.id == UUID(asset.id)
+                )
+            )
+
+
 def test_live_immich_retrieval_reaches_mcp_and_isolated_postgresql() -> None:
     base_url = os.environ.get("IMMICH__URL")
     api_key = os.environ.get("IMMICH__API_KEY")
@@ -256,6 +312,7 @@ def test_live_immich_retrieval_reaches_mcp_and_isolated_postgresql() -> None:
             connection.execute(AssetORM.__table__.insert(), [
                 {
                     "id": asset_id,
+                    "resource_type": "file",
                     "title": f"live-retrieval-{index}.jpg",
                     "metadata": {},
                     "created_at": now,

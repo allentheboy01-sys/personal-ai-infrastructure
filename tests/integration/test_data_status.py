@@ -188,8 +188,8 @@ def test_fake_provider_partial_commit_maps_nonzero_to_failed_ledger(
             connection.execute(
                 text(
                     "INSERT INTO assets "
-                    "(id,title,metadata,created_at,updated_at) "
-                    "VALUES (:id,'fake-provider-partial','{}'::jsonb,now(),now())"
+                    "(id,resource_type,title,metadata,created_at,updated_at) "
+                    "VALUES (:id,'file','fake-provider-partial','{}'::jsonb,now(),now())"
                 ),
                 {"id": asset_id},
             )

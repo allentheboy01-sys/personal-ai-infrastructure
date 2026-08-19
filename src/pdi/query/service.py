@@ -2,6 +2,8 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from pdi.models import ResourceType
+
 from .cursor import decode_cursor, encode_cursor, query_fingerprint
 from .errors import InvalidQueryError, ResourceNotFoundError
 from .models import AssetDetail, AssetSummary
@@ -526,9 +528,11 @@ class QueryService:
     @classmethod
     def _resource_type(cls, value: str | None) -> str | None:
         resource_type = cls._optional_text(value, "resource_type")
-        if resource_type is not None and resource_type != "file":
+        if resource_type is not None and resource_type not in {
+            item.value for item in ResourceType
+        }:
             raise InvalidQueryError(
-                "resource_type must be file"
+                "resource_type must be file or message"
             )
         return resource_type
 

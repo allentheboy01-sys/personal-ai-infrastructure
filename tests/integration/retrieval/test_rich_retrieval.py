@@ -200,6 +200,7 @@ def rich_context():
         connection.execute(AssetORM.__table__.insert(), [
             {
                 "id": asset_id,
+                "resource_type": "file",
                 "title": title,
                 "metadata": {},
                 "created_at": now,
@@ -623,6 +624,7 @@ def test_postgresql_file_modified_batch_fifty_is_current_and_fixed_query_count(
         connection.execute(AssetORM.__table__.insert(), [
             {
                 "id": asset_id,
+                "resource_type": "file",
                 "title": f"Temporal Batch {index:02d}.pdf",
                 "metadata": {},
                 "created_at": now,

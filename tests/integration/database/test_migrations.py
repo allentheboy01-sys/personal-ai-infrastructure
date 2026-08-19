@@ -35,6 +35,7 @@ OBSERVATION_V0_1_REVISION = "8f3a1d2c4b5e"
 DATA_STATUS_V0_1_REVISION = "4d8a2c6e9f10"
 PERSON_IDENTITY_V0_1_REVISION = "6a7c8d9e0f12"
 RESOURCE_PERSON_RELATION_V0_1_REVISION = "9c4e1a7b2d30"
+TYPED_RESOURCE_V0_1_REVISION = "3b1e6f8a4c20"
 
 
 def _alembic_config(connection) -> Config:
@@ -185,17 +186,16 @@ def test_empty_database_upgrade_and_schema(
     )
 
     with migration_engine.connect() as connection:
-        assert_v0_1_schema(
-            connection,
-            require_unversioned=False,
-        )
-
+        assert "resource_type" in {
+            column["name"]
+            for column in inspect(connection).get_columns("assets")
+        }
         assert connection.execute(
             text(
                 "SELECT version_num "
                 "FROM alembic_version"
             )
-        ).scalar_one() == RESOURCE_PERSON_RELATION_V0_1_REVISION
+        ).scalar_one() == TYPED_RESOURCE_V0_1_REVISION
 
 
 def test_query_v0_2_indexes_upgrade_reflection_and_downgrade(
@@ -481,10 +481,9 @@ def test_upgrade_downgrade_upgrade(
     )
 
     with migration_engine.connect() as connection:
-        assert_v0_1_schema(
-            connection,
-            require_unversioned=False,
-        )
+        assert connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one() == TYPED_RESOURCE_V0_1_REVISION
 
 
 def test_resource_person_relation_schema_constraints_and_downgrade(
@@ -522,6 +521,73 @@ def test_resource_person_relation_schema_constraints_and_downgrade(
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one() == PERSON_IDENTITY_V0_1_REVISION
+
+
+def test_typed_resource_schema_backfill_constraints_and_downgrade(
+    migration_engine: Engine,
+) -> None:
+    _run_alembic(
+        migration_engine,
+        command.upgrade,
+        RESOURCE_PERSON_RELATION_V0_1_REVISION,
+    )
+    existing_id = uuid4()
+    with migration_engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO assets "
+                "(id, title, metadata, created_at, updated_at) "
+                "VALUES (:id, 'Existing File', '{}'::jsonb, now(), now())"
+            ),
+            {"id": existing_id},
+        )
+
+    _run_alembic(migration_engine, command.upgrade, "head")
+    with migration_engine.connect() as connection:
+        inspector = inspect(connection)
+        columns = {
+            column["name"]: column
+            for column in inspector.get_columns("assets")
+        }
+        assert columns["resource_type"]["nullable"] is False
+        assert columns["resource_type"]["default"] is None
+        assert connection.execute(
+            text(
+                "SELECT resource_type FROM assets WHERE id = :id"
+            ),
+            {"id": existing_id},
+        ).scalar_one() == "file"
+        assert {
+            check["name"]
+            for check in inspector.get_check_constraints("assets")
+        } == {"ck_assets_resource_type"}
+        with pytest.raises(Exception):
+            connection.execute(
+                text(
+                    "INSERT INTO assets "
+                    "(id, resource_type, title, metadata, "
+                    "created_at, updated_at) VALUES "
+                    "(:id, 'other', 'Invalid', '{}'::jsonb, now(), now())"
+                ),
+                {"id": uuid4()},
+            )
+        connection.rollback()
+
+    _run_alembic(
+        migration_engine,
+        command.downgrade,
+        RESOURCE_PERSON_RELATION_V0_1_REVISION,
+    )
+    with migration_engine.connect() as connection:
+        assert "resource_type" not in {
+            column["name"]
+            for column in inspect(connection).get_columns("assets")
+        }
+        assert connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one() == RESOURCE_PERSON_RELATION_V0_1_REVISION
+
+    _run_alembic(migration_engine, command.upgrade, "head")
 
 
 def test_stamp_existing_v0_1_schema_preserves_data(

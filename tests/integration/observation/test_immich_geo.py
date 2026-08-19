@@ -77,8 +77,8 @@ def _insert_resource(
     with engine.begin() as connection:
         connection.execute(text(
             "INSERT INTO assets "
-            "(id,title,metadata,created_at,updated_at) VALUES "
-            "(:id,'geo-fixture','{}'::jsonb,:now,:now)"
+            "(id,resource_type,title,metadata,created_at,updated_at) VALUES "
+            "(:id,'file','geo-fixture','{}'::jsonb,:now,:now)"
         ), {"id": asset_id, "now": NOW})
         connection.execute(text(
             "INSERT INTO blobs (id,asset_id,hash,size,mime_type) "

@@ -38,8 +38,8 @@ def test_mcp_observation_tool_reads_real_postgresql_without_internal_ids() -> No
     now = datetime(2026, 8, 13, tzinfo=UTC)
     with engine.begin() as connection:
         connection.execute(text(
-            "INSERT INTO assets (id,title,metadata,created_at,updated_at) "
-            "VALUES (:id,'observation-mcp','{}'::jsonb,:now,:now)"
+            "INSERT INTO assets (id,resource_type,title,metadata,created_at,updated_at) "
+            "VALUES (:id,'file','observation-mcp','{}'::jsonb,:now,:now)"
         ), {"id": asset_id, "now": now})
     resource_ref = format_resource_ref(asset_id)
     repository = PostgreSQLObservationRepository(engine)

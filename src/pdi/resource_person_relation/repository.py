@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from pdi.repository.orm.asset_source import AssetSourceORM
+from pdi.repository.orm.asset import AssetORM
 from pdi.repository.orm.blob import BlobORM
 from pdi.repository.orm.person import PersonSourceORM
 from pdi.repository.orm.resource_person_relation import (
@@ -62,7 +63,9 @@ class ResourcePersonRelationRepository:
                 for external_id, asset_id in session.execute(
                     select(AssetSourceORM.external_id, BlobORM.asset_id)
                     .join(BlobORM, BlobORM.id == AssetSourceORM.blob_id)
+                    .join(AssetORM, AssetORM.id == BlobORM.asset_id)
                     .where(
+                        AssetORM.resource_type == "file",
                         AssetSourceORM.provider == provider,
                         AssetSourceORM.is_active.is_(True),
                     )

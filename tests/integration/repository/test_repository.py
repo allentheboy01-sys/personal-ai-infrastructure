@@ -1,6 +1,10 @@
+from datetime import UTC, datetime
+from uuid import uuid4
+
+from pdi.adapters.base import ProviderFact
 from pdi.database import create_postgres_engine
 from pdi.decision import Action, ActionType, Decision
-from pdi.models import Asset, AssetSource, Blob
+from pdi.models import Asset, AssetSource, Blob, ResourceType
 from pdi.query import (
     AssetDetail,
     AssetSummary,
@@ -8,13 +12,11 @@ from pdi.query import (
     QueryService,
     SourceView,
 )
+from pdi.identity import Matcher
 from pdi.repository import PostgreSQLRepository
 from tests.integration.database_guard import (
     require_safe_test_database_url,
 )
-from datetime import UTC, datetime
-
-
 def create_test_engine():
     return create_postgres_engine(
         require_safe_test_database_url(),
@@ -26,6 +28,47 @@ def test_connection():
 
     assert repo.test_connection()
 
+    engine.dispose()
+
+
+def test_distinct_message_sources_with_same_hash_persist_separately() -> None:
+    engine = create_test_engine()
+    repository = PostgreSQLRepository(engine)
+    matcher = Matcher()
+    token = uuid4().hex
+
+    for suffix in ("a", "b"):
+        fact = ProviderFact(
+            provider=f"gmail-test-{token}",
+            kind="message",
+            external_id=f"message-{suffix}",
+            name=None,
+            attributes={
+                "content_hash": f"same-message-hash-{token}",
+                "mime_type": "message/rfc822",
+                "version_tag": "immutable",
+            },
+            raw={},
+        )
+        repository.execute(matcher.match(fact, repository))
+
+    sources = [
+        repository.find_source(
+            provider=f"gmail-test-{token}",
+            external_id=f"message-{suffix}",
+        )
+        for suffix in ("a", "b")
+    ]
+    assert all(source is not None for source in sources)
+    blobs = [repository.get_blob(source.blob_id) for source in sources]
+    assert all(blob is not None for blob in blobs)
+    assert len({blob.id for blob in blobs}) == 2
+    assert len({blob.asset_id for blob in blobs}) == 2
+    assert all(
+        repository.get_asset(blob.asset_id).resource_type
+        is ResourceType.MESSAGE
+        for blob in blobs
+    )
     engine.dispose()
 
 def test_execute_create_complete_asset_chain() -> None:
@@ -90,6 +133,7 @@ def test_execute_create_complete_asset_chain() -> None:
 
     assert stored_asset is not None
     assert stored_asset.id == asset.id
+    assert stored_asset.resource_type is ResourceType.FILE
     assert stored_asset.title == asset.title
     assert stored_asset.metadata == asset.metadata
 

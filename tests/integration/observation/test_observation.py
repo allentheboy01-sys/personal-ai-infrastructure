@@ -50,8 +50,8 @@ def context():
         for index, asset_id in enumerate(ids):
             blob_id, source_id = uuid4(), uuid4()
             connection.execute(text(
-                "INSERT INTO assets (id,title,metadata,created_at,updated_at) "
-                "VALUES (:id,:title,'{}'::jsonb,:now,:now)"
+                "INSERT INTO assets (id,resource_type,title,metadata,created_at,updated_at) "
+                "VALUES (:id,'file',:title,'{}'::jsonb,:now,:now)"
             ), {"id": asset_id, "title": f"observation-{token}-{index}", "now": NOW})
             connection.execute(text(
                 "INSERT INTO blobs (id,asset_id,hash,size,mime_type) "
@@ -354,8 +354,8 @@ def test_query_current_history_filter_order_empty_and_not_found(context) -> None
         connection.execute(
             text(
                 "INSERT INTO assets "
-                "(id,title,metadata,created_at,updated_at) "
-                "VALUES (:id,'observation-empty','{}'::jsonb,:now,:now)"
+                "(id,resource_type,title,metadata,created_at,updated_at) "
+                "VALUES (:id,'file','observation-empty','{}'::jsonb,:now,:now)"
             ),
             {"id": empty_asset_id, "now": NOW},
         )

@@ -36,7 +36,7 @@ def relation_database():
         for label, active in (("a", True), ("b", True), ("inactive", False)):
             asset_id, blob_id, source_id = uuid4(), uuid4(), uuid4()
             data[f"asset_{label}"] = asset_id
-            connection.execute(text("INSERT INTO assets (id,title,metadata,created_at,updated_at) VALUES (:id,:title,'{}',:now,:now)"), {"id": asset_id, "title": label, "now": NOW})
+            connection.execute(text("INSERT INTO assets (id,resource_type,title,metadata,created_at,updated_at) VALUES (:id,'file',:title,'{}',:now,:now)"), {"id": asset_id, "title": label, "now": NOW})
             connection.execute(text("INSERT INTO blobs (id,asset_id,hash,size,mime_type) VALUES (:id,:asset,:hash,1,'image/jpeg')"), {"id": blob_id, "asset": asset_id, "hash": str(blob_id)})
             connection.execute(text("INSERT INTO asset_sources (id,blob_id,provider,external_id,path,name,version_tag,metadata,is_active,deleted_at) VALUES (:id,:blob,'immich',:external,NULL,NULL,NULL,'{}',:active,:deleted)"), {"id": source_id, "blob": blob_id, "external": f"asset-{label}", "active": active, "deleted": None if active else NOW})
         for label, active in (("a", True), ("b", True), ("inactive", False)):
@@ -96,7 +96,7 @@ def test_audited_production_shape_skips_114_without_identity_changes(
             asset_id, blob_id, source_id = uuid4(), uuid4(), uuid4()
             external = f"fixture-asset-{index}"
             asset_ids.append(external)
-            connection.execute(text("INSERT INTO assets (id,title,metadata,created_at,updated_at) VALUES (:id,:title,'{}',:now,:now)"), {"id": asset_id, "title": external, "now": NOW})
+            connection.execute(text("INSERT INTO assets (id,resource_type,title,metadata,created_at,updated_at) VALUES (:id,'file',:title,'{}',:now,:now)"), {"id": asset_id, "title": external, "now": NOW})
             connection.execute(text("INSERT INTO blobs (id,asset_id,hash,size,mime_type) VALUES (:id,:asset,:hash,1,'image/jpeg')"), {"id": blob_id, "asset": asset_id, "hash": str(blob_id)})
             connection.execute(text("INSERT INTO asset_sources (id,blob_id,provider,external_id,path,name,version_tag,metadata,is_active,deleted_at) VALUES (:id,:blob,'immich',:external,NULL,NULL,NULL,'{}',TRUE,NULL)"), {"id": source_id, "blob": blob_id, "external": external})
         for index in range(415):

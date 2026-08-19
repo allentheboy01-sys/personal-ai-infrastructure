@@ -74,8 +74,8 @@ def resource_factory(engine):
             connection.execute(
                 text(
                     "INSERT INTO assets "
-                    "(id,title,metadata,created_at,updated_at) "
-                    "VALUES (:id,:title,'{}'::jsonb,:now,:now)"
+                    "(id,resource_type,title,metadata,created_at,updated_at) "
+                    "VALUES (:id,'file',:title,'{}'::jsonb,:now,:now)"
                 ),
                 {
                     "id": asset_id,
