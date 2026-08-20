@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[3]
 LOCK = ROOT / "deployment/jarvis/web/requirements-production.lock"
 FRONTEND = ROOT / "apps/jarvis-web"
 PYTHON_ARTIFACT = ROOT / "deployment/jarvis/web/python"
+APPROVED_EXECUTABLES = {Path("bin/hermes-bridge")}
 
 
 def digest(path: Path) -> str:
@@ -29,6 +30,18 @@ def digest(path: Path) -> str:
 
 def run(*command: str, cwd: Path = ROOT) -> str:
     return subprocess.run(command, cwd=cwd, check=True, text=True, capture_output=True).stdout.strip()
+
+
+def normalize_release_modes(root: Path) -> None:
+    """Make executable intent and immutable readability deterministic."""
+
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if path.is_dir():
+            os.chmod(path, 0o555)
+        elif path.is_file():
+            os.chmod(path, 0o555 if relative in APPROVED_EXECUTABLES else 0o444)
+    os.chmod(root, 0o555)
 
 
 def main() -> int:
@@ -95,7 +108,7 @@ def main() -> int:
         files = sorted(path for path in staging.rglob("*") if path.is_file())
         sums = "".join(f"{digest(path)}  {path.relative_to(staging)}\n" for path in files)
         (staging / "manifests/SHA256SUMS").write_text(sums, encoding="utf-8")
-        os.chmod(staging / "bin/hermes-bridge", 0o700)
+        normalize_release_modes(staging)
         staging.rename(release)
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)

@@ -1,4 +1,5 @@
 import hashlib
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,6 +10,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _normalize_fixture(release: Path) -> None:
+    for path in release.rglob("*"):
+        if path.is_dir():
+            path.chmod(0o555)
+        elif path.is_file():
+            path.chmod(0o555 if path.relative_to(release) == Path("bin/hermes-bridge") else 0o444)
+    release.chmod(0o555)
 
 
 def test_production_lock_is_exact_and_hashed() -> None:
@@ -34,6 +44,7 @@ def test_python_artifact_packages_only_jarvis() -> None:
     builder = (ROOT / "deployment/jarvis/web/build_release.py").read_text(encoding="utf-8")
     assert 'copytree(ROOT / "src/jarvis"' in builder
     assert 'shutil.rmtree(python_build)' in builder
+    assert "normalize_release_modes(staging)" in builder
 
 
 def test_web_package_import_does_not_eagerly_load_legacy_pdi_facade() -> None:
@@ -66,7 +77,7 @@ def test_hermes_launcher_has_a_sanitized_secret_boundary() -> None:
     assert "/home/harry/.local/bin/jarvis" not in launcher
 
 
-def test_release_verifier_accepts_complete_fixture_and_rejects_tamper(tmp_path: Path) -> None:
+def _release_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     sha = "a" * 40
     release = tmp_path / sha
     for directory in ("app", "static", "hermes", "bin", "manifests", "migrations"):
@@ -84,8 +95,43 @@ def test_release_verifier_accepts_complete_fixture_and_rejects_tamper(tmp_path: 
     files = sorted(path for path in release.rglob("*") if path.is_file())
     sums = release / "manifests/SHA256SUMS"
     sums.write_text("".join(f"{_digest(path)}  {path.relative_to(release)}\n" for path in files), encoding="utf-8")
+    _normalize_fixture(release)
+    return release, wheel, sums
+
+
+def _verify(release: Path) -> subprocess.CompletedProcess[str]:
     verifier = ROOT / "deployment/jarvis/web/verify_release.py"
-    subprocess.run([sys.executable, verifier, release, "--deploy-sha", sha], check=True, capture_output=True, text=True)
+    return subprocess.run([sys.executable, verifier, release, "--deploy-sha", release.name], capture_output=True, text=True)
+
+
+def test_release_verifier_accepts_complete_fixture_and_rejects_tamper(tmp_path: Path) -> None:
+    release, wheel, _ = _release_fixture(tmp_path)
+    assert _verify(release).returncode == 0
+    wheel.chmod(0o644)
     wheel.write_bytes(b"tampered")
-    failed = subprocess.run([sys.executable, verifier, release, "--deploy-sha", sha], capture_output=True, text=True)
-    assert failed.returncode != 0
+    assert _verify(release).returncode != 0
+
+
+def test_release_verifier_rejects_root_only_launcher(tmp_path: Path) -> None:
+    release, _, _ = _release_fixture(tmp_path)
+    (release / "bin/hermes-bridge").chmod(0o500)
+    assert _verify(release).returncode != 0
+
+
+def test_release_verifier_rejects_writable_payload(tmp_path: Path) -> None:
+    release, _, _ = _release_fixture(tmp_path)
+    (release / "static/index.html").chmod(0o644)
+    assert _verify(release).returncode != 0
+
+
+def test_release_verifier_rejects_unexpected_executable(tmp_path: Path) -> None:
+    release, _, _ = _release_fixture(tmp_path)
+    (release / "hermes/hermes_bridge.py").chmod(0o555)
+    assert _verify(release).returncode != 0
+
+
+def test_release_modes_are_readable_but_not_writable(tmp_path: Path) -> None:
+    release, _, _ = _release_fixture(tmp_path)
+    assert os.access(release / "static/index.html", os.R_OK)
+    assert os.access(release / "bin/hermes-bridge", os.R_OK | os.X_OK)
+    assert all(path.stat().st_mode & 0o222 == 0 for path in (release, *release.rglob("*")))

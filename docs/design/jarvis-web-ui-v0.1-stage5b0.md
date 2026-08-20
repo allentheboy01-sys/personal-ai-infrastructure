@@ -35,6 +35,13 @@ The CPython 3.13/Linux x86_64 production lock contains only the exact
 application dependency closure. Hermes remains in its independent formal venv.
 No Node process or `node_modules` belongs in the runtime release.
 
+The immutable payload permission contract is explicit: `root:root` after host
+installation, directories `0555`, ordinary files `0444`, and the sole
+service-executable `bin/hermes-bridge` `0555`. This corrects the previous
+candidate defect where a `0700` launcher became inaccessible to `User=harry`
+after root ownership was applied. The verifier rejects mode drift, writable
+payloads, root-only launchers, and unexpected executable files.
+
 ## Web security and caching
 
 The production CSP keeps scripts and stylesheet elements self-only, permits

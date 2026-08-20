@@ -81,12 +81,19 @@ sudo python3.13 deployment/jarvis/web/verify_release.py \
   "/opt/jarvis-web/releases/$DEPLOY_SHA" --deploy-sha "$DEPLOY_SHA"
 sudo chown -R root:root "/opt/jarvis-web/releases/$DEPLOY_SHA"
 sudo chmod -R a-w "/opt/jarvis-web/releases/$DEPLOY_SHA"
+sudo find "/opt/jarvis-web/releases/$DEPLOY_SHA" -type d ! -perm 0555 -print
+sudo find "/opt/jarvis-web/releases/$DEPLOY_SHA" -type f ! -path '*/bin/hermes-bridge' ! -perm 0444 -print
+sudo test "$(sudo stat -c %a "/opt/jarvis-web/releases/$DEPLOY_SHA/bin/hermes-bridge")" = 555
+sudo -u harry test -r "/opt/jarvis-web/releases/$DEPLOY_SHA/static/index.html"
+sudo -u harry test -x "/opt/jarvis-web/releases/$DEPLOY_SHA/bin/hermes-bridge"
 ```
 
 Expected: one verified immutable release plus a SHA-specific dependency venv,
 importable Jarvis-only wheel, green `pip check`, no
 `node_modules`, browser runtime, review screenshot, or secret. STOP on a hash,
-wheel, or import mismatch. Recovery: remove only the new incomplete release;
+wheel, import, permission, or service-user access mismatch. The installed
+release is `root:root`; directories are `0555`, ordinary files `0444`, and the
+approved Hermes launcher is `0555`. Recovery: remove only the new incomplete release;
 never overwrite the previous release. The frontend was built from
 `package-lock.json`; Node is not installed or run by the service.
 

@@ -6,11 +6,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
+import stat
 from pathlib import Path
 
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 FORBIDDEN = {"node_modules", ".git", "review", "screenshots", "test-results", "playwright-report"}
+APPROVED_EXECUTABLES = {Path("bin/hermes-bridge")}
 
 
 def digest(path: Path) -> str:
@@ -33,6 +35,14 @@ def main() -> int:
         raise SystemExit("release contains a forbidden generated/review path")
     if any(path.is_symlink() for path in root.rglob("*")):
         raise SystemExit("release must not contain symlinks")
+
+    paths = (root, *root.rglob("*"))
+    for path in paths:
+        relative = path.relative_to(root)
+        mode = stat.S_IMODE(path.stat().st_mode)
+        expected = 0o555 if path.is_dir() or relative in APPROVED_EXECUTABLES else 0o444
+        if mode != expected:
+            raise SystemExit(f"release mode mismatch: {relative or Path('.')} expected {expected:o}")
 
     info = dict(line.split("=", 1) for line in (root / "manifests/BUILD_INFO").read_text().splitlines() if "=" in line)
     if info.get("GIT_SHA") != args.deploy_sha:
