@@ -7,6 +7,9 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from .auth import AuthAdapter, AuthenticationError
 
 
+CSP = "default-src 'self'; script-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; worker-src 'none'"
+
+
 class BrowserSecurityMiddleware:
     def __init__(self, app: ASGIApp, *, auth_adapter: AuthAdapter, allowed_origin: str) -> None:
         self.app = app
@@ -46,7 +49,7 @@ class BrowserSecurityMiddleware:
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
                 headers.extend([
-                    (b"content-security-policy", b"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"),
+                    (b"content-security-policy", CSP.encode("ascii")),
                     (b"x-content-type-options", b"nosniff"),
                     (b"referrer-policy", b"no-referrer"),
                     (b"permissions-policy", b"camera=(), microphone=(), geolocation=(), payment=(), usb=()"),

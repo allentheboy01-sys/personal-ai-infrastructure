@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Fail closed when a Jarvis release does not match its manifest."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import re
+from pathlib import Path
+
+
+SHA = re.compile(r"^[0-9a-f]{40}$")
+FORBIDDEN = {"node_modules", ".git", "review", "screenshots", "test-results", "playwright-report"}
+
+
+def digest(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            value.update(chunk)
+    return value.hexdigest()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("release", type=Path)
+    parser.add_argument("--deploy-sha", required=True)
+    args = parser.parse_args()
+    root = args.release.resolve()
+    if not SHA.fullmatch(args.deploy_sha) or root.name != args.deploy_sha:
+        raise SystemExit("release path does not match DEPLOY_SHA")
+    if any(part in FORBIDDEN for path in root.rglob("*") for part in path.relative_to(root).parts):
+        raise SystemExit("release contains a forbidden generated/review path")
+    if any(path.is_symlink() for path in root.rglob("*")):
+        raise SystemExit("release must not contain symlinks")
+
+    info = dict(line.split("=", 1) for line in (root / "manifests/BUILD_INFO").read_text().splitlines() if "=" in line)
+    if info.get("GIT_SHA") != args.deploy_sha:
+        raise SystemExit("BUILD_INFO Git SHA mismatch")
+    wheels = tuple((root / "app").glob("*.whl"))
+    if len(wheels) != 1 or digest(wheels[0]) != info.get("APPLICATION_WHEEL_SHA256"):
+        raise SystemExit("application wheel mismatch")
+    wheel = wheels[0]
+    lock = root / "manifests/requirements-production.lock"
+    if digest(lock) != info.get("PYTHON_LOCK_SHA256"):
+        raise SystemExit("Python lock mismatch")
+
+    listed: set[Path] = set()
+    for line in (root / "manifests/SHA256SUMS").read_text().splitlines():
+        expected, relative = line.split("  ", 1)
+        path = root / relative
+        if not path.is_file() or digest(path) != expected:
+            raise SystemExit(f"artifact checksum mismatch: {relative}")
+        listed.add(path.resolve())
+    actual = {path.resolve() for path in root.rglob("*") if path.is_file() and path.name != "SHA256SUMS"}
+    if listed != actual:
+        raise SystemExit("manifest file set mismatch")
+    if not (root / "static/index.html").is_file() or not (root / "hermes/hermes_bridge.py").is_file() or not (root / "migrations/jarvis-alembic.ini").is_file():
+        raise SystemExit("required release component missing")
+    print(f"verified {args.deploy_sha}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

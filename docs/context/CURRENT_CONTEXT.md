@@ -120,6 +120,26 @@ credential，不直连 Provider。Agent-linked Resource refs 因 Hermes callback
 JSON scan。本阶段未创建 production Jarvis DB/role/service，未修改 systemd 或
 Tailscale。
 
+### Jarvis Web Stage 5B.0 production candidate
+
+Stage 5B.0 已实现待人工审查的 production-only composition 与 immutable release
+tooling：Web 只能组合 HermesRuntimeAdapter、persistent stdio MCPPDIClient、
+Resource Access UDS、TailscaleServeAuth 和独立 Jarvis State；没有 HTTP/browser
+可选 mock/review/runtime 路径。默认 Vite production build 已关闭 query-driven
+synthetic review mode，review fixtures 只保留在专用 review build/test composition。
+
+Stage 5B.0 production candidate 已 FROZEN；其精确 SHA 是包含本记录的 commit，
+并由最终 release `BUILD_INFO` 机械记录。Production deployment 仍未执行。
+
+候选 release 由 clean Git SHA 构建，包含 application wheel、static dist、private
+Hermes bridge/launcher、Jarvis migration、hash-locked CPython 3.13 production
+dependencies、BUILD_INFO 与 SHA256SUMS。systemd 候选固定为 harry、单 worker、
+127.0.0.1:8765、PrivateTmp 和 control-group cleanup；不自动 migration。
+
+本阶段仍未部署。PostgreSQL loopback trust → SCRAM、Jarvis DB/roles、/etc/jarvis、
+/opt release、systemd、Tailscale Serve/real identity、Mac/iPhone E2E 与 off-host
+backup/restore continuity 都是分离的 Stage 5B 人工批准 host gates。
+
 ### Server Runtime
 
 - 正式主机：`pdi-server`；

@@ -21,6 +21,8 @@ def app_factory(tmp_path: Path):
     static.mkdir()
     (static / "index.html").write_text("<!doctype html><title>Jarvis</title>", encoding="utf-8")
     (static / "app.js").write_text("console.log('synthetic')", encoding="utf-8")
+    (static / "assets").mkdir()
+    (static / "assets/app-ABC123.js").write_text("console.log('hashed')", encoding="utf-8")
     def build(runtime: MockRuntimeAdapter | None = None, *, pdi_client=None, resource_access: ResourceAccessClient | None = None):
         engine = create_engine("sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         Base.metadata.create_all(engine)

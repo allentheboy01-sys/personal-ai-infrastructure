@@ -3,6 +3,7 @@ from starlette.requests import Request
 
 from jarvis.web import TailscaleServeAuth
 from jarvis.web.auth import AuthenticationError
+from jarvis.web.security import CSP
 
 pytestmark = pytest.mark.anyio
 
@@ -20,6 +21,9 @@ async def test_csrf_rejections_and_security_headers(client) -> None:
     assert accepted.headers["cache-control"] == "private, no-store"
     assert accepted.headers["x-content-type-options"] == "nosniff"
     assert "frame-ancestors 'none'" in accepted.headers["content-security-policy"]
+    assert accepted.headers["content-security-policy"] == CSP
+    assert "script-src 'unsafe-inline'" not in CSP
+    assert "script-src 'unsafe-eval'" not in CSP
 
 
 def _request(client_host: str, headers: list[tuple[bytes, bytes]]) -> Request:

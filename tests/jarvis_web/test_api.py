@@ -81,8 +81,13 @@ async def test_not_found_boundaries(client) -> None:
 
 
 async def test_same_origin_static_and_spa_fallback(client) -> None:
-    assert (await client.get("/")).status_code == 200
-    assert (await client.get("/conversations/example")).text.startswith("<!doctype html>")
+    index = await client.get("/")
+    assert index.status_code == 200 and index.headers["cache-control"] == "private, no-cache"
+    fallback = await client.get("/conversations/example")
+    assert fallback.text.startswith("<!doctype html>") and fallback.headers["cache-control"] == "private, no-cache"
     asset = await client.get("/app.js")
     assert asset.headers["content-type"].startswith("text/javascript")
+    assert asset.headers["cache-control"] == "private, no-cache"
+    immutable = await client.get("/assets/app-ABC123.js")
+    assert immutable.headers["cache-control"] == "private, max-age=31536000, immutable"
     assert (await client.get("/api/v1/unknown")).status_code == 404

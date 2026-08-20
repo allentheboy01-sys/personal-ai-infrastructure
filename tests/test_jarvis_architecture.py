@@ -94,3 +94,12 @@ def test_live_product_pages_do_not_fallback_to_mocks() -> None:
         text = (ROOT / "apps/jarvis-web/src/pages" / name).read_text(encoding="utf-8")
         assert "catch(() => setState('error'))" in text
         assert "review ?" in text
+
+
+def test_production_composition_has_no_mock_or_browser_selector() -> None:
+    production = (ROOT / "src/jarvis/web/production.py").read_text(encoding="utf-8")
+    assert "MockRuntimeAdapter" not in production
+    assert "UnavailablePDIClient" not in production
+    assert not any(token in production for token in ("Request", "query_params", "cookie", "localStorage"))
+    frontend = (ROOT / "apps/jarvis-web/src/components/reviewMode.ts").read_text(encoding="utf-8")
+    assert "return reviewBuild && hasScene" in frontend

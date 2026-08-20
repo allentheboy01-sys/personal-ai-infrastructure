@@ -18,6 +18,7 @@ import { ResourcesPage } from '../pages/ResourcesPage'
 import { jarvisApi } from '../api/jarvis'
 import { providerDetail, resourceDetail } from '../api/productViews'
 import { ErrorState } from './States'
+import { reviewModeEnabled } from './reviewMode'
 
 type Scene = 'home' | 'conversation' | 'working'
 
@@ -25,8 +26,10 @@ function readInitial() {
   const params = new URLSearchParams(window.location.search)
   const page = (params.get('page') as AppPage | null) ?? 'chat'
   const conversation = params.get('conversation')
-  const scene = (params.get('scene') as Scene | null) ?? (conversation ? 'conversation' : 'home')
-  return { page: ['chat', 'resources', 'providers'].includes(page) ? page : 'chat', scene: ['home', 'conversation', 'working'].includes(scene) ? scene : 'home', detail: params.get('detail'), conversation, turn: params.get('turn'), review: params.has('scene') }
+  const review = reviewModeEnabled(import.meta.env.VITE_JARVIS_REVIEW === 'true', params.has('scene'))
+  const requestedScene = review ? (params.get('scene') as Scene | null) : null
+  const scene = requestedScene ?? (conversation ? 'conversation' : 'home')
+  return { page: ['chat', 'resources', 'providers'].includes(page) ? page : 'chat', scene: ['home', 'conversation', 'working'].includes(scene) ? scene : 'home', detail: review ? params.get('detail') : null, conversation, turn: params.get('turn'), review }
 }
 
 export function AppShell() {

@@ -190,11 +190,12 @@ def create_app(*, engine: Engine, settings: JarvisWebSettings, auth_adapter: Aut
         requested = (root / client_path).resolve()
         if client_path and requested.is_relative_to(root) and requested.is_file():
             media_type = mimetypes.guess_type(requested.name)[0] or "application/octet-stream"
-            return Response(requested.read_bytes(), media_type=media_type)
+            cache_control = "private, max-age=31536000, immutable" if requested.parent == root / "assets" else "private, no-cache"
+            return Response(requested.read_bytes(), media_type=media_type, headers={"Cache-Control": cache_control})
         index = root / "index.html"
         if not index.is_file():
             raise HTTPException(503, "frontend_build_unavailable")
-        return Response(index.read_bytes(), media_type="text/html")
+        return Response(index.read_bytes(), media_type="text/html", headers={"Cache-Control": "private, no-cache"})
 
     return app
 

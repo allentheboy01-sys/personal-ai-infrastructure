@@ -1,0 +1,36 @@
+#!/bin/sh
+set -eu
+umask 077
+
+readonly MODEL_ENV=/etc/pdi/jarvis.env
+readonly HERMES_PYTHON=/home/harry/.hermes/hermes-agent/venv/bin/python
+readonly HERMES_PROFILE=/home/harry/.hermes/profiles/pdi-server
+readonly RESOLVED_SELF="$(readlink -f "$0")"
+readonly RELEASE_ROOT="$(dirname "$(dirname "$RESOLVED_SELF")")"
+readonly BRIDGE="$RELEASE_ROOT/hermes/hermes_bridge.py"
+
+if [ ! -r "$MODEL_ENV" ]; then
+    echo "jarvis-web-hermes-bridge: model authority unavailable" >&2
+    exit 1
+fi
+
+# shellcheck disable=SC1090
+. "$MODEL_ENV"
+if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
+    echo "jarvis-web-hermes-bridge: model credential unavailable" >&2
+    exit 1
+fi
+if [ ! -x "$HERMES_PYTHON" ] || [ ! -r "$HERMES_PROFILE/config.yaml" ] || [ ! -r "$BRIDGE" ]; then
+    echo "jarvis-web-hermes-bridge: runtime artifact unavailable" >&2
+    exit 1
+fi
+
+exec env -i \
+    HOME=/home/harry \
+    USER=harry \
+    LOGNAME=harry \
+    PATH=/home/harry/.local/bin:/usr/local/bin:/usr/bin:/bin \
+    LANG=C.UTF-8 \
+    HERMES_HOME="$HERMES_PROFILE" \
+    DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
+    "$HERMES_PYTHON" "$BRIDGE"

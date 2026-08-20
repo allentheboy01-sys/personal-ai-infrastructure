@@ -9,12 +9,15 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:review": "VITE_JARVIS_REVIEW=true vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
+    "build:review": "tsc -b && VITE_JARVIS_REVIEW=true vite build",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:production": "playwright test --config playwright.production.config.ts",
     "screenshots": "playwright test e2e/visual-review.spec.ts"
   },
   "dependencies": {
