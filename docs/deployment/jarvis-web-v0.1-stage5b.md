@@ -205,6 +205,25 @@ child leaks, or protected-path access. Recovery: stop/disable unit, restore the
 previous `current`, `venv-current`, and libexec symlinks, daemon-reload, and
 start the prior release; preserve Jarvis DB.
 
+Hermes 0.10.0 initializes `HERMES_HOME/sessions` and writes bounded agent logs
+even when the Web bridge uses `persist_session=False`, `session_db=None`,
+`save_trajectories=False`, and disabled checkpoints. The unit therefore keeps
+`ProtectHome=read-only` and bind-mounts exactly two service-lifetime
+`RuntimeDirectory` paths over the formal profile's `sessions/` and `logs/`
+subdirectories. The formal profile configuration, Hermes venv, and the rest of
+`~/.hermes` remain read-only. These transient files are non-authoritative and
+are removed when the unit is stopped; Jarvis DB history remains the only
+conversation authority. Do not replace this with `ProtectHome=no`, a writable
+home, or a writable full profile.
+
+Before a Gate E retry, validate the effective unit with
+`systemd-analyze verify`, then use a transient unit with the same
+`RuntimeDirectory`, `BindPaths`, `ProtectHome`, `PrivateTmp`, and inaccessible
+paths. Require AIAgent initialization, one harmless general-tool Turn, removal
+of both runtime directories after unit collection, zero bridge children, and a
+second Turn driven only by normalized Jarvis history. STOP if Hermes requires
+any additional writable profile path.
+
 ## G. Tailscale Serve and HTTPS
 
 Precondition: localhost service and fail-closed auth are verified. Capture

@@ -22,6 +22,13 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=read-only
+# Hermes 0.10.0 creates session and log state even when session persistence is
+# disabled. Keep the formal profile read-only and replace only those two
+# non-authoritative subdirectories with service-lifetime state.
+RuntimeDirectory=jarvis-web-hermes-sessions jarvis-web-hermes-logs
+RuntimeDirectoryMode=0700
+BindPaths=/run/jarvis-web-hermes-sessions:/home/harry/.hermes/profiles/pdi-server/sessions
+BindPaths=/run/jarvis-web-hermes-logs:/home/harry/.hermes/profiles/pdi-server/logs
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

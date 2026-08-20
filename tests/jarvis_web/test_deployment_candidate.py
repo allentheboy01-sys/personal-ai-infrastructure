@@ -59,11 +59,23 @@ def test_systemd_unit_freezes_single_local_worker_and_hardening() -> None:
         "User=harry", "Group=harry", "--host 127.0.0.1", "--port 8765", "--workers 1",
         "--no-access-log", "--no-proxy-headers", "KillMode=control-group", "UMask=0077",
         "PrivateTmp=yes", "ProtectSystem=strict", "ProtectHome=read-only",
+        "RuntimeDirectory=jarvis-web-hermes-sessions jarvis-web-hermes-logs",
+        "RuntimeDirectoryMode=0700",
+        "BindPaths=/run/jarvis-web-hermes-sessions:/home/harry/.hermes/profiles/pdi-server/sessions",
+        "BindPaths=/run/jarvis-web-hermes-logs:/home/harry/.hermes/profiles/pdi-server/logs",
         "-/run/docker.sock", "-/home/harry/.ssh", "-/home/harry/.codex", "-/home/harry/projects",
     )
     assert all(value in unit for value in required)
+    assert [line for line in unit.splitlines() if line.startswith("BindPaths=")] == [
+        "BindPaths=/run/jarvis-web-hermes-sessions:/home/harry/.hermes/profiles/pdi-server/sessions",
+        "BindPaths=/run/jarvis-web-hermes-logs:/home/harry/.hermes/profiles/pdi-server/logs",
+    ]
     assert "alembic" not in unit.lower()
     assert "0.0.0.0" not in unit
+    assert "ProtectHome=no" not in unit
+    assert "ReadWritePaths=" not in unit
+    assert "StateDirectory=" not in unit
+    assert "BindPaths=/run/jarvis-web-hermes-sessions:/home/harry/.hermes\n" not in unit
 
 
 def test_hermes_launcher_has_a_sanitized_secret_boundary() -> None:

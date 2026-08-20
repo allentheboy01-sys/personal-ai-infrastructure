@@ -140,6 +140,22 @@ dependencies、BUILD_INFO 与 SHA256SUMS。systemd 候选固定为 harry、单 w
 /opt release、systemd、Tailscale Serve/real identity、Mac/iPhone E2E 与 off-host
 backup/restore continuity 都是分离的 Stage 5B 人工批准 host gates。
 
+Stage 5B Gate A–D 已在 production 完成：host-loopback general/replication HBA
+均使用 SCRAM，PDI database 的 PUBLIC CONNECT 已移除；独立 Jarvis release/venv、
+两项无 PDI 权限的 SCRAM roles、独立 database、四表 migration 与 root-only
+`/etc/jarvis` authority 已安装。Gate E 首次启动因 frozen systemd sandbox 与 Hermes
+0.10.0 的运行状态写入不兼容而完整回滚；持久 service、稳定链接与 8765 listener
+当前均不存在，Jarvis production domain rows 为零。
+
+Gate E.1 将该兼容性修正冻结为 systemd-only boundary：保留
+`ProtectHome=read-only`，仅用两个 0700 `RuntimeDirectory` bind mounts 替代正式
+profile 的 `sessions/` 与 `logs/`。Hermes config、venv、其余 profile 和整个 home
+仍不可写；PrivateTmp 继续单独承担 Agent 临时 workspace。实际 transient systemd
+sandbox 已验证 AIAgent init、general-tool Turn、process cleanup、runtime-state removal，
+以及删除 Hermes state 后仅凭 normalized Jarvis history 的后续 Turn。已安装的
+application release `6afab42096469699c918f9130739e8324db6ee47` 不变；部署配置
+identity 由 Gate E.1 correction commit 独立记录。Gate E retry 仍需单独人工授权。
+
 ### Server Runtime
 
 - 正式主机：`pdi-server`；
