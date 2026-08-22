@@ -24,6 +24,7 @@ class StateConflictError(Exception):
 
 _ERROR_CODE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
 _TERMINAL = frozenset({"completed", "failed", "cancelled", "interrupted"})
+MAX_MESSAGE_RESOURCE_REFS = 8
 
 
 class JarvisStateStore:
@@ -85,6 +86,8 @@ class JarvisStateStore:
 
     def complete_turn(self, turn_id: UUID, assistant_body: str, resource_refs: Sequence[str] = ()) -> Turn:
         unique_refs = tuple(dict.fromkeys(resource_refs))
+        if len(unique_refs) > MAX_MESSAGE_RESOURCE_REFS:
+            raise ValueError("too many message resource refs")
         now = datetime.now(UTC)
         with self._sessions.begin() as session:
             turn = session.get(Turn, turn_id)

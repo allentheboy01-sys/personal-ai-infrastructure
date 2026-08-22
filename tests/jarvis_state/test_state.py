@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import event, func, select
 
-from jarvis.state import ActiveTurnError, Message, StateConflictError, Turn
+from jarvis.state import ActiveTurnError, Message, MessageResourceRef, StateConflictError, Turn
 
 
 def test_conversation_and_completed_turn_are_canonical(state_store) -> None:
@@ -48,6 +48,27 @@ def test_resource_refs_are_opaque_deduplicated_and_ordered(state_store) -> None:
     state_store.complete_turn(turn.id, "done", refs)
     assistant = state_store.get_conversation(conversation.id).messages[-1]
     assert [(item.resource_ref, item.ordinal) for item in assistant.resource_refs] == [("opaque:anything", 0), ("pdi:resource:not-parsed", 1)]
+
+
+def test_more_than_eight_unique_resource_refs_are_rejected_before_canonical_mutation(state_store) -> None:
+    conversation = state_store.create_conversation()
+    turn = state_store.create_turn(conversation.id, "refs")
+    refs = tuple(f"opaque:{index}" for index in range(9))
+    with pytest.raises(ValueError, match="too many message resource refs"):
+        state_store.complete_turn(turn.id, "must not persist", refs)
+    assert state_store.get_turn(turn.id).status == "running"
+    assert [(message.role, message.body) for message in state_store.get_conversation(conversation.id).messages] == [("user", "refs")]
+
+
+@pytest.mark.parametrize("status", ["failed", "cancelled", "interrupted"])
+def test_noncompleted_terminal_states_never_persist_assistant_or_resource_refs(state_store, status: str) -> None:
+    conversation = state_store.create_conversation()
+    turn = state_store.create_turn(conversation.id, "terminal")
+    state_store.finish_without_message(turn.id, status)
+    with state_store._sessions() as session:
+        assert session.scalar(select(func.count()).select_from(MessageResourceRef)) == 0
+    restored = state_store.get_turn(turn.id)
+    assert restored.assistant_message_id is None
 
 
 def test_completion_transaction_rolls_back_on_assistant_insert_failure(state_store) -> None:

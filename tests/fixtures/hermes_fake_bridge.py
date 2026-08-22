@@ -43,7 +43,7 @@ elif scenario == "stderr":
     sys.stderr.flush()
     emit("ready")
     emit("delta", text="safe")
-    emit("completed")
+    emit("completed", resource_refs=[])
 elif scenario == "timeout":
     emit("ready")
     time.sleep(60)
@@ -64,12 +64,12 @@ elif scenario in {"child", "cancel_child"}:
         time.sleep(60)
     else:
         emit("delta", text="child result")
-        emit("completed")
+        emit("completed", resource_refs=[])
 elif scenario == "duplicate":
     emit("ready")
     emit("delta", text="once")
-    emit("completed")
-    emit("completed")
+    emit("completed", resource_refs=[])
+    emit("completed", resource_refs=[])
 elif scenario == "tools":
     emit("ready")
     emit("phase", phase="searching")
@@ -79,7 +79,29 @@ elif scenario == "tools":
     emit("tool.started", operation_id=2, category="exec", capability="run_python")
     emit("tool.completed", operation_id=2, category="exec", capability="run_python", duration_ms=40)
     emit("delta", text="safe")
+    emit("completed", resource_refs=[])
+elif scenario == "completed_resources":
+    emit("ready")
+    emit("delta", text="safe")
+    emit("completed", resource_refs=["pdi:resource:11111111-1111-4111-8111-111111111111"])
+elif scenario == "completed_missing_refs":
+    emit("ready")
     emit("completed")
+elif scenario == "completed_extra_field":
+    emit("ready")
+    emit("completed", resource_refs=[], result="private")
+elif scenario == "completed_duplicate_refs":
+    emit("ready")
+    emit("completed", resource_refs=["pdi:resource:11111111-1111-4111-8111-111111111111"] * 2)
+elif scenario == "completed_nonlist_refs":
+    emit("ready")
+    emit("completed", resource_refs={})
+elif scenario == "completed_malformed_ref":
+    emit("ready")
+    emit("completed", resource_refs=["pdi:resource:not-a-uuid"])
+elif scenario == "completed_too_many_refs":
+    emit("ready")
+    emit("completed", resource_refs=[f"pdi:resource:00000000-0000-4000-8000-{index:012d}" for index in range(9)])
 elif scenario == "tool_invalid_category":
     emit("ready")
     emit("tool.started", operation_id=1, category="private", capability="use_tool")
@@ -106,7 +128,7 @@ elif scenario == "slow":
     emit("delta", text="slow ")
     time.sleep(0.05)
     emit("delta", text="answer")
-    emit("completed")
+    emit("completed", resource_refs=[])
 else:
     emit("ready")
     emit("phase", phase="thinking")
@@ -114,4 +136,4 @@ else:
     emit("phase", phase="composing")
     emit("delta", text="hello ")
     emit("delta", text="world")
-    emit("completed")
+    emit("completed", resource_refs=[])

@@ -4,6 +4,7 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from jarvis.pdi_client import PDIUnavailableError
 from jarvis.pdi_client.models import ProviderDetail, ProviderSummary, ResourceCapabilities, ResourceDetail, ResourcePage, ResourceSummary
 from jarvis.pdi_client.resource_access import ResourceAccessClient
 
@@ -21,6 +22,20 @@ class FakePDI:
     async def hydrate_resources(self, refs): return (self.resource,) if refs else ()
     async def list_providers(self): return (self.provider,)
     async def get_provider(self, provider_ref): return ProviderDetail(self.provider, "Read-only photos.", ("Browse image metadata",), (("Available to Jarvis", "completed"),))
+
+
+class SelectiveHydrationPDI(FakePDI):
+    def __init__(self, resources, *, fail=False):
+        super().__init__()
+        self.resources = {resource.resource_ref: resource for resource in resources}
+        self.requested = []
+        self.fail = fail
+
+    async def hydrate_resources(self, refs):
+        self.requested = list(refs)
+        if self.fail:
+            raise PDIUnavailableError("synthetic_unavailable")
+        return tuple(self.resources[ref] for ref in refs if ref in self.resources)
 
 
 async def test_product_api_is_allowlisted_and_private(app_factory):
@@ -49,3 +64,43 @@ async def test_live_mode_never_returns_synthetic_product_data(app_factory):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="https://jarvis.test") as client:
             assert (await client.get("/api/v1/resources")).status_code == 503
             assert (await client.get("/api/v1/providers")).status_code == 503
+
+
+async def test_conversation_hydrates_available_resources_in_canonical_ref_order(app_factory):
+    first = ResourceSummary("pdi:resource:11111111-1111-4111-8111-111111111111", "file", "Image", None, None, "image", "JPEG", ("Immich",), ResourceCapabilities(True, True, False))
+    missing = "pdi:resource:22222222-2222-4222-8222-222222222222"
+    third = ResourceSummary("pdi:resource:33333333-3333-4333-8333-333333333333", "message", "Message", None, None, "message", "Email", ("Gmail",), ResourceCapabilities(True, False, False))
+    pdi = SelectiveHydrationPDI((first, third))
+    app = app_factory(pdi_client=pdi)
+    conversation = app.state.jarvis_state.create_conversation()
+    turn = app.state.jarvis_state.create_turn(conversation.id, "synthetic")
+    refs = (first.resource_ref, missing, third.resource_ref)
+    app.state.jarvis_state.complete_turn(turn.id, "Assistant text remains canonical.", refs)
+
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="https://jarvis.test") as client:
+            response = await client.get(f"/api/v1/conversations/{conversation.id}")
+
+    assistant = response.json()["messages"][-1]
+    assert assistant["body"] == "Assistant text remains canonical."
+    assert pdi.requested == list(refs)
+    assert [item["resource_ref"] for item in assistant["resources"]] == [first.resource_ref, third.resource_ref]
+    assert [item["ordinal"] for item in assistant["resource_refs"]] == [0, 1, 2]
+
+
+async def test_total_hydration_failure_preserves_assistant_text_and_stored_refs(app_factory):
+    pdi = SelectiveHydrationPDI((), fail=True)
+    app = app_factory(pdi_client=pdi)
+    conversation = app.state.jarvis_state.create_conversation()
+    turn = app.state.jarvis_state.create_turn(conversation.id, "synthetic")
+    ref = "pdi:resource:11111111-1111-4111-8111-111111111111"
+    app.state.jarvis_state.complete_turn(turn.id, "Readable without cards.", (ref,))
+
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="https://jarvis.test") as client:
+            response = await client.get(f"/api/v1/conversations/{conversation.id}")
+
+    assistant = response.json()["messages"][-1]
+    assert assistant["body"] == "Readable without cards."
+    assert assistant["resource_refs"] == [{"resource_ref": ref, "ordinal": 0}]
+    assert assistant["resources"] == []

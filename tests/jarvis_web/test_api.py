@@ -16,6 +16,7 @@ from jarvis.runtime import (
 pytestmark = pytest.mark.anyio
 
 WRITE_HEADERS = {"Origin": "https://jarvis.test", "X-Jarvis-Request": "web-v1", "Content-Type": "application/json"}
+RESOURCE_REF = "pdi:resource:11111111-1111-4111-8111-111111111111"
 
 
 class DelayedCancelRuntime(MockRuntimeAdapter):
@@ -86,7 +87,7 @@ class ToolEventRuntime:
                 duration_ms=18,
             ),
             RuntimeEvent(context.turn_id, 4, RuntimeEventType.MESSAGE_DELTA, delta="safe answer"),
-            RuntimeEvent(context.turn_id, 5, RuntimeEventType.TURN_COMPLETED),
+            RuntimeEvent(context.turn_id, 5, RuntimeEventType.TURN_COMPLETED, resource_refs=(RESOURCE_REF,)),
         )
         for event in events:
             await queue.put(event)
@@ -157,6 +158,7 @@ async def test_sse_replays_only_sanitized_tool_metadata(app_factory) -> None:
             ).json()["turn_id"]
             response = await client.get(f"/api/v1/turns/{turn_id}/events")
             replay = await client.get(f"/api/v1/turns/{turn_id}/events", headers={"Last-Event-ID": "1"})
+            detail = await client.get(f"/api/v1/conversations/{conversation_id}")
 
     assert "event: tool.started" in response.text
     assert "event: tool.completed" in response.text
@@ -170,6 +172,8 @@ async def test_sse_replays_only_sanitized_tool_metadata(app_factory) -> None:
         {"turn_id": turn_id, "sequence": 3, "type": "tool.completed", "operation_id": 1, "category": "pdi", "capability": "search_personal_resources", "duration_ms": 18},
     ]
     assert "event: tool.started" in replay.text
+    assert detail.json()["messages"][-1]["resource_refs"] == [{"resource_ref": RESOURCE_REF, "ordinal": 0}]
+    assert detail.json()["messages"][-1]["resources"] == []
     for forbidden in ("arguments", "result", "resource_ref", "filename", "path", "provider_id", "raw_tool"):
         assert forbidden not in response.text
 

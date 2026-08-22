@@ -5,6 +5,20 @@ from typing import Protocol
 from uuid import UUID
 
 
+MAX_PRESENTED_RESOURCES_PER_ASSISTANT_MESSAGE = 8
+
+
+def is_canonical_resource_ref(value: object) -> bool:
+    if not isinstance(value, str) or not value.startswith("pdi:resource:"):
+        return False
+    raw_uuid = value[len("pdi:resource:") :]
+    try:
+        parsed = UUID(raw_uuid)
+    except (ValueError, AttributeError):
+        return False
+    return raw_uuid == str(parsed)
+
+
 class RuntimeEventType(StrEnum):
     TURN_STARTED = "turn.started"
     PHASE_CHANGED = "phase.changed"
@@ -72,6 +86,16 @@ class RuntimeEvent:
     duration_ms: int | None = None
 
     def __post_init__(self) -> None:
+        if self.type == RuntimeEventType.TURN_COMPLETED:
+            if (
+                not isinstance(self.resource_refs, tuple)
+                or len(self.resource_refs) > MAX_PRESENTED_RESOURCES_PER_ASSISTANT_MESSAGE
+                or any(not is_canonical_resource_ref(value) for value in self.resource_refs)
+                or len(set(self.resource_refs)) != len(self.resource_refs)
+            ):
+                raise ValueError("invalid completed resource refs")
+        elif self.resource_refs != ():
+            raise ValueError("resource refs require a completed turn")
         tool_event = self.type in {RuntimeEventType.TOOL_STARTED, RuntimeEventType.TOOL_COMPLETED}
         tool_fields = (self.operation_id, self.category, self.capability, self.duration_ms)
         if not tool_event:

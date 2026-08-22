@@ -114,6 +114,51 @@ def test_runtime_event_rejects_unsafe_tool_payload_shapes() -> None:
         )
 
 
+def test_runtime_event_accepts_only_bounded_unique_canonical_refs_on_completion() -> None:
+    turn_id = uuid4()
+    refs = tuple(f"pdi:resource:00000000-0000-4000-8000-{index:012d}" for index in range(8))
+    completed = RuntimeEvent(turn_id, 1, RuntimeEventType.TURN_COMPLETED, resource_refs=refs)
+    assert completed.resource_refs == refs
+
+    invalid = (
+        refs + ("pdi:resource:00000000-0000-4000-8000-000000000008",),
+        (refs[0], refs[0]),
+        ("pdi:resource:not-a-uuid",),
+        ("pdi:resource:00000000-0000-4000-8000-000000000000 ",),
+    )
+    for resource_refs in invalid:
+        with pytest.raises(ValueError, match="invalid completed resource refs"):
+            RuntimeEvent(turn_id, 1, RuntimeEventType.TURN_COMPLETED, resource_refs=resource_refs)
+
+
+@pytest.mark.parametrize(
+    "event_type",
+    [
+        RuntimeEventType.TURN_STARTED,
+        RuntimeEventType.PHASE_CHANGED,
+        RuntimeEventType.MESSAGE_DELTA,
+        RuntimeEventType.TURN_FAILED,
+        RuntimeEventType.TURN_CANCELLED,
+    ],
+)
+def test_resource_refs_are_rejected_on_every_noncompleted_non_tool_event(event_type: RuntimeEventType) -> None:
+    with pytest.raises(ValueError, match="resource refs require a completed turn"):
+        RuntimeEvent(uuid4(), 1, event_type, resource_refs=("pdi:resource:11111111-1111-4111-8111-111111111111",))
+
+
+def test_resource_refs_are_rejected_on_tool_events() -> None:
+    with pytest.raises(ValueError, match="resource refs require a completed turn"):
+        RuntimeEvent(
+            uuid4(),
+            1,
+            RuntimeEventType.TOOL_STARTED,
+            resource_refs=("pdi:resource:11111111-1111-4111-8111-111111111111",),
+            operation_id=1,
+            category=RuntimeToolCategory.PDI,
+            capability=RuntimeCapability.SEARCH_PERSONAL_RESOURCES,
+        )
+
+
 def test_subscriber_disconnect_does_not_cancel_runtime() -> None:
     async def scenario():
         turn_id = uuid4()

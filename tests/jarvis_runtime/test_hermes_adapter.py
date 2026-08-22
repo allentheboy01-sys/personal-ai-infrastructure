@@ -175,6 +175,24 @@ def test_sanitized_tool_events_are_strictly_normalized_and_nonterminal() -> None
     assert sum(event.type in TERMINAL for event in events) == 1
 
 
+def test_completed_resource_refs_are_retained_only_on_terminal_event() -> None:
+    events = asyncio.run(_collect(_adapter("completed_resources"), TurnContext(uuid4(), (), "synthetic")))
+    assert events[-1].type == RuntimeEventType.TURN_COMPLETED
+    assert events[-1].resource_refs == ("pdi:resource:11111111-1111-4111-8111-111111111111",)
+    assert all(event.resource_refs == () for event in events[:-1])
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    ["completed_missing_refs", "completed_extra_field", "completed_duplicate_refs", "completed_nonlist_refs", "completed_malformed_ref", "completed_too_many_refs"],
+)
+def test_malformed_completed_resource_protocol_fails_closed(scenario: str) -> None:
+    events = asyncio.run(_collect(_adapter(scenario), TurnContext(uuid4(), (), "synthetic")))
+    assert events[-1].type == RuntimeEventType.TURN_FAILED
+    assert events[-1].error_code == "bridge_invalid_event"
+    assert sum(event.type in TERMINAL for event in events) == 1
+
+
 @pytest.mark.parametrize(
     "scenario",
     ["tool_invalid_category", "tool_extra_field", "tool_missing_field", "tool_unmatched", "tool_nonmonotonic", "tool_invalid_duration"],

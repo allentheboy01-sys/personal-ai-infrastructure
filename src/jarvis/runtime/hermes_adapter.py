@@ -11,12 +11,14 @@ from types import MappingProxyType
 from uuid import UUID
 
 from .contract import (
+    MAX_PRESENTED_RESOURCES_PER_ASSISTANT_MESSAGE,
     RuntimeCapability,
     RuntimeEvent,
     RuntimeEventType,
     RuntimePhase,
     RuntimeToolCategory,
     TurnContext,
+    is_canonical_resource_ref,
 )
 
 
@@ -117,6 +119,7 @@ class HermesRuntimeAdapter:
         stderr_task: asyncio.Task[bytes] | None = None
         process: asyncio.subprocess.Process | None = None
         completion_received = False
+        completion_resource_refs: tuple[str, ...] = ()
         ready_received = False
         terminal_event: RuntimeEvent | None = None
         last_operation_id = 0
@@ -132,6 +135,7 @@ class HermesRuntimeAdapter:
             category: RuntimeToolCategory | None = None,
             capability: RuntimeCapability | None = None,
             duration_ms: int | None = None,
+            resource_refs: tuple[str, ...] = (),
         ) -> None:
             nonlocal sequence, terminal_event
             if turn.terminal is not None:
@@ -148,6 +152,7 @@ class HermesRuntimeAdapter:
                 category=category,
                 capability=capability,
                 duration_ms=duration_ms,
+                resource_refs=resource_refs,
             )
             if event_type in _TERMINAL:
                 turn.terminal = event_type
@@ -243,6 +248,7 @@ class HermesRuntimeAdapter:
                         if completion_received:
                             raise _BridgeError("bridge_invalid_event")
                         completion_received = True
+                        completion_resource_refs = tuple(record["resource_refs"])
                     elif kind == "failed":
                         await emit(RuntimeEventType.TURN_FAILED, error_code=_sanitize_error_code(record.get("code")))
                     elif kind == "cancelled":
@@ -252,7 +258,7 @@ class HermesRuntimeAdapter:
                 if turn.cancel_requested:
                     await emit(RuntimeEventType.TURN_CANCELLED)
                 elif completion_received and return_code == 0:
-                    await emit(RuntimeEventType.TURN_COMPLETED)
+                    await emit(RuntimeEventType.TURN_COMPLETED, resource_refs=completion_resource_refs)
                 elif return_code != 0:
                     await emit(RuntimeEventType.TURN_FAILED, error_code="bridge_nonzero_exit")
                 else:
@@ -318,7 +324,7 @@ def _parse_record(raw: bytes) -> dict[str, object]:
         "tool.started": {"type", "operation_id", "category", "capability"},
         "tool.completed": {"type", "operation_id", "category", "capability", "duration_ms"},
         "delta": {"type", "text"},
-        "completed": {"type"},
+        "completed": {"type", "resource_refs"},
         "failed": {"type", "code"},
         "cancelled": {"type"},
     }
@@ -328,6 +334,17 @@ def _parse_record(raw: bytes) -> dict[str, object]:
         raise _BridgeError("bridge_invalid_event")
     if kind == "delta" and not isinstance(record.get("text"), str):
         raise _BridgeError("bridge_invalid_event")
+    if kind == "completed":
+        if set(record) != allowed_keys[str(kind)]:
+            raise _BridgeError("bridge_invalid_event")
+        resource_refs = record.get("resource_refs")
+        if (
+            not isinstance(resource_refs, list)
+            or len(resource_refs) > MAX_PRESENTED_RESOURCES_PER_ASSISTANT_MESSAGE
+            or any(not is_canonical_resource_ref(value) for value in resource_refs)
+            or len(set(resource_refs)) != len(resource_refs)
+        ):
+            raise _BridgeError("bridge_invalid_event")
     if kind in {"tool.started", "tool.completed"}:
         if set(record) != allowed_keys[str(kind)]:
             raise _BridgeError("bridge_invalid_event")

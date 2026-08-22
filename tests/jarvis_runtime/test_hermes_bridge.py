@@ -1,4 +1,23 @@
-from jarvis.runtime.hermes_bridge import ToolTelemetry, VisibleDeltaFilter, _phase_for_tool, _tool_descriptor
+import json
+
+import pytest
+
+from jarvis.runtime.hermes_bridge import (
+    MAX_PDI_RESULT_PARSE_BYTES,
+    ResourceResultCollector,
+    ToolTelemetry,
+    VisibleDeltaFilter,
+    _extract_presentation_refs,
+    _phase_for_tool,
+    _tool_descriptor,
+)
+
+
+REFS = tuple(f"pdi:resource:00000000-0000-4000-8000-{index:012d}" for index in range(1, 12))
+
+
+def _result(structured: object, *, text: str = "ignored") -> str:
+    return json.dumps({"result": text, "structuredContent": structured})
 
 
 def test_reasoning_tags_never_enter_visible_deltas_even_when_split() -> None:
@@ -100,3 +119,139 @@ def test_tool_duration_is_clamped_without_inspecting_results() -> None:
         "capability": "use_tool",
         "duration_ms": 600_000,
     }
+
+
+@pytest.mark.parametrize(
+    ("tool", "structured", "expected"),
+    [
+        ("pdi_list_recent_resources", {"ok": True, "resources": [{"resource_ref": REFS[0]}]}, (REFS[0],)),
+        ("pdi_search_resources", {"ok": True, "resources": [{"resource_ref": REFS[1]}]}, (REFS[1],)),
+        ("pdi_retrieve_resources", {"ok": True, "hits": [{"resource": {"resource_ref": REFS[2]}}]}, (REFS[2],)),
+        ("pdi_rich_retrieve_resources", {"ok": True, "hits": [{"resource": {"resource_ref": REFS[3]}}]}, (REFS[3],)),
+    ],
+)
+def test_presentation_tools_extract_only_their_fixed_structured_path(tool: str, structured: object, expected: tuple[str, ...]) -> None:
+    assert _extract_presentation_refs(_result(structured), tool) == expected
+
+
+def test_namespaced_pdi_tool_uses_the_same_exact_presentation_schema() -> None:
+    collector = ResourceResultCollector()
+    name = "mcp_pdi_pdi_search_resources"
+    collector.start("private", name)
+    collector.complete("private", name, _result({"ok": True, "resources": [{"resource_ref": REFS[0]}]}))
+    assert collector.snapshot() == (REFS[0],)
+
+
+@pytest.mark.parametrize(
+    ("tool", "structured"),
+    [
+        ("pdi_get_resource", {"ok": True, "resource": {"resource_ref": REFS[0]}}),
+        ("pdi_get_resource_observations", {"ok": True, "observations": [{"subject_resource_ref": REFS[0]}]}),
+        ("pdi_aggregate_resources", {"ok": True, "total_count": 1, "buckets": [{"key": "file", "count": 1}]}),
+    ],
+)
+def test_nonpresentation_pdi_tools_never_allocate_a_snapshot(tool: str, structured: object) -> None:
+    collector = ResourceResultCollector()
+    collector.start("private", tool)
+    collector.complete("private", tool, _result(structured))
+    assert collector.snapshot() == ()
+
+
+def test_extraction_ignores_text_and_arbitrary_nested_resource_refs() -> None:
+    fake = REFS[0]
+    structured = {"ok": True, "resources": [{"nested": {"resource_ref": fake}}, {"note": fake}]}
+    assert _extract_presentation_refs(_result(structured, text=fake), "pdi_search_resources") == ()
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "not-json",
+        json.dumps({"result": "ignored", "structuredContent": []}),
+        _result({"ok": False, "resources": [{"resource_ref": REFS[0]}]}),
+        _result({"ok": 1, "resources": [{"resource_ref": REFS[0]}]}),
+        _result({"ok": True}),
+    ],
+)
+def test_malformed_or_unsuccessful_result_is_not_a_successful_snapshot(raw: str) -> None:
+    assert _extract_presentation_refs(raw, "pdi_search_resources") is None
+
+
+def test_oversized_callback_result_is_ignored_before_json_parsing() -> None:
+    raw = "{" + "x" * MAX_PDI_RESULT_PARSE_BYTES + "}"
+    assert _extract_presentation_refs(raw, "pdi_search_resources") is None
+
+
+def test_unencodable_callback_result_is_ignored_safely() -> None:
+    assert _extract_presentation_refs("\ud800", "pdi_search_resources") is None
+
+
+def test_deeply_nested_callback_result_is_ignored_safely() -> None:
+    raw = "[" * 2_000 + "]" * 2_000
+    assert _extract_presentation_refs(raw, "pdi_search_resources") is None
+
+
+def test_ref_validation_dedupe_source_order_and_collector_bound() -> None:
+    values = [REFS[2], "pdi:resource:NOT-CANONICAL", REFS[0], REFS[2], "pdi:resource:not-a-uuid", *REFS[3:]]
+    rows = [{"resource_ref": value} for value in values]
+    assert _extract_presentation_refs(_result({"ok": True, "resources": rows}), "pdi_list_recent_resources") == (
+        REFS[2], REFS[0], *REFS[3:9]
+    )
+
+
+def test_latest_successful_start_ordinal_wins_even_when_callbacks_complete_out_of_order() -> None:
+    collector = ResourceResultCollector()
+    collector.start("first", "pdi_search_resources")
+    collector.start("second", "pdi_search_resources")
+    collector.complete("second", "pdi_search_resources", _result({"ok": True, "resources": [{"resource_ref": REFS[1]}]}))
+    collector.complete("first", "pdi_search_resources", _result({"ok": True, "resources": [{"resource_ref": REFS[0]}]}))
+    assert collector.snapshot() == (REFS[1],)
+
+
+def test_later_successful_operation_replaces_earlier_success_in_normal_completion_order() -> None:
+    collector = ResourceResultCollector()
+    collector.start("first", "pdi_search_resources")
+    collector.complete("first", "pdi_search_resources", _result({"ok": True, "resources": [{"resource_ref": REFS[0]}]}))
+    collector.start("second", "pdi_retrieve_resources")
+    collector.complete("second", "pdi_retrieve_resources", _result({"ok": True, "hits": [{"resource": {"resource_ref": REFS[1]}}]}))
+    assert collector.snapshot() == (REFS[1],)
+
+
+def test_newer_successful_empty_snapshot_replaces_prior_results() -> None:
+    collector = ResourceResultCollector()
+    collector.start("first", "pdi_search_resources")
+    collector.complete("first", "pdi_search_resources", _result({"ok": True, "resources": [{"resource_ref": REFS[0]}]}))
+    collector.start("second", "pdi_search_resources")
+    collector.complete("second", "pdi_search_resources", _result({"ok": True, "resources": []}))
+    assert collector.snapshot() == ()
+
+
+def test_newer_malformed_result_does_not_replace_prior_success() -> None:
+    collector = ResourceResultCollector()
+    collector.start("first", "pdi_search_resources")
+    collector.complete("first", "pdi_search_resources", _result({"ok": True, "resources": [{"resource_ref": REFS[0]}]}))
+    collector.start("second", "pdi_search_resources")
+    collector.complete("second", "pdi_search_resources", "malformed")
+    assert collector.snapshot() == (REFS[0],)
+
+
+def test_unmatched_or_mismatched_completion_is_suppressed() -> None:
+    collector = ResourceResultCollector()
+    collector.complete("missing", "pdi_search_resources", _result({"ok": True, "resources": [{"resource_ref": REFS[0]}]}))
+    collector.start("private", "pdi_search_resources")
+    collector.complete("private", "pdi_retrieve_resources", _result({"ok": True, "hits": [{"resource": {"resource_ref": REFS[1]}}]}))
+    assert collector.snapshot() == ()
+
+
+def test_private_result_ordering_is_independent_of_telemetry_limit() -> None:
+    writer = RecordingWriter()
+    telemetry = ToolTelemetry(writer, clock=lambda: 1.0)  # type: ignore[arg-type]
+    collector = ResourceResultCollector()
+    for index in range(33):
+        raw_id = f"private-{index}"
+        telemetry.start(raw_id, "pdi_search_resources")
+        collector.start(raw_id, "pdi_search_resources")
+        telemetry.complete(raw_id)
+        collector.complete(raw_id, "pdi_search_resources", _result({"ok": True, "resources": [{"resource_ref": REFS[index % len(REFS)]}]}))
+    assert len([record for record in writer.records if record["type"] == "tool.started"]) == 32
+    assert collector.snapshot() == (REFS[32 % len(REFS)],)

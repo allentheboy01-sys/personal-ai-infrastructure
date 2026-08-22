@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { resources } from '../../mocks/resources'
 import { AssistantMessage } from './Conversation'
 
 describe('assistant Markdown', () => {
@@ -33,5 +34,20 @@ describe('assistant Markdown', () => {
 
     expect(screen.getByText(/pdi:resource:/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /view/i })).not.toBeInTheDocument()
+  })
+
+  it('reuses the unified resource strip for canonical mixed structured resources', () => {
+    render(<AssistantMessage message={{ id: 'assistant-1', role: 'assistant', body: 'Structured results', resources: [resources[0], resources[1], resources[2]] }} />)
+
+    const cards = screen.getAllByRole('article')
+    expect(cards).toHaveLength(3)
+    expect(cards.map((card) => card.textContent)).toEqual(expect.arrayContaining([
+      expect.stringContaining(resources[0].title),
+      expect.stringContaining(resources[1].title),
+      expect.stringContaining(resources[2].title),
+    ]))
+    expect(cards[0]).toHaveTextContent(resources[0].title)
+    expect(cards[1]).toHaveTextContent(resources[1].title)
+    expect(cards[2]).toHaveTextContent(resources[2].title)
   })
 })

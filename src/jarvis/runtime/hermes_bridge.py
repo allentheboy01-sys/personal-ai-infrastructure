@@ -16,6 +16,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 
 EXPECTED_PDI_TOOLS = (
@@ -28,6 +29,8 @@ EXPECTED_PDI_TOOLS = (
     "pdi_rich_retrieve_resources",
 )
 MAX_REQUEST_BYTES = 1_048_576
+MAX_PDI_RESULT_PARSE_BYTES = 1_048_576
+MAX_PRESENTED_RESOURCES = 8
 MAX_TOOL_OPERATIONS = 32
 MAX_TOOL_DURATION_MS = 600_000
 
@@ -51,6 +54,17 @@ _TOOL_DESCRIPTORS = {
     **{f"mcp_jarvis_exec_{name}": descriptor for name, descriptor in _CANONICAL_TOOL_DESCRIPTORS.items() if name.startswith("jarvis_")},
 }
 _UNKNOWN_TOOL_DESCRIPTOR = ("other", "use_tool", "thinking")
+
+_PRESENTATION_TOOL_PATHS = {
+    "pdi_list_recent_resources": ("resources", "resource_ref"),
+    "pdi_search_resources": ("resources", "resource_ref"),
+    "pdi_retrieve_resources": ("hits", "resource", "resource_ref"),
+    "pdi_rich_retrieve_resources": ("hits", "resource", "resource_ref"),
+}
+_PRESENTATION_TOOL_NAMES = {
+    **{name: name for name in _PRESENTATION_TOOL_PATHS},
+    **{f"mcp_pdi_{name}": name for name in _PRESENTATION_TOOL_PATHS},
+}
 
 
 class ProtocolWriter:
@@ -187,6 +201,106 @@ class ToolTelemetry:
         )
 
 
+def _canonical_resource_ref(value: object) -> str | None:
+    if not isinstance(value, str) or not value.startswith("pdi:resource:"):
+        return None
+    raw_uuid = value[len("pdi:resource:") :]
+    try:
+        parsed = UUID(raw_uuid)
+    except (ValueError, AttributeError):
+        return None
+    return value if raw_uuid == str(parsed) else None
+
+
+def _extract_presentation_refs(raw_result: object, canonical_tool: str) -> tuple[str, ...] | None:
+    """Extract one fixed PDI result schema without inspecting textual content."""
+
+    if not isinstance(raw_result, str):
+        return None
+    try:
+        raw_size = len(raw_result.encode("utf-8"))
+    except UnicodeEncodeError:
+        return None
+    if raw_size > MAX_PDI_RESULT_PARSE_BYTES:
+        return None
+    try:
+        wrapper = json.loads(raw_result)
+    except (json.JSONDecodeError, UnicodeError, RecursionError):
+        return None
+    if not isinstance(wrapper, dict):
+        return None
+    structured = wrapper.get("structuredContent")
+    if not isinstance(structured, dict) or structured.get("ok") is not True:
+        return None
+    path = _PRESENTATION_TOOL_PATHS[canonical_tool]
+    rows = structured.get(path[0])
+    if not isinstance(rows, list):
+        return None
+
+    refs: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        value: object = row
+        for key in path[1:]:
+            if not isinstance(value, dict):
+                value = None
+                break
+            value = value.get(key)
+        resource_ref = _canonical_resource_ref(value)
+        if resource_ref is None or resource_ref in seen:
+            continue
+        seen.add(resource_ref)
+        refs.append(resource_ref)
+        if len(refs) == MAX_PRESENTED_RESOURCES:
+            break
+    return tuple(refs)
+
+
+class ResourceResultCollector:
+    """Private, Turn-local authority for the final PDI presentation snapshot."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._next_result_ordinal = 0
+        self._operations: dict[tuple[str, str | int], tuple[int, str]] = {}
+        self._snapshot_ordinal = 0
+        self._snapshot: tuple[str, ...] = ()
+
+    def start(self, raw_tool_id: object, raw_name: object) -> None:
+        key = _private_tool_key(raw_tool_id)
+        canonical_tool = _PRESENTATION_TOOL_NAMES.get(raw_name) if isinstance(raw_name, str) else None
+        if key is None or canonical_tool is None:
+            return
+        with self._lock:
+            if key in self._operations:
+                return
+            self._next_result_ordinal += 1
+            self._operations[key] = (self._next_result_ordinal, canonical_tool)
+
+    def complete(self, raw_tool_id: object, raw_name: object, raw_result: object) -> None:
+        key = _private_tool_key(raw_tool_id)
+        if key is None:
+            return
+        with self._lock:
+            operation = self._operations.pop(key, None)
+        if operation is None:
+            return
+        result_ordinal, canonical_tool = operation
+        if not isinstance(raw_name, str) or _PRESENTATION_TOOL_NAMES.get(raw_name) != canonical_tool:
+            return
+        refs = _extract_presentation_refs(raw_result, canonical_tool)
+        if refs is None:
+            return
+        with self._lock:
+            if result_ordinal > self._snapshot_ordinal:
+                self._snapshot_ordinal = result_ordinal
+                self._snapshot = refs
+
+    def snapshot(self) -> tuple[str, ...]:
+        with self._lock:
+            return self._snapshot
+
+
 def _run() -> int:
     writer = ProtocolWriter()
     # Hermes and MCP code may print diagnostics. Keep protocol stdout pure.
@@ -216,6 +330,7 @@ def _run() -> int:
     agent: AIAgent | None = None
     last_phase: str | None = None
     telemetry = ToolTelemetry(writer)
+    resource_results = ResourceResultCollector()
 
     def emit_phase(phase: str) -> None:
         nonlocal last_phase
@@ -231,9 +346,11 @@ def _run() -> int:
     def tool_started(tool_id: object, name: object, _arguments: object) -> None:
         emit_phase(_phase_for_tool(name))
         telemetry.start(tool_id, name)
+        resource_results.start(tool_id, name)
 
-    def tool_completed(tool_id: object, _name: object, _arguments: object, _result: object) -> None:
+    def tool_completed(tool_id: object, name: object, _arguments: object, result: object) -> None:
         telemetry.complete(tool_id)
+        resource_results.complete(tool_id, name, result)
 
     def interrupt(_signum, _frame) -> None:
         nonlocal cancel_requested
@@ -294,7 +411,7 @@ def _run() -> int:
             return 1
         for offset in range(0, len(safe_final), 16_384):
             emit_text(safe_final[offset : offset + 16_384])
-        writer.emit("completed")
+        writer.emit("completed", resource_refs=list(resource_results.snapshot()))
         return 0
     except Exception:
         writer.emit("cancelled" if cancel_requested else "failed", **({} if cancel_requested else {"code": "hermes_failed"}))
