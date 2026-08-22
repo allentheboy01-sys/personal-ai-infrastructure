@@ -1,10 +1,10 @@
 import asyncio
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from jarvis.runtime import MockRuntimeAdapter
+from jarvis.runtime import MockRuntimeAdapter, RuntimeEvent, RuntimeEventType
 
 pytestmark = pytest.mark.anyio
 
@@ -28,6 +28,28 @@ class DelayedCancelRuntime(MockRuntimeAdapter):
         task = asyncio.create_task(cancel_later())
         self._cancel_tasks.add(task)
         task.add_done_callback(self._cancel_tasks.discard)
+
+
+class ShutdownFailureRuntime:
+    def __init__(self) -> None:
+        self._queues = {}
+
+    async def start_turn(self, context) -> None:
+        queue = asyncio.Queue()
+        self._queues[context.turn_id] = queue
+        await queue.put(RuntimeEvent(context.turn_id, 1, RuntimeEventType.TURN_STARTED))
+
+    async def cancel_turn(self, turn_id) -> None:
+        await self._queues[turn_id].put(
+            RuntimeEvent(turn_id, 2, RuntimeEventType.TURN_FAILED, error_code="bridge_nonzero_exit")
+        )
+
+    async def stream_events(self, turn_id):
+        while True:
+            event = await self._queues[turn_id].get()
+            yield event
+            if event.type in {RuntimeEventType.TURN_COMPLETED, RuntimeEventType.TURN_FAILED, RuntimeEventType.TURN_CANCELLED}:
+                return
 
 
 async def _conversation(client):
@@ -88,6 +110,27 @@ async def test_cancel_and_failure_never_create_partial_assistant(app_factory) ->
 
     await exercise(DelayedCancelRuntime(delay=1), cancel=True)
     await exercise(MockRuntimeAdapter(scenario="failure", delay=0), cancel=False)
+
+
+async def test_lifespan_shutdown_interrupts_running_turn_before_runtime_cleanup(app_factory) -> None:
+    app = app_factory(ShutdownFailureRuntime())
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="https://jarvis.test") as client:
+            conversation = await _conversation(client)
+            turn_id = (
+                await client.post(
+                    f"/api/v1/conversations/{conversation}/turns",
+                    headers=WRITE_HEADERS,
+                    json={"body": "ordinary user text"},
+                )
+            ).json()["turn_id"]
+            assert (await client.get(f"/api/v1/turns/{turn_id}")).json()["status"] == "running"
+
+    turn = app.state.jarvis_state.get_turn(UUID(turn_id))
+    assert turn.status == "interrupted"
+    assert turn.error_code == "process_restarted"
+    assert turn.assistant_message_id is None
+    assert app.state.turn_coordinator._tasks == {}
 
 
 async def test_not_found_boundaries(client) -> None:

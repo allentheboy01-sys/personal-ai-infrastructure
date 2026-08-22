@@ -44,12 +44,16 @@ def create_app(*, engine: Engine, settings: JarvisWebSettings, auth_adapter: Aut
         try:
             yield
         finally:
-            await product_client.close()
+            try:
+                await coordinator.shutdown()
+            finally:
+                await product_client.close()
 
     app = FastAPI(title="Jarvis Web", version="0.1.0", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(BrowserSecurityMiddleware, auth_adapter=auth_adapter, allowed_origin=settings.allowed_origin)
     app.state.jarvis_state = state
     app.state.active_turns = registry
+    app.state.turn_coordinator = coordinator
     router = APIRouter(prefix="/api/v1")
 
     @router.get("/conversations", response_model=list[ConversationSummaryResponse])

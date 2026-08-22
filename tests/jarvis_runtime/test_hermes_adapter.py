@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
 import sys
 from pathlib import Path
 from uuid import uuid4
@@ -85,6 +86,24 @@ def test_cancel_is_real_and_idempotent() -> None:
 
     events = asyncio.run(scenario())
     assert events[-1].type == RuntimeEventType.TURN_CANCELLED
+    assert sum(event.type in TERMINAL for event in events) == 1
+
+
+def test_external_process_termination_remains_a_runtime_failure() -> None:
+    async def scenario():
+        adapter = _adapter("cancel")
+        context = TurnContext(uuid4(), (), "synthetic")
+        await adapter.start_turn(context)
+        stream = adapter.stream_events(context.turn_id)
+        first = await anext(stream)
+        process = adapter._turns[context.turn_id].process
+        assert process is not None
+        process.send_signal(signal.SIGTERM)
+        return [first, *[event async for event in stream]]
+
+    events = asyncio.run(scenario())
+    assert events[-1].type == RuntimeEventType.TURN_FAILED
+    assert events[-1].error_code == "bridge_nonzero_exit"
     assert sum(event.type in TERMINAL for event in events) == 1
 
 

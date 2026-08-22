@@ -14,7 +14,10 @@ ExecStart=/opt/jarvis-web/venv-current/bin/uvicorn --factory jarvis.web.producti
 Restart=on-failure
 RestartSec=3s
 TimeoutStopSec=20s
-KillMode=control-group
+# Let the Web process establish canonical interruption before Turn children are
+# terminated. Remaining cgroup members still receive systemd's final SIGKILL
+# when the main process exits or TimeoutStopSec expires.
+KillMode=mixed
 UMask=0077
 
 NoNewPrivileges=yes

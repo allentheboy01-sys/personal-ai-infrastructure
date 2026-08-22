@@ -180,6 +180,18 @@ publish registry terminal，HTTP cancel 才返回；request cancellation 不能�
 因此 e812 已被 supersede；再次安装前必须从本 correction commit 构建新的 immutable
 release 与 SHA-versioned venv。
 
+4cf candidate 的真实 localhost restart 验证随后暴露最后一个 lifecycle blocker：
+`KillMode=control-group` 同时向 Web main 与 Hermes child 发送 SIGTERM，child 先产生
+`turn.failed / bridge_nonzero_exit`，旧 coordinator 将 `running` 写为 `failed`，使新进程
+startup reconciliation 因 row 已 terminal 而更新 0 行。Lifecycle correction
+让 FastAPI lifespan 先调用 exact `TurnCoordinator.shutdown()`，将仍由本进程拥有的
+`running` Turns 固定为 `interrupted`、停止 matching consumer 并执行 exact Runtime
+process cleanup。所有 owned Turns 的 consumer/Runtime cleanup 并发共享单一 8 秒
+coordinator deadline，不因 Turn 数量倍增；Web unit 使用 `KillMode=mixed` 只改变初始
+SIGTERM 次序，main exit 或 20 秒 `TimeoutStopSec` 后仍由 systemd 对整个 cgroup 执行
+final SIGKILL。Crash/host-loss 仍由 startup reconciliation 处理；Runtime event contract、
+DB schema、Exec sandbox 与 PDI 均不改变。
+
 ### Server Runtime
 
 - 正式主机：`pdi-server`；

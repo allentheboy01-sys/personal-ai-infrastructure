@@ -57,7 +57,7 @@ def test_systemd_unit_freezes_single_local_worker_and_hardening() -> None:
     unit = (ROOT / "deployment/systemd/jarvis-web.service").read_text(encoding="utf-8")
     required = (
         "User=harry", "Group=harry", "--host 127.0.0.1", "--port 8765", "--workers 1",
-        "--no-access-log", "--no-proxy-headers", "KillMode=control-group", "UMask=0077",
+        "--no-access-log", "--no-proxy-headers", "KillMode=mixed", "UMask=0077",
         "PrivateTmp=yes", "ProtectSystem=strict", "ProtectHome=read-only",
         "RuntimeDirectory=jarvis-web-hermes-sessions jarvis-web-hermes-logs",
         "RuntimeDirectoryMode=0700",

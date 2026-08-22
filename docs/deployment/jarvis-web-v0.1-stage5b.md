@@ -228,6 +228,19 @@ access. Recovery: stop/disable both units, restore the previous `current`,
 `venv-current`, and libexec symlinks, daemon-reload, and start the prior
 release; preserve Jarvis DB.
 
+The Web unit uses `KillMode=mixed` intentionally. On graceful stop, systemd
+sends SIGTERM to the Web main process first so the FastAPI lifespan can commit
+exact owned `running` Turns as `interrupted` before Runtime child teardown.
+The coordinator then cancels only its matching consumer tasks and invokes the
+existing exact-Turn Runtime cancellation solely for bounded process-group
+cleanup. Consumer stopping and all exact-Turn Runtime cleanup share one
+eight-second coordinator deadline and run concurrently; a stuck Runtime cannot
+multiply or make this wait unbounded. systemd still sends the final SIGKILL to
+every remaining cgroup member when the main process exits or the 20-second
+`TimeoutStopSec` expires, so this ordering does not permit orphan children.
+Keep startup reconciliation: it is the authority for abrupt process or host
+loss where graceful shutdown never executes.
+
 The frozen Hermes 0.10.0 compatibility baseline is implementation-specific:
 its local terminal is an unsafe host subprocess; local `code_execution` is
 also host execution without a real filesystem/network sandbox; a Web-specific

@@ -43,6 +43,17 @@ replay are process-local because V0.1 is explicitly one worker. An SSE client
 disconnect does not cancel a Turn. Startup atomically marks orphaned persisted
 `running` Turns as `interrupted` without replay or retry.
 
+Graceful service shutdown uses the same canonical lifecycle meaning without
+inventing a Runtime `turn.interrupted` event. Before Turn children are stopped,
+the exact coordinator takes shutdown ownership, commits each still-running
+owned Turn as `interrupted`, stops its process-local consumer, and invokes the
+existing exact-Turn Runtime cleanup. Cleanup for all owned Turns is concurrent
+under one eight-second coordinator deadline; the service's 20-second stop
+deadline remains the final cgroup bound. A completed, failed, or cancelled
+state that was already canonical remains unchanged. Startup reconciliation
+remains required for crashes or other abrupt owner loss where no shutdown hook
+ran.
+
 The deterministic mock exercises completion, cancellation, controlled failure,
 slow streaming, replay, and reconnect against the same contract intended for a
 future Hermes adapter. `MockRuntimeAdapter` is selected only at the application

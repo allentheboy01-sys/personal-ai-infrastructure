@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+import jarvis.web.coordinator as coordinator_module
 from jarvis.runtime import ActiveTurnRegistry, RuntimeEvent, RuntimeEventType
 from jarvis.state import Base, JarvisStateStore
 from jarvis.state.database import create_session_factory
@@ -73,6 +74,92 @@ class ControlledTerminalRuntime:
                 error_code="synthetic_failure" if self.terminal == RuntimeEventType.TURN_FAILED else None,
             )
         )
+
+
+class ShutdownFailureRuntime:
+    def __init__(self) -> None:
+        self._queues = {}
+        self.cancel_calls = 0
+
+    async def start_turn(self, context) -> None:
+        queue = asyncio.Queue()
+        self._queues[context.turn_id] = queue
+        await queue.put(RuntimeEvent(context.turn_id, 1, RuntimeEventType.TURN_STARTED))
+
+    async def cancel_turn(self, turn_id) -> None:
+        self.cancel_calls += 1
+        await self._queues[turn_id].put(
+            RuntimeEvent(turn_id, 2, RuntimeEventType.TURN_FAILED, error_code="bridge_nonzero_exit")
+        )
+
+    async def stream_events(self, turn_id):
+        while True:
+            event = await self._queues[turn_id].get()
+            yield event
+            if event.type in TERMINAL_TYPES:
+                return
+
+
+class ImmediateTerminalRuntime:
+    def __init__(self, terminal: RuntimeEventType) -> None:
+        self.terminal = terminal
+        self._queues = {}
+        self.cancel_calls = 0
+
+    async def start_turn(self, context) -> None:
+        queue = asyncio.Queue()
+        self._queues[context.turn_id] = queue
+        await queue.put(RuntimeEvent(context.turn_id, 1, RuntimeEventType.TURN_STARTED))
+        sequence = 2
+        if self.terminal == RuntimeEventType.TURN_COMPLETED:
+            await queue.put(RuntimeEvent(context.turn_id, sequence, RuntimeEventType.MESSAGE_DELTA, delta="synthetic final"))
+            sequence += 1
+        await queue.put(
+            RuntimeEvent(
+                context.turn_id,
+                sequence,
+                self.terminal,
+                error_code="synthetic_failure" if self.terminal == RuntimeEventType.TURN_FAILED else None,
+            )
+        )
+
+    async def cancel_turn(self, turn_id) -> None:
+        self.cancel_calls += 1
+
+    async def stream_events(self, turn_id):
+        while True:
+            event = await self._queues[turn_id].get()
+            yield event
+            if event.type in TERMINAL_TYPES:
+                return
+
+
+class ConcurrentShutdownRuntime:
+    def __init__(self) -> None:
+        self._queues = {}
+        self.stuck_turn_ids = set()
+        self.cancel_started = set()
+        self.cancel_completed = set()
+        self.cancel_cancelled = set()
+
+    async def start_turn(self, context) -> None:
+        queue = asyncio.Queue()
+        self._queues[context.turn_id] = queue
+        await queue.put(RuntimeEvent(context.turn_id, 1, RuntimeEventType.TURN_STARTED))
+
+    async def cancel_turn(self, turn_id) -> None:
+        self.cancel_started.add(turn_id)
+        try:
+            if turn_id in self.stuck_turn_ids:
+                await asyncio.Event().wait()
+            self.cancel_completed.add(turn_id)
+        except asyncio.CancelledError:
+            self.cancel_cancelled.add(turn_id)
+            raise
+
+    async def stream_events(self, turn_id):
+        while True:
+            yield await self._queues[turn_id].get()
 
 
 def _coordinator(runtime):
@@ -202,6 +289,105 @@ def test_completed_task_cannot_discard_different_mapping() -> None:
         await current
         coordinator._discard_task(turn_id, current)
         assert turn_id not in coordinator._tasks
+        engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_shutdown_claims_running_turn_before_runtime_teardown_failure() -> None:
+    async def scenario():
+        runtime = ShutdownFailureRuntime()
+        engine, state, _, coordinator = _coordinator(runtime)
+        conversation = state.create_conversation()
+        turn_id = await coordinator.start(conversation.id, "hello")
+
+        await coordinator.shutdown()
+        await asyncio.sleep(0)
+
+        turn = state.get_turn(turn_id)
+        assert turn.status == "interrupted"
+        assert turn.error_code == "process_restarted"
+        assert turn.assistant_message_id is None
+        assert turn_id not in coordinator._tasks
+        assert runtime.cancel_calls == 1
+        engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_shutdown_interrupts_multiple_turns_with_one_bounded_cleanup_deadline(monkeypatch) -> None:
+    async def scenario():
+        runtime = ConcurrentShutdownRuntime()
+        engine, state, _, coordinator = _coordinator(runtime)
+        conversations = [state.create_conversation() for _ in range(3)]
+        turn_ids = [
+            await coordinator.start(conversation.id, "hello")
+            for conversation in conversations
+        ]
+        consumer_tasks = tuple(coordinator._tasks.values())
+        runtime.stuck_turn_ids.add(turn_ids[0])
+        monkeypatch.setattr(coordinator_module, "_SHUTDOWN_CLEANUP_TIMEOUT_SECONDS", 0.02)
+
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        await coordinator.shutdown()
+        elapsed = loop.time() - started
+        await asyncio.sleep(0)
+
+        turns = [state.get_turn(turn_id) for turn_id in turn_ids]
+        assert elapsed < 0.25
+        assert runtime.cancel_started == set(turn_ids)
+        assert runtime.cancel_completed == set(turn_ids[1:])
+        assert runtime.cancel_cancelled == {turn_ids[0]}
+        assert coordinator._tasks == {}
+        assert all(task.done() for task in consumer_tasks)
+        engine.dispose()
+        return turns
+
+    turns = asyncio.run(scenario())
+    assert {turn.status for turn in turns} == {"interrupted"}
+    assert {turn.error_code for turn in turns} == {"process_restarted"}
+    assert all(turn.assistant_message_id is None for turn in turns)
+
+
+@pytest.mark.parametrize(
+    ("terminal", "expected_status", "assistant_expected"),
+    [
+        (RuntimeEventType.TURN_COMPLETED, "completed", True),
+        (RuntimeEventType.TURN_FAILED, "failed", False),
+        (RuntimeEventType.TURN_CANCELLED, "cancelled", False),
+    ],
+)
+def test_terminal_state_before_shutdown_is_preserved(terminal, expected_status, assistant_expected) -> None:
+    async def scenario():
+        runtime = ImmediateTerminalRuntime(terminal)
+        engine, state, _, coordinator = _coordinator(runtime)
+        conversation = state.create_conversation()
+        turn_id = await coordinator.start(conversation.id, "hello")
+        consumer = coordinator._tasks[turn_id]
+        await consumer
+        await coordinator.shutdown()
+        turn = state.get_turn(turn_id)
+        assert turn_id not in coordinator._tasks
+        engine.dispose()
+        return turn, runtime.cancel_calls
+
+    turn, cancel_calls = asyncio.run(scenario())
+    assert turn.status == expected_status
+    assert (turn.assistant_message_id is not None) is assistant_expected
+    assert cancel_calls == 0
+
+
+def test_shutdown_is_idempotent_and_rejects_new_turns() -> None:
+    async def scenario():
+        runtime = ShutdownFailureRuntime()
+        engine, state, _, coordinator = _coordinator(runtime)
+        conversation = state.create_conversation()
+        await coordinator.shutdown()
+        await coordinator.shutdown()
+        with pytest.raises(RuntimeError, match="coordinator_shutting_down"):
+            await coordinator.start(conversation.id, "hello")
+        assert coordinator._tasks == {}
         engine.dispose()
 
     asyncio.run(scenario())
