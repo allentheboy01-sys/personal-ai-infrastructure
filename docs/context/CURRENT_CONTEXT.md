@@ -2,7 +2,7 @@
 
 **当前版本：** `v0.5.0`
 
-**冻结日期：** 2026-08-20
+**冻结日期：** 2026-08-22
 
 **文档性质：** 当前真实实现状态，不是版本历史或永久架构规范。
 
@@ -154,7 +154,21 @@ profile 的 `sessions/` 与 `logs/`。Hermes config、venv、其余 profile 和�
 sandbox 已验证 AIAgent init、general-tool Turn、process cleanup、runtime-state removal，
 以及删除 Hermes state 后仅凭 normalized Jarvis history 的后续 Turn。已安装的
 application release `6afab42096469699c918f9130739e8324db6ee47` 不变；部署配置
-identity 由 Gate E.1 correction commit 独立记录。Gate E retry 仍需单独人工授权。
+identity 由 Gate E.1 correction commit 独立记录。
+
+Gate E.6 已在真实 host security validation PASS 后冻结 Jarvis Exec Sandbox V0.1。
+Web-only Hermes profile 保留七项 PDI read tools，并通过 sanitized fixed AF_UNIX
+proxy 增加精确五项 Jarvis Exec MCP tools。每个连接激活一个无 network、无 product
+authority 的 `DynamicUser` systemd instance；其唯一有用 writable surface 是 private
+16 MiB tmpfs 下的 0700 disposable workspace。真实 host 已拒绝 direct Python quota
+bypass、path escape、secret/private-home/Docker/network access、descendant escape 与
+cross-connection state reuse，并验证完整 Hermes -> Exec MCP Turn。
+
+Hermes terminal、file 与 built-in `code_execution` 继续禁用。Exec state
+non-authoritative：不创建 Jarvis table、PDI Resource、persistent Artifact 或 cross-Turn
+workspace。Internet/Web access 是独立 future capability，不得通过开放 Exec network
+实现。Production Exec/Web services 仍未安装；下一步需要新 immutable application
+release 和独立人工审查的 install gate。
 
 ### Server Runtime
 
@@ -262,12 +276,12 @@ service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线
 
 ## 5. 验证状态
 
-2026-08-20 当前 host-safe 与 Stage 4 Jarvis validation：
+2026-08-22 当前 host-safe 与 Gate E.6 validation：
 
 ```text
-host-safe/default: 522 passed, 98 skipped
-Jarvis isolated PostgreSQL migration: 1 passed
-prior PDI isolated PostgreSQL suite: 99 passed, 2 skipped
+host-safe/default: 561 passed, 98 skipped
+isolated PostgreSQL 16 suite: 99 passed, 2 skipped
+Jarvis isolated PostgreSQL migration: included and passed
 ```
 
 skip 均来自显式 database、live Provider 或 integration gate；isolated suite 使用
@@ -277,7 +291,8 @@ Jarvis database。
 Codex 默认 command sandbox 会阻塞 MCP SDK `Client.call_tool` worker path；相同
 standalone/minimal pytest 在 host-native execution 正常通过，因此正式回归使用
 host-native execution 完成。Stage 4 完整 Playwright suite 在一次性隔离 browser
-runtime 中为 11 passed、9 个 device-matrix expected skips、0 failures；真实只读浏览器
+runtime 中为 11 passed、9 个 device-matrix expected skips、0 failures，production
+boundary suite 为 2 passed；真实只读浏览器
 smoke 验证 Resources、Resource Detail、Immich image proxy 与三个 Provider views，未
 保存真实内容截图。
 

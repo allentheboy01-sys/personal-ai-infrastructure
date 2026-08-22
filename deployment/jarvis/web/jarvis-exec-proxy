@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+umask 077
+
+readonly RESOLVED_SELF="$(readlink -f "$0")"
+readonly RELEASE_ROOT="$(dirname "$(dirname "$RESOLVED_SELF")")"
+readonly PROXY_PYTHON=/opt/jarvis-web/venv-current/bin/python
+
+if [ ! -x "$PROXY_PYTHON" ] || [ ! -r "$RELEASE_ROOT/profile/jarvis-web/config.yaml" ]; then
+    echo "jarvis-exec-proxy: runtime unavailable" >&2
+    exit 1
+fi
+
+exec env -i \
+    PATH=/usr/bin:/bin \
+    LANG=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    "$PROXY_PYTHON" -I -m jarvis.exec_proxy.main

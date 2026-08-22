@@ -18,6 +18,10 @@ dependencies = [
     "uvicorn>=0.35,<1.0",
 ]
 
+[project.scripts]
+jarvis-exec-mcp = "jarvis.exec.server:main"
+jarvis-exec-proxy = "jarvis.exec_proxy.main:main"
+
 [tool.setuptools.packages.find]
 where = ["../../../../src"]
 include = ["jarvis", "jarvis.*"]

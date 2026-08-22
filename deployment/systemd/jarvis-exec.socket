@@ -1,0 +1,14 @@
+[Unit]
+Description=Jarvis Exec V0.1 socket
+
+[Socket]
+ListenStream=/run/jarvis-exec.sock
+Accept=yes
+SocketUser=root
+SocketGroup=harry
+SocketMode=0660
+MaxConnections=4
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

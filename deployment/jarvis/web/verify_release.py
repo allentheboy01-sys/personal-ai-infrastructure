@@ -12,7 +12,7 @@ from pathlib import Path
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 FORBIDDEN = {"node_modules", ".git", "review", "screenshots", "test-results", "playwright-report"}
-APPROVED_EXECUTABLES = {Path("bin/hermes-bridge")}
+APPROVED_EXECUTABLES = {Path("bin/hermes-bridge"), Path("bin/jarvis-exec-proxy")}
 
 
 def digest(path: Path) -> str:
@@ -65,8 +65,22 @@ def main() -> int:
     actual = {path.resolve() for path in root.rglob("*") if path.is_file() and path.name != "SHA256SUMS"}
     if listed != actual:
         raise SystemExit("manifest file set mismatch")
-    if not (root / "static/index.html").is_file() or not (root / "hermes/hermes_bridge.py").is_file() or not (root / "migrations/jarvis-alembic.ini").is_file():
+    if not all(path.is_file() for path in (
+        root / "static/index.html",
+        root / "hermes/hermes_bridge.py",
+        root / "migrations/jarvis-alembic.ini",
+        root / "bin/jarvis-exec-proxy",
+        root / "profile/jarvis-web/config.yaml",
+        root / "profile/jarvis-web/SOUL.md",
+    )):
         raise SystemExit("required release component missing")
+    if not all(path.is_dir() for path in (
+        root / "profile/jarvis-web/cron",
+        root / "profile/jarvis-web/sessions",
+        root / "profile/jarvis-web/logs",
+        root / "profile/jarvis-web/memories",
+    )):
+        raise SystemExit("required Hermes profile directory missing")
     print(f"verified {args.deploy_sha}")
     return 0
 

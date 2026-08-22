@@ -39,7 +39,11 @@ details live in their dedicated documents.
   HermesRuntimeAdapter are frozen after human architecture/runtime review.
   Stage 4 deterministic read-only PDI views, Provider status projection, and
   bounded Resource Access proxy are frozen after human integration review and
-  real-browser validation. Production deployment remains Stage 5 work.
+  real-browser validation. Stage 5B Gate E.6 freezes the real-host-validated
+  Jarvis Exec Sandbox V0.1: five bounded execution/workspace MCP tools run in a
+  per-connection DynamicUser sandbox with no network, product secrets, private
+  home, Docker, persistent workspace, or authoritative state. Production
+  release construction and deployment remain separately reviewed Stage 5 work.
 
 ## Future
 
@@ -48,8 +52,9 @@ details live in their dedicated documents.
 - User-controlled memory derived from PDI rather than owned by an AI runtime.
 - Explicit permission and write/action boundaries before any write-capable
   consumer Tool is introduced.
-- Jarvis Web backend, state, Runtime, PDI integration, authentication, and
-  deployment only through their separately reviewed Stage 2+ boundaries.
+- Jarvis Web authentication and production deployment only through their
+  separately reviewed Stage 5 boundaries. General Internet/Web capability is
+  separate from Exec and must not be added by enabling arbitrary Exec network.
 - **v1.0 — Stable Personal Digital Infrastructure:** stabilize proven provider,
   observation, retrieval, access, and consumer contracts for long-term use.
 

@@ -1,8 +1,8 @@
 [Unit]
 Description=Jarvis Web V0.1
-After=network-online.target pdi-resource-access.service
+After=network-online.target pdi-resource-access.service jarvis-exec.socket
 Wants=network-online.target
-Requires=pdi-resource-access.service
+Requires=pdi-resource-access.service jarvis-exec.socket
 
 [Service]
 Type=simple
@@ -27,8 +27,8 @@ ProtectHome=read-only
 # non-authoritative subdirectories with service-lifetime state.
 RuntimeDirectory=jarvis-web-hermes-sessions jarvis-web-hermes-logs
 RuntimeDirectoryMode=0700
-BindPaths=/run/jarvis-web-hermes-sessions:/home/harry/.hermes/profiles/pdi-server/sessions
-BindPaths=/run/jarvis-web-hermes-logs:/home/harry/.hermes/profiles/pdi-server/logs
+BindPaths=/run/jarvis-web-hermes-sessions:/opt/jarvis-web/current/profile/jarvis-web/sessions
+BindPaths=/run/jarvis-web-hermes-logs:/opt/jarvis-web/current/profile/jarvis-web/logs
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

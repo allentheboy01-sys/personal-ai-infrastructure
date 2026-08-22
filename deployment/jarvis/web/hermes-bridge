@@ -4,9 +4,9 @@ umask 077
 
 readonly MODEL_ENV=/etc/pdi/jarvis.env
 readonly HERMES_PYTHON=/home/harry/.hermes/hermes-agent/venv/bin/python
-readonly HERMES_PROFILE=/home/harry/.hermes/profiles/pdi-server
 readonly RESOLVED_SELF="$(readlink -f "$0")"
 readonly RELEASE_ROOT="$(dirname "$(dirname "$RESOLVED_SELF")")"
+readonly HERMES_PROFILE="$RELEASE_ROOT/profile/jarvis-web"
 readonly BRIDGE="$RELEASE_ROOT/hermes/hermes_bridge.py"
 
 if [ ! -r "$MODEL_ENV" ]; then

@@ -71,13 +71,18 @@ The release includes:
 - the frozen Stage 3 one-process-per-Turn
   HermesRuntimeAdapter with a private bounded JSONL bridge, canonical Jarvis
   history input, exact process-group cancellation/cleanup, live phase events,
-  and safe final-only response delivery; and
+  and safe final-only response delivery;
+- frozen Stage 4 deterministic read-only PDI product views and the Stage 5B
+  Jarvis Exec Sandbox V0.1: seven PDI read tools plus five bounded execution/
+  workspace tools behind a no-network, per-connection DynamicUser sandbox,
+  validated on the real host but not yet built or installed as a new release;
+  and
 - a server-first Codex CLI development workflow with production isolation.
 
-Current host-safe/default validation: `512 passed, 98 skipped`. The Stage 3
-Jarvis migration validation is `1 passed` against a disposable isolated
-PostgreSQL database. The prior full PDI isolated validation is `99 passed, 2
-skipped`; the two skips require live Immich credentials. Integration,
+Current host-safe/default validation: `561 passed, 98 skipped`. The full
+isolated PostgreSQL 16 validation is `99 passed, 2 skipped`, including the
+independent Jarvis migration; the two skips require live Immich credentials.
+Integration,
 live-Provider, and database tests are
 explicitly gated and are never run against production data. Gmail V0.1 is
 functionally frozen for bounded manual execution; unattended operation remains
@@ -111,6 +116,8 @@ authentication boundary are documented in
 - [Jarvis reference runtime](docs/deployment/jarvis-runtime-server-v0.1.md)
 - [Jarvis Web UI V0.1 Stage 1 freeze](docs/design/jarvis-web-ui-v0.1-stage1-freeze.md)
 - [Jarvis Web UI V0.1 Stage 2 skeleton](docs/design/jarvis-web-ui-v0.1-stage2.md)
+- [Jarvis Web UI V0.1 Stage 5B deployment](docs/deployment/jarvis-web-v0.1-stage5b.md)
+- [Jarvis Exec Sandbox V0.1 freeze](docs/releases/jarvis-web-ui-v0.1-stage5b-e6.md)
 
 ## License
 

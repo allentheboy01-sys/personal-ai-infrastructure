@@ -1,0 +1,59 @@
+model:
+  provider: deepseek-v4
+  default: deepseek-v4-flash
+  base_url: https://api.deepseek.com/v1
+
+providers:
+  deepseek-v4:
+    name: DeepSeek V4
+    base_url: https://api.deepseek.com/v1
+    default_model: deepseek-v4-flash
+    key_env: DEEPSEEK_API_KEY
+
+agent:
+  max_turns: 10
+  tool_use_enforcement: true
+  system_prompt: >-
+    Use PDI MCP tools for personal-world reads and Jarvis Exec tools only for
+    bounded disposable computation and text workspace operations.
+
+toolsets: []
+platform_toolsets:
+  cli:
+    - pdi
+    - jarvis_exec
+
+checkpoints:
+  enabled: false
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+
+mcp_servers:
+  pdi:
+    enabled: true
+    command: /home/harry/.hermes/profiles/pdi-server/bin/pdi-mcp
+    tools:
+      include:
+        - pdi_list_recent_resources
+        - pdi_search_resources
+        - pdi_get_resource
+        - pdi_aggregate_resources
+        - pdi_get_resource_observations
+        - pdi_retrieve_resources
+        - pdi_rich_retrieve_resources
+      resources: false
+      prompts: false
+  jarvis_exec:
+    enabled: true
+    command: /opt/jarvis-web/current/bin/jarvis-exec-proxy
+    tools:
+      include:
+        - jarvis_exec_python
+        - jarvis_workspace_write_text
+        - jarvis_workspace_read_text
+        - jarvis_workspace_list
+        - jarvis_workspace_delete
+      resources: false
+      prompts: false

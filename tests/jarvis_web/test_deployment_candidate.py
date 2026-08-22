@@ -17,7 +17,7 @@ def _normalize_fixture(release: Path) -> None:
         if path.is_dir():
             path.chmod(0o555)
         elif path.is_file():
-            path.chmod(0o555 if path.relative_to(release) == Path("bin/hermes-bridge") else 0o444)
+            path.chmod(0o555 if path.relative_to(release) in {Path("bin/hermes-bridge"), Path("bin/jarvis-exec-proxy")} else 0o444)
     release.chmod(0o555)
 
 
@@ -61,14 +61,14 @@ def test_systemd_unit_freezes_single_local_worker_and_hardening() -> None:
         "PrivateTmp=yes", "ProtectSystem=strict", "ProtectHome=read-only",
         "RuntimeDirectory=jarvis-web-hermes-sessions jarvis-web-hermes-logs",
         "RuntimeDirectoryMode=0700",
-        "BindPaths=/run/jarvis-web-hermes-sessions:/home/harry/.hermes/profiles/pdi-server/sessions",
-        "BindPaths=/run/jarvis-web-hermes-logs:/home/harry/.hermes/profiles/pdi-server/logs",
+        "BindPaths=/run/jarvis-web-hermes-sessions:/opt/jarvis-web/current/profile/jarvis-web/sessions",
+        "BindPaths=/run/jarvis-web-hermes-logs:/opt/jarvis-web/current/profile/jarvis-web/logs",
         "-/run/docker.sock", "-/home/harry/.ssh", "-/home/harry/.codex", "-/home/harry/projects",
     )
     assert all(value in unit for value in required)
     assert [line for line in unit.splitlines() if line.startswith("BindPaths=")] == [
-        "BindPaths=/run/jarvis-web-hermes-sessions:/home/harry/.hermes/profiles/pdi-server/sessions",
-        "BindPaths=/run/jarvis-web-hermes-logs:/home/harry/.hermes/profiles/pdi-server/logs",
+        "BindPaths=/run/jarvis-web-hermes-sessions:/opt/jarvis-web/current/profile/jarvis-web/sessions",
+        "BindPaths=/run/jarvis-web-hermes-logs:/opt/jarvis-web/current/profile/jarvis-web/logs",
     ]
     assert "alembic" not in unit.lower()
     assert "0.0.0.0" not in unit
@@ -89,16 +89,43 @@ def test_hermes_launcher_has_a_sanitized_secret_boundary() -> None:
     assert "/home/harry/.local/bin/jarvis" not in launcher
 
 
+def test_web_profile_has_complete_read_only_hermes_home_scaffold() -> None:
+    builder = (ROOT / "deployment/jarvis/web/build_release.py").read_text(encoding="utf-8")
+    for required in (
+        "profile/jarvis-web/cron",
+        "profile/jarvis-web/sessions",
+        "profile/jarvis-web/logs",
+        "profile/jarvis-web/memories",
+    ):
+        assert required in builder
+    assert 'profile/jarvis-web/SOUL.md' in builder
+    assert (ROOT / "deployment/jarvis/web/profile/SOUL.md").read_text(encoding="utf-8") == ""
+
+
 def _release_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     sha = "a" * 40
     release = tmp_path / sha
-    for directory in ("app", "static", "hermes", "bin", "manifests", "migrations"):
+    for directory in (
+        "app",
+        "static",
+        "hermes",
+        "bin",
+        "manifests",
+        "migrations",
+        "profile/jarvis-web/cron",
+        "profile/jarvis-web/sessions",
+        "profile/jarvis-web/logs",
+        "profile/jarvis-web/memories",
+    ):
         (release / directory).mkdir(parents=True)
     wheel = release / "app/jarvis_web_app-0.1.0-py3-none-any.whl"
     wheel.write_bytes(b"wheel")
     (release / "static/index.html").write_text("index", encoding="utf-8")
     (release / "hermes/hermes_bridge.py").write_text("bridge", encoding="utf-8")
     (release / "bin/hermes-bridge").write_text("launcher", encoding="utf-8")
+    (release / "bin/jarvis-exec-proxy").write_text("proxy", encoding="utf-8")
+    (release / "profile/jarvis-web/config.yaml").write_text("profile", encoding="utf-8")
+    (release / "profile/jarvis-web/SOUL.md").write_text("", encoding="utf-8")
     lock = release / "manifests/requirements-production.lock"
     lock.write_text("locked", encoding="utf-8")
     (release / "migrations/jarvis-alembic.ini").write_text("migration", encoding="utf-8")

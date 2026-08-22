@@ -461,7 +461,8 @@ def test_mcp_v02_surface_serialization_and_postgresql(v02_context) -> None:
             recent = await client.call_tool(
                 "pdi_list_recent_resources",
                 {
-                    "days": 10,
+                    "observed_from": data.observed_from.isoformat(),
+                    "observed_to": data.observed_to.isoformat(),
                     "provider": data.provider,
                     "path_prefix": data.path_prefix,
                     "limit": 2,

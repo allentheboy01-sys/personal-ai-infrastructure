@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[3]
 LOCK = ROOT / "deployment/jarvis/web/requirements-production.lock"
 FRONTEND = ROOT / "apps/jarvis-web"
 PYTHON_ARTIFACT = ROOT / "deployment/jarvis/web/python"
-APPROVED_EXECUTABLES = {Path("bin/hermes-bridge")}
+APPROVED_EXECUTABLES = {Path("bin/hermes-bridge"), Path("bin/jarvis-exec-proxy")}
 
 
 def digest(path: Path) -> str:
@@ -61,7 +61,18 @@ def main() -> int:
 
     staging = args.output_root.resolve() / f".{sha}.staging-{os.getpid()}"
     try:
-        for directory in ("app", "static", "hermes", "bin", "manifests", "migrations"):
+        for directory in (
+            "app",
+            "static",
+            "hermes",
+            "bin",
+            "manifests",
+            "migrations",
+            "profile/jarvis-web/cron",
+            "profile/jarvis-web/sessions",
+            "profile/jarvis-web/logs",
+            "profile/jarvis-web/memories",
+        ):
             (staging / directory).mkdir(parents=True, exist_ok=True)
         python_build = staging / ".python-build"
         shutil.copytree(ROOT / "src/jarvis", python_build / "src/jarvis", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
@@ -87,6 +98,9 @@ def main() -> int:
         shutil.copytree(FRONTEND / "dist", staging / "static", dirs_exist_ok=True)
         shutil.copy2(ROOT / "src/jarvis/runtime/hermes_bridge.py", staging / "hermes/hermes_bridge.py")
         shutil.copy2(ROOT / "deployment/jarvis/web/hermes-bridge", staging / "bin/hermes-bridge")
+        shutil.copy2(ROOT / "deployment/jarvis/web/jarvis-exec-proxy", staging / "bin/jarvis-exec-proxy")
+        shutil.copy2(ROOT / "deployment/jarvis/web/profile/config.yaml", staging / "profile/jarvis-web/config.yaml")
+        shutil.copy2(ROOT / "deployment/jarvis/web/profile/SOUL.md", staging / "profile/jarvis-web/SOUL.md")
         shutil.copy2(LOCK, staging / "manifests/requirements-production.lock")
         shutil.copy2(ROOT / "jarvis-alembic.ini", staging / "migrations/jarvis-alembic.ini")
         shutil.copytree(ROOT / "jarvis_migrations", staging / "migrations/jarvis_migrations", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))

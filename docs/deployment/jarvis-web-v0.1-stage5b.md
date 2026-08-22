@@ -2,10 +2,12 @@
 
 ## Status and immutable boundary
 
-Stage 5B.0 production candidate; **not deployed**. The candidate starts from
-`4a89bcf0421d25a5f2cde7bb504d5d2adc837859`. Replace `DEPLOY_SHA` below only
-with the human-approved Stage 5B.0 freeze commit. Never run these commands from
-an unclean checkout or against a divergent production checkout.
+Stage 5B production deployment candidate; **not deployed**. The previously
+installed application release is
+`6afab42096469699c918f9130739e8324db6ee47`; Gate E.6 requires a new immutable
+release. Replace `DEPLOY_SHA` below only with the human-approved Gate E.6 freeze
+commit. Never run these commands from an unclean checkout or against a
+divergent production checkout.
 
 Target topology is Tailscale Serve HTTPS to `http://127.0.0.1:8765`, one
 Uvicorn worker, separate `jarvis` PostgreSQL database, persistent PDI MCP stdio
@@ -82,10 +84,14 @@ sudo python3.13 deployment/jarvis/web/verify_release.py \
 sudo chown -R root:root "/opt/jarvis-web/releases/$DEPLOY_SHA"
 sudo chmod -R a-w "/opt/jarvis-web/releases/$DEPLOY_SHA"
 sudo find "/opt/jarvis-web/releases/$DEPLOY_SHA" -type d ! -perm 0555 -print
-sudo find "/opt/jarvis-web/releases/$DEPLOY_SHA" -type f ! -path '*/bin/hermes-bridge' ! -perm 0444 -print
+sudo find "/opt/jarvis-web/releases/$DEPLOY_SHA" -type f \
+  ! -path '*/bin/hermes-bridge' ! -path '*/bin/jarvis-exec-proxy' \
+  ! -perm 0444 -print
 sudo test "$(sudo stat -c %a "/opt/jarvis-web/releases/$DEPLOY_SHA/bin/hermes-bridge")" = 555
+sudo test "$(sudo stat -c %a "/opt/jarvis-web/releases/$DEPLOY_SHA/bin/jarvis-exec-proxy")" = 555
 sudo -u harry test -r "/opt/jarvis-web/releases/$DEPLOY_SHA/static/index.html"
 sudo -u harry test -x "/opt/jarvis-web/releases/$DEPLOY_SHA/bin/hermes-bridge"
+sudo -u harry test -x "/opt/jarvis-web/releases/$DEPLOY_SHA/bin/jarvis-exec-proxy"
 ```
 
 Expected: one verified immutable release plus a SHA-specific dependency venv,
@@ -93,8 +99,8 @@ importable Jarvis-only wheel, green `pip check`, no
 `node_modules`, browser runtime, review screenshot, or secret. STOP on a hash,
 wheel, import, permission, or service-user access mismatch. The installed
 release is `root:root`; directories are `0555`, ordinary files `0444`, and the
-approved Hermes launcher is `0555`. Recovery: remove only the new incomplete release;
-never overwrite the previous release. The frontend was built from
+approved Hermes and Exec proxy launchers are `0555`. Recovery: remove only the
+new incomplete release; never overwrite the previous release. The frontend was built from
 `package-lock.json`; Node is not installed or run by the service.
 
 ## C. Jarvis roles and database
@@ -178,7 +184,10 @@ downgrade/delete a database with conversations as automatic recovery.
 ## F. systemd install and localhost start
 
 Precondition: migrations and artifact verification passed. Install the stable
-links atomically, then the reviewed unit:
+links atomically, then the reviewed Exec socket/template and Web unit. The Web
+profile shipped in the immutable release exposes exactly seven PDI read tools
+and five Jarvis Exec tools. Hermes terminal, file, and built-in
+`code_execution` remain disabled.
 
 ```bash
 sudo ln -sfn "/opt/jarvis-web/releases/$DEPLOY_SHA" /opt/jarvis-web/current.new
@@ -189,21 +198,42 @@ sudo ln -sfn /opt/jarvis-web/current/bin/hermes-bridge \
   /usr/local/libexec/jarvis-web-hermes-bridge.new
 sudo mv -Tf /usr/local/libexec/jarvis-web-hermes-bridge.new \
   /usr/local/libexec/jarvis-web-hermes-bridge
+sudo install -m 0644 -o root -g root deployment/systemd/jarvis-exec.socket \
+  /etc/systemd/system/jarvis-exec.socket
+sudo install -m 0644 -o root -g root deployment/systemd/jarvis-exec@.service \
+  /etc/systemd/system/jarvis-exec@.service
 sudo install -m 0644 -o root -g root deployment/systemd/jarvis-web.service \
   /etc/systemd/system/jarvis-web.service
-sudo systemd-analyze verify /etc/systemd/system/jarvis-web.service
+sudo systemd-analyze verify /etc/systemd/system/jarvis-exec.socket \
+  /etc/systemd/system/jarvis-exec@.service \
+  /etc/systemd/system/jarvis-web.service
 sudo systemctl daemon-reload
+sudo systemctl enable --now jarvis-exec.socket
 sudo systemctl enable --now jarvis-web.service
 curl --fail --silent --show-error http://127.0.0.1:8765/ -o /dev/null
 sudo ss -ltnp | grep '127.0.0.1:8765'
 ```
 
 Expected: one loopback listener, one worker, no default access log, no Node,
-and no migration at startup. A direct localhost request to protected content
-without Serve identity must be rejected. STOP on `0.0.0.0`, multiple workers,
-child leaks, or protected-path access. Recovery: stop/disable unit, restore the
-previous `current`, `venv-current`, and libexec symlinks, daemon-reload, and
-start the prior release; preserve Jarvis DB.
+and no migration at startup. `/run/jarvis-exec.sock` is AF_UNIX only,
+root-managed, and accessible only to the Jarvis service identity. Each accepted
+connection creates one `DynamicUser` instance, private network namespace,
+private 16 MiB tmpfs containing a 0700 product workspace, bounded cgroup, and
+control-group cleanup. `/tmp` and `/var/tmp` are not useful writable surfaces;
+the instance has no AF_INET/AF_INET6 authority. A direct
+localhost request to protected content without Serve identity must be rejected.
+STOP on `0.0.0.0`, multiple workers, secret/private-home visibility from Exec,
+AF_INET availability, workspace escape, descendant leaks, or protected-path
+access. Recovery: stop/disable both units, restore the previous `current`,
+`venv-current`, and libexec symlinks, daemon-reload, and start the prior
+release; preserve Jarvis DB.
+
+The frozen Hermes 0.10.0 compatibility baseline is implementation-specific:
+its local terminal is an unsafe host subprocess; local `code_execution` is
+also host execution without a real filesystem/network sandbox; a Web-specific
+profile is supported; and custom MCP tools are registered as
+`mcp_<server>_<canonical_tool>`. The Web profile must be a complete read-only
+`HERMES_HOME` scaffold containing `cron/`, `memories/`, and `SOUL.md`.
 
 Hermes 0.10.0 initializes `HERMES_HOME/sessions` and writes bounded agent logs
 even when the Web bridge uses `persist_session=False`, `session_db=None`,
@@ -213,16 +243,16 @@ even when the Web bridge uses `persist_session=False`, `session_db=None`,
 subdirectories. The formal profile configuration, Hermes venv, and the rest of
 `~/.hermes` remain read-only. These transient files are non-authoritative and
 are removed when the unit is stopped; Jarvis DB history remains the only
-conversation authority. Do not replace this with `ProtectHome=no`, a writable
-home, or a writable full profile.
+conversation authority. Hermes runtime state is non-authoritative. Do not
+replace this with `ProtectHome=no`, a writable home, or a writable full profile.
 
-Before a Gate E retry, validate the effective unit with
-`systemd-analyze verify`, then use a transient unit with the same
-`RuntimeDirectory`, `BindPaths`, `ProtectHome`, `PrivateTmp`, and inaccessible
-paths. Require AIAgent initialization, one harmless general-tool Turn, removal
-of both runtime directories after unit collection, zero bridge children, and a
-second Turn driven only by normalized Jarvis history. STOP if Hermes requires
-any additional writable profile path.
+Gate E.5.1 passed real-host validation of DynamicUser identity, the kernel 16
+MiB workspace ceiling (including direct malicious Python writes), secret/home/
+Docker/network denial, exact five-tool MCP contract, resource limits, cgroup
+descendant cleanup, sanitized proxy authority, socket/workspace lifecycle, and
+a real Hermes -> Exec MCP Turn. This PASS is the authority for the sandbox
+freeze; the production install gate must still verify the installed immutable
+artifact and effective units without weakening any boundary.
 
 ## G. Tailscale Serve and HTTPS
 
@@ -312,6 +342,6 @@ model authority, then passes only `DEEPSEEK_API_KEY` through `env -i`.
   remain unavailable. Agent-linked Resource refs remain deferred.
 - Gmail existing PDI data is readable. Unattended Gmail sync is not ready and
   no timer is added by this deployment.
-- Previous good application baseline is
-  `4a89bcf0421d25a5f2cde7bb504d5d2adc837859`; application rollback preserves
+- Previous good installed application baseline is
+  `6afab42096469699c918f9130739e8324db6ee47`; application rollback preserves
   conversations and does not imply a database downgrade.
