@@ -25,7 +25,17 @@ const canonical = {
 
 function Harness({ conversationId = null, turnId = null }: { conversationId?: string | null; turnId?: string | null }) {
   const chat = useJarvisChat(conversationId, turnId)
-  return <div><button onClick={() => void chat.submit('Hello')}>Submit</button><span>{chat.running ? 'running' : 'idle'}</span>{chat.messages.map((message) => <p key={message.id}>{message.body}</p>)}</div>
+  return <div>
+    <button onClick={() => void chat.submit('Hello')}>Submit</button>
+    <button onClick={() => void chat.submit('Message B')}>Submit B</button>
+    <button onClick={chat.resetConversation}>New</button>
+    <button onClick={() => void chat.selectConversation('conversation-a')}>Open A</button>
+    <button onClick={() => void chat.selectConversation('conversation-b')}>Open B</button>
+    <span>{chat.running ? 'running' : 'idle'}</span>
+    <span data-testid="conversation-id">{chat.conversationId ?? 'none'}</span>
+    <span data-testid="conversation-title">{chat.conversationTitle ?? 'untitled'}</span>
+    {chat.messages.map((message) => <p key={message.id}>{message.body}</p>)}
+  </div>
 }
 
 describe('persistent Chat boundary', () => {
@@ -33,7 +43,7 @@ describe('persistent Chat boundary', () => {
 
   it('streams through the mock runtime boundary and reloads canonical messages', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'conversation-1' }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...canonical, messages: undefined }), { status: 201 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ turn_id: 'turn-1' }), { status: 201 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(canonical), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(canonical), { status: 200 }))
@@ -65,5 +75,52 @@ describe('persistent Chat boundary', () => {
     await waitFor(() => expect(MockEventSource.instances).toHaveLength(1))
     expect(MockEventSource.instances[0].url).toBe('/api/v1/turns/turn-active/events')
     expect(screen.getByText('running')).toBeInTheDocument()
+  })
+
+  it('does not reuse the previous conversation after New conversation', async () => {
+    const conversationA = { ...canonical, id: 'conversation-a', title: 'Conversation A', messages: [{ ...canonical.messages[0], id: 'message-a', body: 'History A' }] }
+    const conversationB = { id: 'conversation-b', title: 'Message B', created_at: canonical.created_at, updated_at: canonical.updated_at, archived_at: null }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(conversationA), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(conversationB), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ turn_id: 'turn-b' }), { status: 201 }))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('EventSource', MockEventSource)
+    vi.stubGlobal('crypto', { randomUUID: () => 'local-b' })
+
+    render(<Harness conversationId="conversation-a" />)
+    await screen.findByText('History A')
+    fireEvent.click(screen.getByRole('button', { name: 'New' }))
+    expect(screen.queryByText('History A')).not.toBeInTheDocument()
+    expect(screen.getByTestId('conversation-id')).toHaveTextContent('none')
+    fireEvent.click(screen.getByRole('button', { name: 'Submit B' }))
+
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1))
+    expect(screen.getByTestId('conversation-id')).toHaveTextContent('conversation-b')
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v1/conversations', expect.objectContaining({ method: 'POST', body: JSON.stringify({ title: 'Message B' }) }))
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/v1/conversations/conversation-b/turns', expect.objectContaining({ method: 'POST' }))
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/v1/conversations/conversation-a/turns')).toBe(false)
+  })
+
+  it('switches exact canonical histories without merging stale messages', async () => {
+    let resolveA!: (response: Response) => void
+    const deferredA = new Promise<Response>((resolve) => { resolveA = resolve })
+    const conversationB = { ...canonical, id: 'conversation-b', title: 'Conversation B', messages: [{ ...canonical.messages[0], id: 'message-b', body: 'History B' }] }
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => deferredA)
+      .mockResolvedValueOnce(new Response(JSON.stringify(conversationB), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('EventSource', MockEventSource)
+
+    render(<Harness />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open A' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open B' }))
+    await screen.findByText('History B')
+    resolveA(new Response(JSON.stringify({ ...canonical, id: 'conversation-a', title: 'Conversation A', messages: [{ ...canonical.messages[0], id: 'message-a', body: 'History A' }] }), { status: 200 }))
+    await act(async () => { await deferredA })
+
+    expect(screen.queryByText('History A')).not.toBeInTheDocument()
+    expect(screen.getByTestId('conversation-id')).toHaveTextContent('conversation-b')
+    expect(screen.getByTestId('conversation-title')).toHaveTextContent('Conversation B')
   })
 })

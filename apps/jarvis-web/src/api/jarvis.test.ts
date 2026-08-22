@@ -15,4 +15,13 @@ describe('Jarvis API boundary', () => {
       headers: { 'Content-Type': 'application/json', 'X-Jarvis-Request': 'web-v1' },
     }))
   })
+
+  it('lists canonical conversations without a frontend-local store', async () => {
+    const conversations = [{ id: 'conversation-1', title: 'Canonical title', created_at: '2026-08-22T00:00:00Z', updated_at: '2026-08-22T00:00:00Z', archived_at: null }]
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(conversations), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(jarvisApi.listConversations()).resolves.toEqual(conversations)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/conversations', { cache: 'no-store' })
+  })
 })

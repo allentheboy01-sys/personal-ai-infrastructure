@@ -57,9 +57,11 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .recent-section { margin-top: 28px; min-height: 0; overflow: hidden; }
 .recent-section > p { margin: 0 10px 8px; color: var(--ink-faint); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
 .recent-section button { width: 100%; padding: 9px 10px; border: 0; border-radius: 9px; background: transparent; text-align: left; cursor: pointer; display: grid; gap: 3px; }
-.recent-section button:hover { background: #ecebe5; }
+.recent-section button:hover, .recent-section button.active { background: #ecebe5; }
+.recent-section button.active span { color: var(--accent-ink); font-weight: 650; }
 .recent-section span { font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .recent-section small { color: var(--ink-faint); font-size: 11px; }
+.recent-section .recent-empty { display: block; padding: 9px 10px; color: var(--ink-faint); font-size: 12px; white-space: normal; }
 .sidebar-footer { margin-top: auto; border-top: 1px solid var(--line); padding: 16px 7px 0; display: flex; align-items: center; gap: 10px; }
 .avatar { width: 30px; height: 30px; border-radius: 50%; background: #d9ddd4; display: grid; place-items: center; font-size: 10px; font-weight: 700; }
 .sidebar-footer div { display: grid; gap: 2px; }
@@ -89,7 +91,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .composer-actions { display: flex; align-items: center; gap: 5px; }
 .attach-button, .send-button { width: 38px; height: 38px; border: 0; border-radius: 12px; display: grid; place-items: center; cursor: pointer; }
 .attach-button { background: transparent; color: var(--ink-soft); }
-.attach-button:hover { background: var(--surface-muted); }
+.attach-button:disabled { color: var(--ink-faint); cursor: not-allowed; opacity: .58; }
 .send-button { background: var(--accent); color: white; }
 .send-button:disabled { background: #d9d9d3; color: #94958e; cursor: default; }
 .send-button.stop { background: var(--ink); }
@@ -106,7 +108,22 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .user-message p { max-width: 78%; margin: 0; padding: 12px 16px; border-radius: 17px 17px 5px 17px; background: #e9e8e2; font-size: 14.5px; line-height: 1.55; }
 .assistant-message { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 13px; }
 .assistant-mark { width: 29px; height: 29px; margin-top: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-raised); display: grid; place-items: center; color: var(--accent); }
-.assistant-body > p { margin: 0; color: #33342f; font-size: 15px; line-height: 1.72; letter-spacing: -.008em; }
+.markdown-body { color: #33342f; font-size: 15px; line-height: 1.72; letter-spacing: -.008em; overflow-wrap: anywhere; }
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body > :last-child { margin-bottom: 0; }
+.markdown-body p, .markdown-body ul, .markdown-body ol, .markdown-body blockquote, .markdown-body pre { margin: 0 0 14px; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 { margin: 24px 0 9px; color: var(--ink); font-weight: 650; line-height: 1.25; letter-spacing: -.025em; }
+.markdown-body h1 { font-size: 24px; }
+.markdown-body h2 { font-size: 20px; }
+.markdown-body h3 { font-size: 17px; }
+.markdown-body ul, .markdown-body ol { padding-left: 23px; }
+.markdown-body li + li { margin-top: 4px; }
+.markdown-body blockquote { padding: 2px 0 2px 14px; border-left: 3px solid var(--line-strong); color: var(--ink-soft); }
+.markdown-body code { padding: 2px 5px; border-radius: 5px; background: var(--surface-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .88em; }
+.markdown-body pre { overflow-x: auto; padding: 14px 16px; border: 1px solid var(--line); border-radius: 11px; background: #efeee9; line-height: 1.55; }
+.markdown-body pre code { padding: 0; background: transparent; font-size: 12px; }
+.markdown-body a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.markdown-body strong { font-weight: 700; color: var(--ink); }
 .resource-strip-wrap { position: relative; }
 .resource-strip { margin-top: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .resource-card { position: relative; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-raised); overflow: hidden; box-shadow: var(--shadow-sm); }
@@ -120,6 +137,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .icon-renderer.document { background: #eee9df; color: #75583d; }
 .icon-renderer.message { background: #e7ece8; color: #395d51; }
 .icon-renderer.generic { background: #ebeae7; color: #666760; }
+.icon-renderer.image-fallback, .detail-hero.image { background: #e5e9e3; color: #52675e; }
 .resource-copy { padding: 14px 15px 16px; }
 .resource-meta { display: flex; align-items: center; gap: 5px; color: var(--ink-faint); font-size: 10px; }
 .resource-copy h3 { margin: 8px 20px 4px 0; font-size: 14px; font-weight: 650; line-height: 1.35; letter-spacing: -.015em; }
@@ -201,8 +219,13 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .execution-panel p { margin: 5px 0 0; color: var(--ink-faint); font-size: 10px; line-height: 1.45; }
 .stop-work { height: 38px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 10px; background: transparent; display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 11px; font-weight: 600; }
 .detail-content { padding: 22px; }
-.detail-image { height: 220px; border-radius: 15px; overflow: hidden; background: #dce0d8; }
+.detail-image { position: relative; display: block; width: 100%; height: 220px; padding: 0; border: 0; border-radius: 15px; overflow: hidden; background: #dce0d8; cursor: zoom-in; }
 .detail-image img { width: 100%; height: 100%; object-fit: cover; }
+.image-enlarge { position: absolute; right: 11px; bottom: 11px; width: 34px; height: 34px; border-radius: 10px; background: rgba(24, 27, 23, .68); color: white; display: grid; place-items: center; backdrop-filter: blur(8px); }
+.lightbox-overlay { position: fixed; inset: 0; z-index: 80; background: rgba(18, 20, 18, .88); animation: fade-in .16s ease-out; }
+.lightbox-content { position: fixed; inset: 24px; z-index: 81; display: grid; place-items: center; outline: none; }
+.lightbox-content img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; box-shadow: 0 20px 70px rgba(0,0,0,.35); }
+.lightbox-close { position: fixed; top: max(20px, env(safe-area-inset-top)); right: max(20px, env(safe-area-inset-right)); width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.2); border-radius: 12px; background: rgba(20,22,20,.72); color: white; display: grid; place-items: center; cursor: pointer; }
 .detail-hero { height: 145px; border-radius: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--warm); background: #eee9df; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
 .detail-hero.message { background: #e7ece8; color: var(--accent); }
 .detail-heading { padding: 22px 2px 17px; }
@@ -307,7 +330,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   .user-message p { max-width: 88%; font-size: 13px; }
   .assistant-message { grid-template-columns: 24px minmax(0, 1fr); gap: 9px; }
   .assistant-mark { width: 24px; height: 24px; }
-  .assistant-body > p { font-size: 15px; line-height: 1.65; }
+  .markdown-body { font-size: 15px; line-height: 1.65; }
   .resource-strip-wrap { margin-right: -14px; }
   .resource-strip-wrap::after { content: ''; position: absolute; top: 0; right: 0; bottom: 4px; width: 28px; pointer-events: none; background: linear-gradient(to right, transparent, var(--surface)); }
   .resource-strip { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-right: 34px; padding: 0 30px 7px 0; scrollbar-width: none; }
@@ -340,6 +363,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   .provider-arrow { right: 16px; bottom: 15px; }
   .detail-content { padding: 16px; }
   .detail-image { height: min(40vh, 260px); }
+  .lightbox-content { inset: max(68px, env(safe-area-inset-top)) 12px max(24px, env(safe-area-inset-bottom)); }
   .detail-heading h2 { font-size: 25px; }
 }
 

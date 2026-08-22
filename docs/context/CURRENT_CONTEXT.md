@@ -192,6 +192,22 @@ SIGTERM 次序，main exit 或 20 秒 `TimeoutStopSec` 后仍由 systemd 对整�
 final SIGKILL。Crash/host-loss 仍由 startup reconciliation 处理；Runtime event contract、
 DB schema、Exec sandbox 与 PDI 均不改变。
 
+### Jarvis Web V0.1.1 usability closure Phase 1 candidate
+
+2026-08-22 已完成人工审查并冻结 Web usability closure Phase 1。Production
+Recent 改为读取 canonical Jarvis Conversations；New conversation 只重置 frontend
+selection/SSE/messages/URL，首次提交时才创建新 Conversation，随后按 opaque ID 精确
+加载、切换与 reload 恢复，不存在第二套 browser-local conversation store。Assistant
+消息使用禁用 raw HTML 的 safe Markdown renderer；结构化 `Message.resources` 仍是
+唯一 ResourceRef authority，不解析 prose 中的 `pdi:resource:*` 字符串。
+
+Immich image grid 继续请求 `thumbnail`，Resource Detail 对 capability-approved image
+请求 `preview` 并提供 desktop/mobile lightbox；失败时使用占位而不是 broken image。
+Video、Nextcloud preview、upload 与 live Work Panel 继续 deferred，review execution
+fixture 不进入 production UI。本 correction 不改变 backend API、DB schema、Runtime
+event、PDI、Exec、auth、systemd 或 Tailscale boundary；完整验证通过后才可由独立人工
+freeze/commit/release gate 发布。
+
 ### Server Runtime
 
 - 正式主机：`pdi-server`；

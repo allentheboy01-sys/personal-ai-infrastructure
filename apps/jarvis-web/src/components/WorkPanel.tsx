@@ -1,7 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { Check, Circle, LoaderCircle, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { ExecutionStep } from '../models/chat'
 
 export type PanelContent = { title: string; eyebrow: string; content: ReactNode }
@@ -16,12 +16,23 @@ function PanelFrame({ panel, onClose, mobile = false }: { panel: PanelContent; o
 
 export function WorkPanel({ panel, onClose }: { panel: PanelContent | null; onClose: () => void }) {
   const reduced = useReducedMotion()
+  const [mobile, setMobile] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 820px)').matches)
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const query = window.matchMedia('(max-width: 820px)')
+    const update = () => setMobile(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+
   return <>
     <div className="desktop-panel-slot"><AnimatePresence>{panel && <motion.div className="desktop-panel-motion" initial={reduced ? false : { opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} exit={reduced ? undefined : { opacity: 0, x: 24 }} transition={{ duration: .22, ease: 'easeOut' }}><PanelFrame panel={panel} onClose={onClose} /></motion.div>}</AnimatePresence></div>
-    <Dialog.Root open={Boolean(panel)} onOpenChange={(open) => { if (!open) onClose() }}>
+    <Dialog.Root open={Boolean(panel) && mobile} onOpenChange={(open) => { if (!open && mobile) onClose() }}>
       <Dialog.Portal>
         <Dialog.Overlay className="mobile-panel-overlay" />
-        {panel && <Dialog.Content className="mobile-panel-content" aria-describedby={undefined}><Dialog.Title className="sr-only">{panel.title}</Dialog.Title><PanelFrame panel={panel} onClose={onClose} mobile /></Dialog.Content>}
+        {panel && mobile && <Dialog.Content className="mobile-panel-content" aria-describedby={undefined}><Dialog.Title className="sr-only">{panel.title}</Dialog.Title><PanelFrame panel={panel} onClose={onClose} mobile /></Dialog.Content>}
       </Dialog.Portal>
     </Dialog.Root>
   </>

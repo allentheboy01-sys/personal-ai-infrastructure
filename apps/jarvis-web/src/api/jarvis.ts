@@ -23,12 +23,15 @@ export interface ApiResourceDetail { summary: ApiResourceSummary; facts: Array<[
 export interface ApiProviderSummary { provider_ref: 'gmail' | 'immich' | 'nextcloud'; provider_type: string; display_name: string; category: string; configured: boolean; access_mode: 'read_only' | 'read_write' | 'unknown'; resource_count: number; operational_state: 'not_synced' | 'syncing' | 'processing' | 'ready' | 'attention'; last_success_at: string | null }
 export interface ApiProviderDetail { summary: ApiProviderSummary; description: string; capabilities: string[]; stages: Array<[string, 'completed' | 'current' | 'pending' | 'attention']> }
 
-export interface ApiConversation {
+export interface ApiConversationSummary {
   id: string
   title: string
   created_at: string
   updated_at: string
   archived_at: string | null
+}
+
+export interface ApiConversation extends ApiConversationSummary {
   messages: ApiMessage[]
 }
 
@@ -50,7 +53,8 @@ async function json<T>(request: Promise<Response>): Promise<T> {
 }
 
 export const jarvisApi = {
-  createConversation: (title: string) => json<{ id: string }>(fetch('/api/v1/conversations', { method: 'POST', headers: writeHeaders, body: JSON.stringify({ title }) })),
+  listConversations: () => json<ApiConversationSummary[]>(fetch('/api/v1/conversations', { cache: 'no-store' })),
+  createConversation: (title: string) => json<ApiConversationSummary>(fetch('/api/v1/conversations', { method: 'POST', headers: writeHeaders, body: JSON.stringify({ title }) })),
   getConversation: (id: string) => json<ApiConversation>(fetch(`/api/v1/conversations/${encodeURIComponent(id)}`, { cache: 'no-store' })),
   createTurn: (conversationId: string, body: string) => json<{ turn_id: string }>(fetch(`/api/v1/conversations/${encodeURIComponent(conversationId)}/turns`, { method: 'POST', headers: writeHeaders, body: JSON.stringify({ body }) })),
   cancelTurn: (turnId: string) => json<{ status: string }>(fetch(`/api/v1/turns/${encodeURIComponent(turnId)}/cancel`, { method: 'POST', headers: writeHeaders, body: '{}' })),

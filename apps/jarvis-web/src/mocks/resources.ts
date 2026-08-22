@@ -9,7 +9,7 @@ export const resources: ResourceView[] = [
     secondary: 'A quiet landscape photograph',
     timestamp: 'Today, 08:42',
     provider: 'Immich',
-    presentation: { kind: 'image', label: 'Image', thumbnail: morningLake },
+    presentation: { kind: 'image', label: 'Image', thumbnail: morningLake, preview: morningLake },
     capabilities: { detail: true, preview: true, open: false },
     facts: [
       { label: 'Type', value: 'JPEG image' },

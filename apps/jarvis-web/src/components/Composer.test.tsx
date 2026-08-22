@@ -17,4 +17,9 @@ describe('Composer', () => {
     expect(screen.getByRole('button', { name: 'Stop response' })).toBeInTheDocument()
     expect(screen.getByLabelText('Message Jarvis')).toBeDisabled()
   })
+
+  it('keeps attachments explicitly deferred', () => {
+    render(<Composer />)
+    expect(screen.getByRole('button', { name: 'Attachments coming later' })).toBeDisabled()
+  })
 })

@@ -6,7 +6,8 @@ const relative = (value: string | null) => value ? new Intl.DateTimeFormat(undef
 
 export function resourceSummary(value: ApiResourceSummary): ResourceView {
   const provider = (value.providers[0] ?? 'Nextcloud') as ResourceView['provider']
-  return { resourceRef: value.resource_ref, resourceType: value.resource_type, title: value.title, secondary: value.secondary_text ?? 'Resource metadata', timestamp: relative(value.timestamp), provider, presentation: { kind: value.presentation_kind, label: value.presentation_label, thumbnail: value.capabilities.preview ? `/api/v1/resources/${encodeURIComponent(value.resource_ref)}/representation?kind=thumbnail` : undefined }, capabilities: value.capabilities, facts: [], provenance: value.providers.length ? `Observed through ${value.providers.join(', ')}.` : 'Provider provenance unavailable.' }
+  const representation = `/api/v1/resources/${encodeURIComponent(value.resource_ref)}/representation`
+  return { resourceRef: value.resource_ref, resourceType: value.resource_type, title: value.title, secondary: value.secondary_text ?? 'Resource metadata', timestamp: relative(value.timestamp), provider, presentation: { kind: value.presentation_kind, label: value.presentation_label, thumbnail: value.capabilities.preview ? `${representation}?kind=thumbnail` : undefined, preview: value.capabilities.preview ? `${representation}?kind=preview` : undefined }, capabilities: value.capabilities, facts: [], provenance: value.providers.length ? `Observed through ${value.providers.join(', ')}.` : 'Provider provenance unavailable.' }
 }
 
 export function resourceDetail(value: ApiResourceDetail): ResourceView {

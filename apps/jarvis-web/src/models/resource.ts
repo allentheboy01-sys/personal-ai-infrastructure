@@ -18,6 +18,7 @@ export interface ResourceView {
     kind: PresentationKind
     label: string
     thumbnail?: string
+    preview?: string
   }
   capabilities: ResourceCapabilities
   facts: Array<{ label: string; value: string }>

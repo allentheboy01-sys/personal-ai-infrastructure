@@ -1,8 +1,11 @@
-import { File, FileText, Mail, MoreHorizontal } from 'lucide-react'
+import { File, FileText, ImageOff, Mail, MoreHorizontal } from 'lucide-react'
+import { useState } from 'react'
 import type { ResourceView } from '../../models/resource'
 
 function ImageRenderer({ resource }: { resource: ResourceView }) {
-  return <div className="resource-visual image-renderer"><img src={resource.presentation.thumbnail} alt={resource.title} loading="lazy" /></div>
+  const [failed, setFailed] = useState(false)
+  if (failed || !resource.presentation.thumbnail) return <div className="resource-visual icon-renderer image-fallback" role="img" aria-label={`${resource.title} preview unavailable`}><span className="renderer-icon"><ImageOff size={24} /></span><span>Image</span></div>
+  return <div className="resource-visual image-renderer"><img src={resource.presentation.thumbnail} alt={resource.title} loading="lazy" onError={() => setFailed(true)} /></div>
 }
 
 function DocumentRenderer({ resource }: { resource: ResourceView }) {
