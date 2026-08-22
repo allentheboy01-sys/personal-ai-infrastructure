@@ -254,6 +254,16 @@ a real Hermes -> Exec MCP Turn. This PASS is the authority for the sandbox
 freeze; the production install gate must still verify the installed immutable
 artifact and effective units without weakening any boundary.
 
+Gate E.8.2 proved the `e8125009b49fa723b51599327a9d7075a859f0d0`
+application, static, Hermes, PDI, and Exec production paths, but superseded that
+SHA as the final source candidate after exposing a cancellation synchronization
+defect. The cancellation endpoint is synchronous-terminal: its response must
+follow Runtime terminal delivery, canonical DB persistence, and registry
+publication. Coordinator synchronization uses the exact Turn consumer task;
+an arbitrary polling interval is not a valid cancellation boundary. A new
+immutable release and matching versioned venv are required before another
+activation attempt.
+
 ## G. Tailscale Serve and HTTPS
 
 Precondition: localhost service and fail-closed auth are verified. Capture

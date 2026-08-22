@@ -51,6 +51,15 @@ bodies, cookies, headers, and frontend routes cannot select the Runtime
 implementation or a mock scenario. Stage 3 replaces the composed mock with
 `HermesRuntimeAdapter`; it does not change the browser contract.
 
+`POST /turns/{turn_id}/cancel` has a synchronous-terminal contract. For a
+successfully cancelled running Turn, the response observes `cancelled` only
+after the Runtime terminal event is consumed, the canonical Turn status is
+committed without an Assistant Message, and the terminal event is published to
+the active registry. `TurnCoordinator` synchronizes on the exact existing
+consumer task for that Turn; cancellation authority must not be implemented by
+an arbitrary polling or sleep window. Shielding that consumer from request
+cancellation preserves terminal processing even if the HTTP client disconnects.
+
 ## Browser and authentication security
 
 All application requests pass through an injected `AuthAdapter` and expose a

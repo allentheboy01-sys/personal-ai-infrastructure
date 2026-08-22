@@ -10,7 +10,7 @@ class TurnCoordinator:
         self._state = state
         self._runtime = runtime
         self._registry = registry
-        self._tasks: set[asyncio.Task[None]] = set()
+        self._tasks: dict[UUID, asyncio.Task[None]] = {}
 
     async def start(self, conversation_id: UUID, body: str) -> UUID:
         turn = self._state.create_turn(conversation_id, body)
@@ -24,8 +24,8 @@ class TurnCoordinator:
             await self._registry.publish(RuntimeEvent(turn.id, 1, RuntimeEventType.TURN_FAILED, error_code="runtime_start_failed"))
             return turn.id
         task = asyncio.create_task(self._consume(turn.id))
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        self._tasks[turn.id] = task
+        task.add_done_callback(lambda completed, turn_id=turn.id: self._discard_task(turn_id, completed))
         return turn.id
 
     async def cancel(self, turn_id: UUID) -> None:
@@ -33,11 +33,13 @@ class TurnCoordinator:
         if turn.status != "running":
             return
         await self._runtime.cancel_turn(turn_id)
-        for _ in range(100):
-            snapshot = self._registry.snapshot(turn_id)
-            if snapshot is not None and snapshot.terminal_event is not None:
-                return
-            await asyncio.sleep(0.002)
+        consumer = self._tasks.get(turn_id)
+        if consumer is not None:
+            await asyncio.shield(consumer)
+
+    def _discard_task(self, turn_id: UUID, completed: asyncio.Task[None]) -> None:
+        if self._tasks.get(turn_id) is completed:
+            self._tasks.pop(turn_id)
 
     async def _consume(self, turn_id: UUID) -> None:
         try:

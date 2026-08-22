@@ -11,6 +11,25 @@ pytestmark = pytest.mark.anyio
 WRITE_HEADERS = {"Origin": "https://jarvis.test", "X-Jarvis-Request": "web-v1", "Content-Type": "application/json"}
 
 
+class DelayedCancelRuntime(MockRuntimeAdapter):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._cancel_tasks: set[asyncio.Task[None]] = set()
+
+    async def cancel_turn(self, turn_id) -> None:
+        session = self._sessions.get(turn_id)
+        if session is None or session.cancel.is_set():
+            return
+
+        async def cancel_later() -> None:
+            await asyncio.sleep(0.35)
+            session.cancel.set()
+
+        task = asyncio.create_task(cancel_later())
+        self._cancel_tasks.add(task)
+        task.add_done_callback(self._cancel_tasks.discard)
+
+
 async def _conversation(client):
     response = await client.post("/api/v1/conversations", headers=WRITE_HEADERS, json={"title": "Persistent chat"})
     assert response.status_code == 201
@@ -67,7 +86,7 @@ async def test_cancel_and_failure_never_create_partial_assistant(app_factory) ->
                     assert (await _wait_terminal(client, turn))["status"] == "failed"
                 assert [item["role"] for item in (await client.get(f"/api/v1/conversations/{conversation}")).json()["messages"]] == ["user"]
 
-    await exercise(MockRuntimeAdapter(delay=0.2), cancel=True)
+    await exercise(DelayedCancelRuntime(delay=1), cancel=True)
     await exercise(MockRuntimeAdapter(scenario="failure", delay=0), cancel=False)
 
 

@@ -42,8 +42,11 @@ details live in their dedicated documents.
   real-browser validation. Stage 5B Gate E.6 freezes the real-host-validated
   Jarvis Exec Sandbox V0.1: five bounded execution/workspace MCP tools run in a
   per-connection DynamicUser sandbox with no network, product secrets, private
-  home, Docker, persistent workspace, or authoritative state. Production
-  release construction and deployment remain separately reviewed Stage 5 work.
+  home, Docker, persistent workspace, or authoritative state. Gate E.8.4 freezes
+  cancellation as synchronous-terminal using the exact Turn consumer task,
+  explicitly rejecting arbitrary polling as synchronization authority. The
+  `e8125009` artifact is superseded; a new immutable release and versioned venv
+  must be built before the separately reviewed production activation retry.
 
 ## Future
 

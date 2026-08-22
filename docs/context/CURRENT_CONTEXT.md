@@ -170,6 +170,16 @@ workspace。Internet/Web access 是独立 future capability，不得通过开放
 实现。Production Exec/Web services 仍未安装；下一步需要新 immutable application
 release 和独立人工审查的 install gate。
 
+Gate E.8.2 在真实 localhost production 中进一步通过 e812 static/Hermes activation、
+authentication/CSRF、deterministic PDI paths、Hermes -> PDI Turn 与 Hermes -> Exec
+Turn，但同步 cancellation response 在 Runtime 最终正确 cancelled 之前因 200 ms polling
+window 提前返回 `running`，因此完整回滚。Gate E.8.4 将 cancellation contract 冻结为
+`SYNCHRONOUS_TERMINAL`：exact-Turn consumer 必须先消费 terminal、写入 Jarvis DB、
+publish registry terminal，HTTP cancel 才返回；request cancellation 不能取消该 consumer。
+同步依据是受 `asyncio.shield` 保护的 exact consumer task，不再使用 arbitrary polling。
+因此 e812 已被 supersede；再次安装前必须从本 correction commit 构建新的 immutable
+release 与 SHA-versioned venv。
+
 ### Server Runtime
 
 - 正式主机：`pdi-server`；
