@@ -70,6 +70,35 @@ elif scenario == "duplicate":
     emit("delta", text="once")
     emit("completed")
     emit("completed")
+elif scenario == "tools":
+    emit("ready")
+    emit("phase", phase="searching")
+    emit("tool.started", operation_id=1, category="pdi", capability="search_personal_resources")
+    emit("tool.completed", operation_id=1, category="pdi", capability="search_personal_resources", duration_ms=25)
+    emit("phase", phase="computing")
+    emit("tool.started", operation_id=2, category="exec", capability="run_python")
+    emit("tool.completed", operation_id=2, category="exec", capability="run_python", duration_ms=40)
+    emit("delta", text="safe")
+    emit("completed")
+elif scenario == "tool_invalid_category":
+    emit("ready")
+    emit("tool.started", operation_id=1, category="private", capability="use_tool")
+elif scenario == "tool_extra_field":
+    emit("ready")
+    emit("tool.started", operation_id=1, category="other", capability="use_tool", arguments="private")
+elif scenario == "tool_missing_field":
+    emit("ready")
+    emit("tool.started", operation_id=1, category="other")
+elif scenario == "tool_unmatched":
+    emit("ready")
+    emit("tool.completed", operation_id=1, category="other", capability="use_tool", duration_ms=1)
+elif scenario == "tool_nonmonotonic":
+    emit("ready")
+    emit("tool.started", operation_id=2, category="other", capability="use_tool")
+elif scenario == "tool_invalid_duration":
+    emit("ready")
+    emit("tool.started", operation_id=1, category="other", capability="use_tool")
+    emit("tool.completed", operation_id=1, category="other", capability="use_tool", duration_ms=600001)
 elif scenario == "slow":
     emit("ready")
     emit("phase", phase="searching")

@@ -6,8 +6,9 @@ import type { ExecutionStep } from '../models/chat'
 
 export type PanelContent = { title: string; eyebrow: string; content: ReactNode }
 
-export function ExecutionPanel({ steps }: { steps: ExecutionStep[] }) {
-  return <div className="execution-panel"><div className="execution-summary"><span className="live-dot" />Working across your resources</div><ol>{steps.map((step) => <li key={step.label} className={step.state}><span className="step-icon">{step.state === 'completed' ? <Check size={14} /> : step.state === 'current' ? <LoaderCircle size={15} /> : <Circle size={13} />}</span><div><strong>{step.label}</strong><p>{step.detail}</p></div></li>)}</ol><button className="stop-work"><Square size={12} fill="currentColor" />Stop</button></div>
+export function ExecutionPanel({ steps, status = 'running', onStop, stopping = false }: { steps: ExecutionStep[]; status?: 'running' | 'completed' | 'failed' | 'cancelled'; onStop?: () => void; stopping?: boolean }) {
+  const summary = status === 'running' ? 'Working across your resources' : status === 'completed' ? 'Work completed' : status === 'cancelled' ? 'Cancelled' : 'Work stopped'
+  return <div className="execution-panel"><div className={`execution-summary ${status}`}><span className="live-dot" />{summary}</div><ol>{steps.map((step, index) => <li key={step.id ?? `${step.label}:${index}`} className={step.state}><span className="step-icon">{step.state === 'completed' ? <Check size={14} /> : step.state === 'current' ? <LoaderCircle size={15} /> : <Circle size={13} />}</span><div><strong>{step.label}</strong><p>{step.detail}</p></div></li>)}</ol>{status === 'running' && onStop && <button className="stop-work" onClick={onStop} disabled={stopping}><Square size={12} fill="currentColor" />{stopping ? 'Stopping' : 'Stop'}</button>}</div>
 }
 
 function PanelFrame({ panel, onClose, mobile = false }: { panel: PanelContent; onClose: () => void; mobile?: boolean }) {

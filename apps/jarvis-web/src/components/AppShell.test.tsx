@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppShell } from './AppShell'
@@ -6,12 +6,14 @@ import { reviewModeEnabled } from './reviewMode'
 
 class MockEventSource {
   static CLOSED = 2
+  static instances: MockEventSource[] = []
   readyState = 1
   onerror: (() => void) | null = null
   listeners = new Map<string, EventListener>()
-  constructor(public url: string) {}
+  constructor(public url: string) { MockEventSource.instances.push(this) }
   addEventListener(type: string, listener: EventListener) { this.listeners.set(type, listener) }
   close() { this.readyState = MockEventSource.CLOSED }
+  emit(type: string, payload: object) { this.listeners.get(type)?.({ data: JSON.stringify(payload) } as unknown as Event) }
 }
 
 const summaryA = { id: 'conversation-a', title: 'Conversation A', created_at: '2026-08-22T00:00:00Z', updated_at: '2026-08-22T00:00:00Z', archived_at: null }
@@ -29,6 +31,7 @@ describe('production review isolation', () => {
 describe('canonical conversation shell', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+    MockEventSource.instances = []
     window.history.replaceState(null, '', '/')
   })
 
@@ -84,5 +87,119 @@ describe('canonical conversation shell', () => {
     fireEvent.popState(window)
     expect(await screen.findByRole('heading', { name: 'What can I help you with?' })).toBeInTheDocument()
     expect(screen.queryByText('History B')).not.toBeInTheDocument()
+  })
+
+  it('auto-opens the desktop Work Panel on the first real tool event', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/v1/conversations' && !init?.method) return new Response('[]', { status: 200 })
+      if (url === '/api/v1/conversations' && init?.method === 'POST') return new Response(JSON.stringify(summaryB), { status: 201 })
+      if (url === '/api/v1/conversations/conversation-b/turns') return new Response(JSON.stringify({ turn_id: 'turn-tool' }), { status: 201 })
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('EventSource', MockEventSource)
+    vi.stubGlobal('crypto', { randomUUID: () => 'local-tool' })
+    window.history.replaceState(null, '', '/?page=chat')
+
+    render(<AppShell />)
+    await userEvent.type(screen.getByLabelText('Message Jarvis'), 'Use a tool{enter}')
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1))
+    const stream = MockEventSource.instances[0]
+    act(() => stream.emit('turn.started', { turn_id: 'turn-tool', sequence: 1, type: 'turn.started' }))
+    act(() => stream.emit('phase.changed', { turn_id: 'turn-tool', sequence: 2, type: 'phase.changed', phase: 'searching' }))
+    expect(screen.queryByText('Search personal resources')).not.toBeInTheDocument()
+    act(() => stream.emit('tool.started', { turn_id: 'turn-tool', sequence: 3, type: 'tool.started', operation_id: 1, category: 'pdi', capability: 'search_personal_resources' }))
+
+    expect(await screen.findByText('Search personal resources')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Work', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
+  })
+
+  it('does not auto-open for a no-tool answer', async () => {
+    const completed = { ...summaryB, messages: [
+      { id: 'user-b', role: 'user', body: 'No tool', created_at: summaryB.created_at, resource_refs: [], resources: [] },
+      { id: 'assistant-b', role: 'assistant', body: 'Done', created_at: summaryB.created_at, resource_refs: [], resources: [] },
+    ] }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/v1/conversations' && !init?.method) return new Response('[]', { status: 200 })
+      if (url === '/api/v1/conversations' && init?.method === 'POST') return new Response(JSON.stringify(summaryB), { status: 201 })
+      if (url === '/api/v1/conversations/conversation-b/turns') return new Response(JSON.stringify({ turn_id: 'turn-simple' }), { status: 201 })
+      if (url === '/api/v1/conversations/conversation-b') return new Response(JSON.stringify(completed), { status: 200 })
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('EventSource', MockEventSource)
+    vi.stubGlobal('crypto', { randomUUID: () => 'local-simple' })
+
+    render(<AppShell />)
+    await userEvent.type(screen.getByLabelText('Message Jarvis'), 'No tool{enter}')
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1))
+    const stream = MockEventSource.instances[0]
+    act(() => stream.emit('turn.started', { turn_id: 'turn-simple', sequence: 1, type: 'turn.started' }))
+    act(() => stream.emit('phase.changed', { turn_id: 'turn-simple', sequence: 2, type: 'phase.changed', phase: 'composing' }))
+    act(() => stream.emit('turn.completed', { turn_id: 'turn-simple', sequence: 3, type: 'turn.completed' }))
+
+    await screen.findByText('Done')
+    expect(screen.queryByText('Work completed')).not.toBeInTheDocument()
+  })
+
+  it('keeps mobile tool activity closed until the user opens it', async () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/v1/conversations' && !init?.method) return new Response('[]', { status: 200 })
+      if (url === '/api/v1/conversations' && init?.method === 'POST') return new Response(JSON.stringify(summaryB), { status: 201 })
+      if (url === '/api/v1/conversations/conversation-b/turns') return new Response(JSON.stringify({ turn_id: 'turn-mobile' }), { status: 201 })
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('EventSource', MockEventSource)
+    vi.stubGlobal('crypto', { randomUUID: () => 'local-mobile' })
+
+    render(<AppShell />)
+    await userEvent.type(screen.getByLabelText('Message Jarvis'), 'Mobile tool{enter}')
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1))
+    act(() => MockEventSource.instances[0].emit('tool.started', { turn_id: 'turn-mobile', sequence: 1, type: 'tool.started', operation_id: 1, category: 'exec', capability: 'run_python' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Work' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Open work panel' }))
+    const dialog = screen.getByRole('dialog', { name: 'Work' })
+    expect(dialog).toBeInTheDocument()
+    expect(dialog).toHaveTextContent('Run Python')
+  })
+
+  it('wires Work Panel Stop to synchronous cancellation and shows Stopping', async () => {
+    let resolveCancel!: (response: Response) => void
+    const cancelResponse = new Promise<Response>((resolve) => { resolveCancel = resolve })
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/v1/conversations' && !init?.method) return new Response('[]', { status: 200 })
+      if (url === '/api/v1/conversations' && init?.method === 'POST') return new Response(JSON.stringify(summaryB), { status: 201 })
+      if (url === '/api/v1/conversations/conversation-b/turns') return new Response(JSON.stringify({ turn_id: 'turn-stop' }), { status: 201 })
+      if (url === '/api/v1/turns/turn-stop/cancel') return cancelResponse
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('EventSource', MockEventSource)
+    vi.stubGlobal('crypto', { randomUUID: () => 'local-stop' })
+
+    render(<AppShell />)
+    await userEvent.type(screen.getByLabelText('Message Jarvis'), 'Stop this{enter}')
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1))
+    const stream = MockEventSource.instances[0]
+    act(() => stream.emit('tool.started', { turn_id: 'turn-stop', sequence: 1, type: 'tool.started', operation_id: 1, category: 'exec', capability: 'run_python' }))
+    const stop = await screen.findByRole('button', { name: 'Stop' })
+    await userEvent.click(stop)
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/turns/turn-stop/cancel', expect.objectContaining({ method: 'POST' }))
+    expect(screen.getByRole('button', { name: 'Stopping' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stopping response' })).toBeDisabled()
+
+    resolveCancel(new Response(JSON.stringify({ status: 'cancelled' }), { status: 200 }))
+    act(() => stream.emit('turn.cancelled', { turn_id: 'turn-stop', sequence: 2, type: 'turn.cancelled' }))
+    await waitFor(() => expect(screen.getAllByText('Cancelled').length).toBeGreaterThan(0))
+    expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
   })
 })

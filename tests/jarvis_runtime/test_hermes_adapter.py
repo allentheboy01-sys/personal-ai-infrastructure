@@ -160,3 +160,27 @@ def test_request_limit_is_enforced_before_spawn() -> None:
     )
     with pytest.raises(ValueError, match="runtime_request_too_large"):
         asyncio.run(adapter.start_turn(TurnContext(uuid4(), (), "x" * 100)))
+
+
+def test_sanitized_tool_events_are_strictly_normalized_and_nonterminal() -> None:
+    events = asyncio.run(_collect(_adapter("tools"), TurnContext(uuid4(), (), "synthetic")))
+    tools = [event for event in events if event.type in {RuntimeEventType.TOOL_STARTED, RuntimeEventType.TOOL_COMPLETED}]
+    assert [(event.type, event.operation_id, event.category.value, event.capability.value, event.duration_ms) for event in tools] == [
+        (RuntimeEventType.TOOL_STARTED, 1, "pdi", "search_personal_resources", None),
+        (RuntimeEventType.TOOL_COMPLETED, 1, "pdi", "search_personal_resources", 25),
+        (RuntimeEventType.TOOL_STARTED, 2, "exec", "run_python", None),
+        (RuntimeEventType.TOOL_COMPLETED, 2, "exec", "run_python", 40),
+    ]
+    assert events[-1].type == RuntimeEventType.TURN_COMPLETED
+    assert sum(event.type in TERMINAL for event in events) == 1
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    ["tool_invalid_category", "tool_extra_field", "tool_missing_field", "tool_unmatched", "tool_nonmonotonic", "tool_invalid_duration"],
+)
+def test_malformed_or_unsafe_tool_records_fail_closed(scenario: str) -> None:
+    events = asyncio.run(_collect(_adapter(scenario), TurnContext(uuid4(), (), "synthetic")))
+    assert events[-1].type == RuntimeEventType.TURN_FAILED
+    assert events[-1].error_code == "bridge_invalid_event"
+    assert sum(event.type in TERMINAL for event in events) == 1

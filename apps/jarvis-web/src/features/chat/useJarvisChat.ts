@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { jarvisApi, type ApiConversation, type RuntimeEvent } from '../../api/jarvis'
 import type { AgentPhase, ConversationMessage } from '../../models/chat'
 import { resourceSummary } from '../../api/productViews'
+import { createExecutionTrace, reduceExecutionTrace, type ExecutionTrace } from './executionTrace'
 
-const eventTypes: RuntimeEvent['type'][] = ['turn.started', 'phase.changed', 'message.delta', 'turn.completed', 'turn.failed', 'turn.cancelled']
+const eventTypes: RuntimeEvent['type'][] = ['turn.started', 'phase.changed', 'tool.started', 'tool.completed', 'message.delta', 'turn.completed', 'turn.failed', 'turn.cancelled']
 
 interface ChatOptions {
   onConversationChanged?: () => void
@@ -17,6 +18,8 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
   const [messages, setMessages] = useState<ConversationMessage[]>([])
   const [phase, setPhase] = useState<AgentPhase>('thinking')
   const [running, setRunning] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [executionTrace, setExecutionTrace] = useState<ExecutionTrace | null>(initialTurnId ? createExecutionTrace(initialTurnId) : null)
   const [error, setError] = useState<string | null>(null)
   const conversationRef = useRef(initialConversationId)
   const turnRef = useRef<string | null>(null)
@@ -44,6 +47,7 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
     const receive = (raw: MessageEvent<string>) => {
       if (streamRef.current !== stream || conversationRef.current !== id || turnRef.current !== turnId) return
       const event = JSON.parse(raw.data) as RuntimeEvent
+      setExecutionTrace((current) => reduceExecutionTrace(current, event))
       if (event.type === 'phase.changed' && event.phase) setPhase(event.phase)
       if (event.type === 'message.delta' && event.delta) {
         setMessages((current) => {
@@ -53,13 +57,13 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
         })
       }
       if (event.type === 'turn.completed') {
-        closeStream(); setRunning(false); turnRef.current = null
+        closeStream(); setRunning(false); setCancelling(false); turnRef.current = null
         window.history.replaceState(null, '', `?page=chat&conversation=${encodeURIComponent(id)}`)
         void load(id).catch(() => setError('conversation_refresh_failed'))
         changedRef.current?.()
       }
       if (event.type === 'turn.failed' || event.type === 'turn.cancelled') {
-        closeStream(); setRunning(false); turnRef.current = null
+        closeStream(); setRunning(false); setCancelling(false); turnRef.current = null
         window.history.replaceState(null, '', `?page=chat&conversation=${encodeURIComponent(id)}`)
         setMessages((current) => current.filter((message) => message.id !== `draft:${turnId}`))
         if (event.type === 'turn.failed') setError(event.error_code ?? 'turn_failed')
@@ -82,6 +86,8 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
     setMessages([])
     setPhase('thinking')
     setRunning(Boolean(turnId))
+    setCancelling(false)
+    setExecutionTrace(turnId ? createExecutionTrace(turnId) : null)
     setError(null)
     try {
       await load(id, generation)
@@ -104,6 +110,8 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
     setMessages([])
     setPhase('thinking')
     setRunning(false)
+    setCancelling(false)
+    setExecutionTrace(null)
     setError(null)
   }, [closeStream])
 
@@ -119,6 +127,8 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
 
   const submit = useCallback(async (body: string) => {
     setError(null)
+    setCancelling(false)
+    setExecutionTrace(null)
     const generation = generationRef.current
     let id = conversationRef.current
     if (!id) {
@@ -138,6 +148,7 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
       const { turn_id: turnId } = await jarvisApi.createTurn(id, body)
       if (generation !== generationRef.current || conversationRef.current !== id) return
       turnRef.current = turnId
+      setExecutionTrace(createExecutionTrace(turnId))
       window.history.replaceState(null, '', `?page=chat&conversation=${encodeURIComponent(id)}&turn=${encodeURIComponent(turnId)}`)
       changedRef.current?.()
       watch(turnId, id)
@@ -150,8 +161,17 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
   }, [load, watch])
 
   const cancel = useCallback(async () => {
-    if (turnRef.current) await jarvisApi.cancelTurn(turnRef.current)
-  }, [])
+    if (!turnRef.current || cancelling) return
+    setCancelling(true)
+    try {
+      await jarvisApi.cancelTurn(turnRef.current)
+    } catch {
+      setCancelling(false)
+      setError('turn_cancel_failed')
+    }
+  }, [cancelling])
 
-  return { conversationId, conversationTitle, messages, phase, running, error, submit, cancel, selectConversation, resetConversation }
+  const clearExecutionTrace = useCallback(() => setExecutionTrace(null), [])
+
+  return { conversationId, conversationTitle, messages, phase, running, cancelling, executionTrace, error, submit, cancel, selectConversation, resetConversation, clearExecutionTrace }
 }

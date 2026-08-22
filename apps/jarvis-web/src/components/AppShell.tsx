@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ExecutionPanel, WorkPanel, type PanelContent } from './WorkPanel'
 import { Sidebar, type AppPage } from './Sidebar'
 import { TopBar } from './TopBar'
@@ -40,7 +40,9 @@ export function AppShell() {
   const [scene, setScene] = useState<Scene>(initial.scene)
   const [drawer, setDrawer] = useState(false)
   const [panel, setPanel] = useState<PanelContent | null>(null)
+  const [executionOpen, setExecutionOpen] = useState(false)
   const [conversations, setConversations] = useState<ApiConversationSummary[]>([])
+  const autoOpenedTurn = useRef<string | null>(null)
 
   const refreshConversations = useCallback(() => {
     if (initial.review) return
@@ -48,8 +50,11 @@ export function AppShell() {
   }, [initial.review])
 
   const liveChat = useJarvisChat(initial.review ? null : initial.conversation, initial.review ? null : initial.turn, { onConversationChanged: refreshConversations })
+  const activeConversationId = liveChat.conversationId
+  const clearExecutionTrace = liveChat.clearExecutionTrace
 
   const showResource = (resource: ResourceView) => {
+    setExecutionOpen(false)
     if (initial.review) setPanel({ eyebrow: resource.provider, title: 'Resource detail', content: <ResourceDetail resource={resource} /> })
     else void jarvisApi.getResource(resource.resourceRef).then((detail) => {
       const view = resourceDetail(detail)
@@ -57,6 +62,7 @@ export function AppShell() {
     }).catch(() => setPanel({ eyebrow: 'Resource', title: 'Resource detail', content: <ErrorState title="Resource unavailable" body="Jarvis could not prepare this resource." /> }))
   }
   const showProvider = (provider: ProviderView) => {
+    setExecutionOpen(false)
     if (initial.review) setPanel({ eyebrow: provider.category, title: 'Provider detail', content: <ProviderDetail provider={provider} /> })
     else void jarvisApi.getProvider(provider.providerRef).then((detail) => {
       const view = providerDetail(detail)
@@ -64,8 +70,23 @@ export function AppShell() {
     }).catch(() => setPanel({ eyebrow: 'Provider', title: 'Provider detail', content: <ErrorState title="Provider unavailable" body="Jarvis could not prepare this provider." /> }))
   }
   const showExecution = () => {
-    if (initial.review) setPanel({ eyebrow: 'Review execution', title: 'Working', content: <ExecutionPanel steps={executionSteps} /> })
+    if (initial.review) setPanel({ eyebrow: 'Review execution', title: 'Working', content: <ExecutionPanel steps={executionSteps} onStop={() => undefined} /> })
+    else if (liveChat.running || liveChat.executionTrace) {
+      setPanel(null)
+      setExecutionOpen(true)
+    }
   }
+
+  useEffect(() => {
+    const trace = liveChat.executionTrace
+    if (initial.review || page !== 'chat' || !trace || trace.toolStartedCount === 0 || autoOpenedTurn.current === trace.turnId) return
+    autoOpenedTurn.current = trace.turnId
+    const mobile = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 820px)').matches
+    if (!mobile) {
+      setPanel(null)
+      setExecutionOpen(true)
+    }
+  }, [initial.review, liveChat.executionTrace, page])
 
   useEffect(() => {
     refreshConversations()
@@ -86,6 +107,7 @@ export function AppShell() {
     setPage('chat')
     setScene('home')
     setPanel(null)
+    setExecutionOpen(false)
     setDrawer(false)
     window.history.pushState(null, '', chatUrl())
   }, [liveChat])
@@ -94,6 +116,7 @@ export function AppShell() {
     setPage('chat')
     setScene('conversation')
     setPanel(null)
+    setExecutionOpen(false)
     setDrawer(false)
     window.history.pushState(null, '', chatUrl(id))
     void liveChat.selectConversation(id)
@@ -102,14 +125,16 @@ export function AppShell() {
   const navigate = useCallback((next: AppPage) => {
     setPage(next)
     setPanel(null)
+    setExecutionOpen(false)
+    clearExecutionTrace()
     setDrawer(false)
     if (next === 'chat') {
-      setScene(liveChat.conversationId ? 'conversation' : 'home')
-      window.history.pushState(null, '', chatUrl(liveChat.conversationId))
+      setScene(activeConversationId ? 'conversation' : 'home')
+      window.history.pushState(null, '', chatUrl(activeConversationId))
     } else {
       window.history.pushState(null, '', `?page=${next}`)
     }
-  }, [liveChat.conversationId])
+  }, [activeConversationId, clearExecutionTrace])
 
   useEffect(() => {
     if (initial.review) return
@@ -117,8 +142,12 @@ export function AppShell() {
       const location = readLocation()
       setPage(location.page)
       setPanel(null)
+      setExecutionOpen(false)
       setDrawer(false)
-      if (location.page !== 'chat') return
+      if (location.page !== 'chat') {
+        liveChat.clearExecutionTrace()
+        return
+      }
       if (location.conversation) {
         setScene('conversation')
         void liveChat.selectConversation(location.conversation, location.turn)
@@ -136,17 +165,23 @@ export function AppShell() {
     : page === 'resources' ? 'Resources' : 'Providers'
   const eyebrow = page === 'chat' && scene !== 'home' ? 'Today' : undefined
   const sidebar = <Sidebar page={page} onNavigate={navigate} onNewConversation={newConversation} conversations={conversations} activeConversationId={liveChat.conversationId} onConversation={openConversation} review={initial.review} />
+  const executionPanel: PanelContent | null = executionOpen && liveChat.executionTrace ? {
+    eyebrow: 'Live execution',
+    title: 'Work',
+    content: <ExecutionPanel steps={liveChat.executionTrace.steps} status={liveChat.executionTrace.status} onStop={() => void liveChat.cancel()} stopping={liveChat.cancelling} />,
+  } : null
+  const visiblePanel = executionPanel ?? panel
 
-  return <div className={`app-shell ${panel ? 'panel-open' : ''}`}>
+  return <div className={`app-shell ${visiblePanel ? 'panel-open' : ''}`}>
     <div className="desktop-sidebar">{sidebar}</div>
     <Dialog.Root open={drawer} onOpenChange={setDrawer}><Dialog.Portal><Dialog.Overlay className="drawer-overlay" /><Dialog.Content className="drawer-content" aria-describedby={undefined}><Dialog.Title className="sr-only">Navigation</Dialog.Title><Sidebar page={page} onNavigate={navigate} onNewConversation={newConversation} conversations={conversations} activeConversationId={liveChat.conversationId} onConversation={openConversation} onClose={() => setDrawer(false)} review={initial.review} /></Dialog.Content></Dialog.Portal></Dialog.Root>
     <section className="main-column">
-      <TopBar title={title} eyebrow={eyebrow} onMenu={() => setDrawer(true)} panelAvailable={initial.review && scene === 'working'} onPanel={showExecution} />
+      <TopBar title={title} eyebrow={eyebrow} onMenu={() => setDrawer(true)} panelAvailable={initial.review ? scene === 'working' : page === 'chat' && (liveChat.running || Boolean(liveChat.executionTrace))} panelActive={!initial.review && liveChat.running} onPanel={showExecution} />
       {page === 'chat' && scene === 'home' && <HomePage onStart={(prompt) => { setScene('conversation'); if (!initial.review) void liveChat.submit(prompt) }} />}
-      {page === 'chat' && scene !== 'home' && <ChatPage working={initial.review ? scene === 'working' : liveChat.running} onResource={showResource} messages={initial.review ? undefined : liveChat.messages} phase={initial.review ? 'reviewing' : liveChat.phase} onSubmit={initial.review ? undefined : liveChat.submit} onStop={initial.review ? undefined : liveChat.cancel} />}
+      {page === 'chat' && scene !== 'home' && <ChatPage working={initial.review ? scene === 'working' : liveChat.running} stopping={!initial.review && liveChat.cancelling} onResource={showResource} messages={initial.review ? undefined : liveChat.messages} phase={initial.review ? 'reviewing' : liveChat.phase} onSubmit={initial.review ? undefined : liveChat.submit} onStop={initial.review ? undefined : liveChat.cancel} />}
       {page === 'resources' && <ResourcesPage onResource={showResource} review={initial.review} />}
       {page === 'providers' && <ProvidersPage onProvider={showProvider} review={initial.review} />}
     </section>
-    <WorkPanel panel={panel} onClose={() => setPanel(null)} />
+    <WorkPanel panel={visiblePanel} onClose={() => { setPanel(null); setExecutionOpen(false) }} />
   </div>
 }

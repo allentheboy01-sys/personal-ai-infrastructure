@@ -11,7 +11,8 @@ export interface ConversationMessage {
 }
 
 export interface ExecutionStep {
+  id?: string
   label: string
   detail: string
-  state: 'completed' | 'current' | 'pending'
+  state: 'completed' | 'current' | 'pending' | 'failed' | 'cancelled'
 }

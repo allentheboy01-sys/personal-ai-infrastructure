@@ -13,6 +13,7 @@ import os
 import signal
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,29 @@ EXPECTED_PDI_TOOLS = (
     "pdi_rich_retrieve_resources",
 )
 MAX_REQUEST_BYTES = 1_048_576
+MAX_TOOL_OPERATIONS = 32
+MAX_TOOL_DURATION_MS = 600_000
+
+_CANONICAL_TOOL_DESCRIPTORS = {
+    "pdi_list_recent_resources": ("pdi", "search_personal_resources", "searching"),
+    "pdi_search_resources": ("pdi", "search_personal_resources", "searching"),
+    "pdi_retrieve_resources": ("pdi", "search_personal_resources", "searching"),
+    "pdi_rich_retrieve_resources": ("pdi", "search_personal_resources", "searching"),
+    "pdi_get_resource": ("pdi", "read_personal_resource", "reviewing"),
+    "pdi_get_resource_observations": ("pdi", "read_personal_resource", "reviewing"),
+    "pdi_aggregate_resources": ("pdi", "review_personal_resources", "reviewing"),
+    "jarvis_exec_python": ("exec", "run_python", "computing"),
+    "jarvis_workspace_write_text": ("exec", "write_workspace", "computing"),
+    "jarvis_workspace_read_text": ("exec", "read_workspace", "computing"),
+    "jarvis_workspace_list": ("exec", "manage_workspace", "computing"),
+    "jarvis_workspace_delete": ("exec", "manage_workspace", "computing"),
+}
+_TOOL_DESCRIPTORS = {
+    **_CANONICAL_TOOL_DESCRIPTORS,
+    **{f"mcp_pdi_{name}": descriptor for name, descriptor in _CANONICAL_TOOL_DESCRIPTORS.items() if name.startswith("pdi_")},
+    **{f"mcp_jarvis_exec_{name}": descriptor for name, descriptor in _CANONICAL_TOOL_DESCRIPTORS.items() if name.startswith("jarvis_")},
+}
+_UNKNOWN_TOOL_DESCRIPTOR = ("other", "use_tool", "thinking")
 
 
 class ProtocolWriter:
@@ -101,15 +125,66 @@ def _load_request() -> dict[str, Any]:
     return value
 
 
+def _tool_descriptor(name: object) -> tuple[str, str, str]:
+    return _TOOL_DESCRIPTORS.get(name, _UNKNOWN_TOOL_DESCRIPTOR) if isinstance(name, str) else _UNKNOWN_TOOL_DESCRIPTOR
+
+
 def _phase_for_tool(name: object) -> str:
-    lowered = str(name or "").lower()
-    if any(token in lowered for token in ("search", "retrieve", "recent", "aggregate", "web")):
-        return "searching"
-    if any(token in lowered for token in ("resource", "observation", "read", "inspect", "view")):
-        return "reviewing"
-    if any(token in lowered for token in ("terminal", "python", "code", "shell", "calculate", "execute")):
-        return "computing"
-    return "thinking"
+    return _tool_descriptor(name)[2]
+
+
+def _private_tool_key(raw_tool_id: object) -> tuple[str, str | int] | None:
+    if isinstance(raw_tool_id, bool):
+        return None
+    if isinstance(raw_tool_id, int):
+        return ("integer", raw_tool_id)
+    if isinstance(raw_tool_id, str) and 0 < len(raw_tool_id) <= 256:
+        return ("string", raw_tool_id)
+    return None
+
+
+class ToolTelemetry:
+    """Bounded private matcher that emits only allowlisted tool metadata."""
+
+    def __init__(self, writer: ProtocolWriter, *, clock=time.monotonic) -> None:
+        self._writer = writer
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._next_operation_id = 0
+        self._operations: dict[tuple[str, str | int], tuple[int, str, str, float]] = {}
+
+    def start(self, raw_tool_id: object, raw_name: object) -> None:
+        key = _private_tool_key(raw_tool_id)
+        if key is None:
+            return
+        with self._lock:
+            if key in self._operations or self._next_operation_id >= MAX_TOOL_OPERATIONS:
+                return
+            category, capability, _phase = _tool_descriptor(raw_name)
+            self._next_operation_id += 1
+            operation_id = self._next_operation_id
+            self._operations[key] = (operation_id, category, capability, self._clock())
+            # Preserve operation allocation order even if Hermes invokes callbacks
+            # from more than one thread. ProtocolWriter has its own independent lock.
+            self._writer.emit("tool.started", operation_id=operation_id, category=category, capability=capability)
+
+    def complete(self, raw_tool_id: object) -> None:
+        key = _private_tool_key(raw_tool_id)
+        if key is None:
+            return
+        with self._lock:
+            operation = self._operations.pop(key, None)
+            if operation is None:
+                return
+            operation_id, category, capability, started_at = operation
+            duration_ms = max(0, min(MAX_TOOL_DURATION_MS, int((self._clock() - started_at) * 1000)))
+        self._writer.emit(
+            "tool.completed",
+            operation_id=operation_id,
+            category=category,
+            capability=capability,
+            duration_ms=duration_ms,
+        )
 
 
 def _run() -> int:
@@ -140,6 +215,7 @@ def _run() -> int:
     cancel_requested = False
     agent: AIAgent | None = None
     last_phase: str | None = None
+    telemetry = ToolTelemetry(writer)
 
     def emit_phase(phase: str) -> None:
         nonlocal last_phase
@@ -151,6 +227,13 @@ def _run() -> int:
         if text:
             emit_phase("composing")
             writer.emit("delta", text=text)
+
+    def tool_started(tool_id: object, name: object, _arguments: object) -> None:
+        emit_phase(_phase_for_tool(name))
+        telemetry.start(tool_id, name)
+
+    def tool_completed(tool_id: object, _name: object, _arguments: object, _result: object) -> None:
+        telemetry.complete(tool_id)
 
     def interrupt(_signum, _frame) -> None:
         nonlocal cancel_requested
@@ -178,8 +261,8 @@ def _run() -> int:
             stream_delta_callback=lambda _value: None,
             reasoning_callback=lambda *_args, **_kwargs: emit_phase("thinking"),
             thinking_callback=lambda *_args, **_kwargs: emit_phase("thinking"),
-            tool_start_callback=lambda _tool_id, name, _args: emit_phase(_phase_for_tool(name)),
-            tool_complete_callback=lambda _tool_id, name, _args, _result: emit_phase(_phase_for_tool(name)),
+            tool_start_callback=tool_started,
+            tool_complete_callback=tool_completed,
             session_db=None,
             persist_session=False,
             skip_memory=True,

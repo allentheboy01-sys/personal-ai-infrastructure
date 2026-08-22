@@ -1,7 +1,17 @@
 import asyncio
 from uuid import uuid4
 
-from jarvis.runtime import ActiveTurnRegistry, MockRuntimeAdapter, RuntimeEventType, TurnContext
+import pytest
+
+from jarvis.runtime import (
+    ActiveTurnRegistry,
+    MockRuntimeAdapter,
+    RuntimeCapability,
+    RuntimeEvent,
+    RuntimeEventType,
+    RuntimeToolCategory,
+    TurnContext,
+)
 
 
 async def _collect(adapter: MockRuntimeAdapter, context: TurnContext):
@@ -55,6 +65,53 @@ def test_registry_replays_after_sequence_and_exposes_snapshot() -> None:
     assert snapshot.terminal_event == RuntimeEventType.TURN_COMPLETED
     assert replay[0].sequence == 4
     assert replay[-1].type == RuntimeEventType.TURN_COMPLETED
+
+
+def test_registry_replays_sanitized_tool_events_without_treating_them_as_terminal() -> None:
+    async def scenario():
+        turn_id = uuid4()
+        registry = ActiveTurnRegistry()
+        registry.register(turn_id)
+        started = RuntimeEvent(
+            turn_id,
+            1,
+            RuntimeEventType.TOOL_STARTED,
+            operation_id=1,
+            category=RuntimeToolCategory.EXEC,
+            capability=RuntimeCapability.RUN_PYTHON,
+        )
+        completed = RuntimeEvent(
+            turn_id,
+            2,
+            RuntimeEventType.TOOL_COMPLETED,
+            operation_id=1,
+            category=RuntimeToolCategory.EXEC,
+            capability=RuntimeCapability.RUN_PYTHON,
+            duration_ms=12,
+        )
+        terminal = RuntimeEvent(turn_id, 3, RuntimeEventType.TURN_COMPLETED)
+        for event in (started, completed, terminal):
+            await registry.publish(event)
+        return [event async for event in registry.stream(turn_id)]
+
+    replay = asyncio.run(scenario())
+    assert [event.type for event in replay] == [RuntimeEventType.TOOL_STARTED, RuntimeEventType.TOOL_COMPLETED, RuntimeEventType.TURN_COMPLETED]
+
+
+def test_runtime_event_rejects_unsafe_tool_payload_shapes() -> None:
+    turn_id = uuid4()
+    with pytest.raises(ValueError, match="invalid tool event payload"):
+        RuntimeEvent(turn_id, 1, RuntimeEventType.TOOL_STARTED, operation_id=1)
+    with pytest.raises(ValueError, match="tool start cannot contain duration"):
+        RuntimeEvent(
+            turn_id,
+            1,
+            RuntimeEventType.TOOL_STARTED,
+            operation_id=1,
+            category=RuntimeToolCategory.OTHER,
+            capability=RuntimeCapability.USE_TOOL,
+            duration_ms=1,
+        )
 
 
 def test_subscriber_disconnect_does_not_cancel_runtime() -> None:

@@ -212,6 +212,14 @@ def _sse(event: RuntimeEvent) -> str:
         payload["delta"] = event.delta
     if event.error_code is not None:
         payload["error_code"] = event.error_code
+    if event.operation_id is not None:
+        payload["operation_id"] = event.operation_id
+    if event.category is not None:
+        payload["category"] = event.category.value
+    if event.capability is not None:
+        payload["capability"] = event.capability.value
+    if event.duration_ms is not None:
+        payload["duration_ms"] = event.duration_ms
     return f"id: {event.sequence}\nevent: {event.type.value}\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n"
 
 

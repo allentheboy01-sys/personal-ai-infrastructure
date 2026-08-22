@@ -35,13 +35,20 @@ export interface ApiConversation extends ApiConversationSummary {
   messages: ApiMessage[]
 }
 
+export type RuntimeToolCategory = 'pdi' | 'exec' | 'web' | 'action' | 'other'
+export type RuntimeCapability = 'search_personal_resources' | 'read_personal_resource' | 'review_personal_resources' | 'run_python' | 'write_workspace' | 'read_workspace' | 'manage_workspace' | 'use_tool'
+
 export interface RuntimeEvent {
   turn_id: string
   sequence: number
-  type: 'turn.started' | 'phase.changed' | 'message.delta' | 'turn.completed' | 'turn.failed' | 'turn.cancelled'
+  type: 'turn.started' | 'phase.changed' | 'tool.started' | 'tool.completed' | 'message.delta' | 'turn.completed' | 'turn.failed' | 'turn.cancelled'
   phase?: 'thinking' | 'searching' | 'reviewing' | 'computing' | 'composing'
   delta?: string
   error_code?: string
+  operation_id?: number
+  category?: RuntimeToolCategory
+  capability?: RuntimeCapability
+  duration_ms?: number
 }
 
 const writeHeaders = { 'Content-Type': 'application/json', 'X-Jarvis-Request': 'web-v1' }

@@ -1,10 +1,17 @@
 import asyncio
+import json
 from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from jarvis.runtime import MockRuntimeAdapter, RuntimeEvent, RuntimeEventType
+from jarvis.runtime import (
+    MockRuntimeAdapter,
+    RuntimeCapability,
+    RuntimeEvent,
+    RuntimeEventType,
+    RuntimeToolCategory,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -43,6 +50,49 @@ class ShutdownFailureRuntime:
         await self._queues[turn_id].put(
             RuntimeEvent(turn_id, 2, RuntimeEventType.TURN_FAILED, error_code="bridge_nonzero_exit")
         )
+
+    async def stream_events(self, turn_id):
+        while True:
+            event = await self._queues[turn_id].get()
+            yield event
+            if event.type in {RuntimeEventType.TURN_COMPLETED, RuntimeEventType.TURN_FAILED, RuntimeEventType.TURN_CANCELLED}:
+                return
+
+
+class ToolEventRuntime:
+    def __init__(self) -> None:
+        self._queues = {}
+
+    async def start_turn(self, context) -> None:
+        queue = asyncio.Queue()
+        self._queues[context.turn_id] = queue
+        events = (
+            RuntimeEvent(context.turn_id, 1, RuntimeEventType.TURN_STARTED),
+            RuntimeEvent(
+                context.turn_id,
+                2,
+                RuntimeEventType.TOOL_STARTED,
+                operation_id=1,
+                category=RuntimeToolCategory.PDI,
+                capability=RuntimeCapability.SEARCH_PERSONAL_RESOURCES,
+            ),
+            RuntimeEvent(
+                context.turn_id,
+                3,
+                RuntimeEventType.TOOL_COMPLETED,
+                operation_id=1,
+                category=RuntimeToolCategory.PDI,
+                capability=RuntimeCapability.SEARCH_PERSONAL_RESOURCES,
+                duration_ms=18,
+            ),
+            RuntimeEvent(context.turn_id, 4, RuntimeEventType.MESSAGE_DELTA, delta="safe answer"),
+            RuntimeEvent(context.turn_id, 5, RuntimeEventType.TURN_COMPLETED),
+        )
+        for event in events:
+            await queue.put(event)
+
+    async def cancel_turn(self, turn_id) -> None:
+        return None
 
     async def stream_events(self, turn_id):
         while True:
@@ -91,6 +141,37 @@ async def test_sse_contract_and_replay(client) -> None:
     replay = await client.get(f"/api/v1/turns/{turn_id}/events", headers={"Last-Event-ID": "3"})
     assert "id: 1\n" not in replay.text
     assert "event: turn.completed" in replay.text
+
+
+async def test_sse_replays_only_sanitized_tool_metadata(app_factory) -> None:
+    app = app_factory(ToolEventRuntime())
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="https://jarvis.test") as client:
+            conversation_id = await _conversation(client)
+            turn_id = (
+                await client.post(
+                    f"/api/v1/conversations/{conversation_id}/turns",
+                    headers=WRITE_HEADERS,
+                    json={"body": "synthetic"},
+                )
+            ).json()["turn_id"]
+            response = await client.get(f"/api/v1/turns/{turn_id}/events")
+            replay = await client.get(f"/api/v1/turns/{turn_id}/events", headers={"Last-Event-ID": "1"})
+
+    assert "event: tool.started" in response.text
+    assert "event: tool.completed" in response.text
+    tool_payloads = [
+        json.loads(line.removeprefix("data: "))
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and '"type":"tool.' in line
+    ]
+    assert tool_payloads == [
+        {"turn_id": turn_id, "sequence": 2, "type": "tool.started", "operation_id": 1, "category": "pdi", "capability": "search_personal_resources"},
+        {"turn_id": turn_id, "sequence": 3, "type": "tool.completed", "operation_id": 1, "category": "pdi", "capability": "search_personal_resources", "duration_ms": 18},
+    ]
+    assert "event: tool.started" in replay.text
+    for forbidden in ("arguments", "result", "resource_ref", "filename", "path", "provider_id", "raw_tool"):
+        assert forbidden not in response.text
 
 
 async def test_cancel_and_failure_never_create_partial_assistant(app_factory) -> None:

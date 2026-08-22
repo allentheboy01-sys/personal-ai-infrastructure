@@ -13,9 +13,11 @@ describe('Composer', () => {
   })
 
   it('exposes a stop affordance while running', () => {
-    render(<Composer running />)
+    const view = render(<Composer running />)
     expect(screen.getByRole('button', { name: 'Stop response' })).toBeInTheDocument()
     expect(screen.getByLabelText('Message Jarvis')).toBeDisabled()
+    view.rerender(<Composer running stopping />)
+    expect(screen.getByRole('button', { name: 'Stopping response' })).toBeDisabled()
   })
 
   it('keeps attachments explicitly deferred', () => {

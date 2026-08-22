@@ -31,9 +31,12 @@ function Harness({ conversationId = null, turnId = null }: { conversationId?: st
     <button onClick={chat.resetConversation}>New</button>
     <button onClick={() => void chat.selectConversation('conversation-a')}>Open A</button>
     <button onClick={() => void chat.selectConversation('conversation-b')}>Open B</button>
-    <span>{chat.running ? 'running' : 'idle'}</span>
+    <span data-testid="running-status">{chat.running ? 'running' : 'idle'}</span>
     <span data-testid="conversation-id">{chat.conversationId ?? 'none'}</span>
     <span data-testid="conversation-title">{chat.conversationTitle ?? 'untitled'}</span>
+    <span data-testid="trace-status">{chat.executionTrace?.status ?? 'none'}</span>
+    <span>{chat.cancelling ? 'stopping' : 'not-stopping'}</span>
+    {chat.executionTrace?.steps.map((step) => <span key={step.id}>{step.label}:{step.detail}</span>)}
     {chat.messages.map((message) => <p key={message.id}>{message.body}</p>)}
   </div>
 }
@@ -74,7 +77,7 @@ describe('persistent Chat boundary', () => {
     render(<Harness conversationId="conversation-1" turnId="turn-active" />)
     await waitFor(() => expect(MockEventSource.instances).toHaveLength(1))
     expect(MockEventSource.instances[0].url).toBe('/api/v1/turns/turn-active/events')
-    expect(screen.getByText('running')).toBeInTheDocument()
+    expect(screen.getByTestId('running-status')).toHaveTextContent('running')
   })
 
   it('does not reuse the previous conversation after New conversation', async () => {
@@ -122,5 +125,27 @@ describe('persistent Chat boundary', () => {
     expect(screen.queryByText('History A')).not.toBeInTheDocument()
     expect(screen.getByTestId('conversation-id')).toHaveTextContent('conversation-b')
     expect(screen.getByTestId('conversation-title')).toHaveTextContent('Conversation B')
+  })
+
+  it('tracks sanitized tool events and clears the trace on Conversation change', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(canonical), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...canonical, id: 'conversation-a' }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('EventSource', MockEventSource)
+
+    render(<Harness conversationId="conversation-1" turnId="turn-active" />)
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1))
+    const stream = MockEventSource.instances[0]
+    act(() => stream.emit('turn.started', { turn_id: 'turn-active', sequence: 1, type: 'turn.started' }))
+    act(() => stream.emit('tool.started', { turn_id: 'turn-active', sequence: 2, type: 'tool.started', operation_id: 1, category: 'exec', capability: 'run_python' }))
+    act(() => stream.emit('tool.completed', { turn_id: 'turn-active', sequence: 3, type: 'tool.completed', operation_id: 1, category: 'exec', capability: 'run_python', duration_ms: 42 }))
+    expect(screen.getByText('Run Python:Finished · 42 ms')).toBeInTheDocument()
+    expect(screen.getByTestId('trace-status')).toHaveTextContent('running')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open A' }))
+    await screen.findByText('Canonical response')
+    expect(screen.getByTestId('trace-status')).toHaveTextContent('none')
+    expect(screen.queryByText(/Run Python/)).not.toBeInTheDocument()
   })
 })

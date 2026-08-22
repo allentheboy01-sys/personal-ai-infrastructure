@@ -10,7 +10,14 @@ from pathlib import Path
 from types import MappingProxyType
 from uuid import UUID
 
-from .contract import RuntimeEvent, RuntimeEventType, RuntimePhase, TurnContext
+from .contract import (
+    RuntimeCapability,
+    RuntimeEvent,
+    RuntimeEventType,
+    RuntimePhase,
+    RuntimeToolCategory,
+    TurnContext,
+)
 
 
 _TERMINAL = {
@@ -18,7 +25,7 @@ _TERMINAL = {
     RuntimeEventType.TURN_FAILED,
     RuntimeEventType.TURN_CANCELLED,
 }
-_RECORD_TYPES = {"ready", "phase", "delta", "completed", "failed", "cancelled"}
+_RECORD_TYPES = {"ready", "phase", "tool.started", "tool.completed", "delta", "completed", "failed", "cancelled"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +119,8 @@ class HermesRuntimeAdapter:
         completion_received = False
         ready_received = False
         terminal_event: RuntimeEvent | None = None
+        last_operation_id = 0
+        active_operations: dict[int, tuple[RuntimeToolCategory, RuntimeCapability]] = {}
 
         async def emit(
             event_type: RuntimeEventType,
@@ -119,12 +128,27 @@ class HermesRuntimeAdapter:
             phase: RuntimePhase | None = None,
             delta: str | None = None,
             error_code: str | None = None,
+            operation_id: int | None = None,
+            category: RuntimeToolCategory | None = None,
+            capability: RuntimeCapability | None = None,
+            duration_ms: int | None = None,
         ) -> None:
             nonlocal sequence, terminal_event
             if turn.terminal is not None:
                 return
             sequence += 1
-            event = RuntimeEvent(turn_id, sequence, event_type, phase=phase, delta=delta, error_code=error_code)
+            event = RuntimeEvent(
+                turn_id,
+                sequence,
+                event_type,
+                phase=phase,
+                delta=delta,
+                error_code=error_code,
+                operation_id=operation_id,
+                category=category,
+                capability=capability,
+                duration_ms=duration_ms,
+            )
             if event_type in _TERMINAL:
                 turn.terminal = event_type
                 terminal_event = event
@@ -181,6 +205,33 @@ class HermesRuntimeAdapter:
                         raise _BridgeError("bridge_invalid_event")
                     elif kind == "phase":
                         await emit(RuntimeEventType.PHASE_CHANGED, phase=RuntimePhase(record["phase"]))
+                    elif kind == "tool.started":
+                        operation_id = int(record["operation_id"])
+                        category = RuntimeToolCategory(record["category"])
+                        capability = RuntimeCapability(record["capability"])
+                        if operation_id != last_operation_id + 1 or operation_id in active_operations:
+                            raise _BridgeError("bridge_invalid_event")
+                        last_operation_id = operation_id
+                        active_operations[operation_id] = (category, capability)
+                        await emit(
+                            RuntimeEventType.TOOL_STARTED,
+                            operation_id=operation_id,
+                            category=category,
+                            capability=capability,
+                        )
+                    elif kind == "tool.completed":
+                        operation_id = int(record["operation_id"])
+                        category = RuntimeToolCategory(record["category"])
+                        capability = RuntimeCapability(record["capability"])
+                        if active_operations.pop(operation_id, None) != (category, capability):
+                            raise _BridgeError("bridge_invalid_event")
+                        await emit(
+                            RuntimeEventType.TOOL_COMPLETED,
+                            operation_id=operation_id,
+                            category=category,
+                            capability=capability,
+                            duration_ms=int(record["duration_ms"]),
+                        )
                     elif kind == "delta":
                         delta = record["text"]
                         visible_bytes += len(delta.encode("utf-8"))
@@ -261,10 +312,36 @@ def _parse_record(raw: bytes) -> dict[str, object]:
     if not isinstance(record, dict) or record.get("type") not in _RECORD_TYPES:
         raise _BridgeError("bridge_invalid_event")
     kind = record["type"]
+    allowed_keys = {
+        "ready": {"type"},
+        "phase": {"type", "phase"},
+        "tool.started": {"type", "operation_id", "category", "capability"},
+        "tool.completed": {"type", "operation_id", "category", "capability", "duration_ms"},
+        "delta": {"type", "text"},
+        "completed": {"type"},
+        "failed": {"type", "code"},
+        "cancelled": {"type"},
+    }
+    if set(record) - allowed_keys[str(kind)]:
+        raise _BridgeError("bridge_invalid_event")
     if kind == "phase" and record.get("phase") not in {phase.value for phase in RuntimePhase}:
         raise _BridgeError("bridge_invalid_event")
     if kind == "delta" and not isinstance(record.get("text"), str):
         raise _BridgeError("bridge_invalid_event")
+    if kind in {"tool.started", "tool.completed"}:
+        if set(record) != allowed_keys[str(kind)]:
+            raise _BridgeError("bridge_invalid_event")
+        operation_id = record.get("operation_id")
+        if isinstance(operation_id, bool) or not isinstance(operation_id, int) or not 1 <= operation_id <= 32:
+            raise _BridgeError("bridge_invalid_event")
+        if record.get("category") not in {category.value for category in RuntimeToolCategory}:
+            raise _BridgeError("bridge_invalid_event")
+        if record.get("capability") not in {capability.value for capability in RuntimeCapability}:
+            raise _BridgeError("bridge_invalid_event")
+    if kind == "tool.completed":
+        duration_ms = record.get("duration_ms")
+        if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or not 0 <= duration_ms <= 600_000:
+            raise _BridgeError("bridge_invalid_event")
     return record
 
 
