@@ -345,7 +345,7 @@ def test_search_and_retrieval_descriptions_define_distinct_intent() -> None:
         assert "automatic fallback" in search
         assert "resource content or visual concepts" in retrieval
         assert "do not automatically follow it" in retrieval
-        assert "one content candidate source" in rich
+        assert "one bounded candidate source" in rich
         assert "without first calling pdi_retrieve_resources" in rich
         assert "set mime_category to image" in rich
         assert "literal current OCR or document-excerpt" in rich
@@ -357,6 +357,8 @@ def test_search_and_retrieval_descriptions_define_distinct_intent() -> None:
         assert "file_modified_from/to" in rich
         assert "Provider-reported file modification time" in rich
         assert "small selected" in rich
+        assert "exact Provider-declared Person label" in rich
+        assert "does not infer aliases, family relationships" in rich
         assert "defaults to 10 and must not exceed 20" in rich
 
     asyncio.run(inspect_tools())
@@ -692,7 +694,7 @@ def test_rich_retrieval_tool_has_tagged_input_and_bounded_payload() -> None:
         assert len(tools) == 8
         primary_schema = rich_tool.input_schema["properties"]["primary"]
         assert primary_schema["discriminator"]["propertyName"] == "kind"
-        assert len(primary_schema["oneOf"]) == 2
+        assert len(primary_schema["oneOf"]) == 3
         filter_schema = rich_tool.input_schema["$defs"][
             "RichFilters"
         ]["properties"]
@@ -807,6 +809,85 @@ def test_rich_retrieval_mixed_primary_is_rejected_by_mcp_schema() -> None:
         assert result.structured_content is None
 
     asyncio.run(exercise())
+
+
+def test_rich_retrieval_accepts_person_label_primary_without_new_tool() -> None:
+    class RecordingRichService:
+        call = None
+
+        def retrieve_resources(self, *, primary, filters, limit):
+            self.call = (primary, filters, limit)
+            return RichRetrievalResult(
+                hits=(),
+                stages=(RetrievalStage("person_label_primary", 0, 0),),
+                unmapped_hit_count=0,
+            )
+
+    rich_service = RecordingRichService()
+    server = create_server(
+        QueryService(RecordingRepository()),
+        rich_retrieval_service=rich_service,
+    )
+
+    async def exercise() -> None:
+        async with Client(server) as client:
+            tools = (await client.list_tools()).tools
+            result = await client.call_tool(
+                "pdi_rich_retrieve_resources",
+                {
+                    "primary": {
+                        "kind": "person_label",
+                        "label": "妈妈",
+                        "provider": "immich",
+                    },
+                    "filters": {"mime_category": "image"},
+                },
+            )
+        assert len(tools) == 8
+        assert result.is_error is False
+        assert result.structured_content == {
+            "ok": True,
+            "hits": [],
+            "stages": [{
+                "stage": "person_label_primary",
+                "input_count": 0,
+                "output_count": 0,
+            }],
+            "unmapped_hit_count": 0,
+        }
+
+    asyncio.run(exercise())
+    primary, filters, limit = rich_service.call
+    assert primary.kind == "person_label"
+    assert primary.label == "妈妈"
+    assert primary.provider == "immich"
+    assert filters.mime_category == "image"
+    assert limit == 10
+
+
+def test_person_label_primary_is_in_public_schema_without_client_harness() -> None:
+    server = create_server(QueryService(RecordingRepository()))
+
+    tools = asyncio.run(server.list_tools())
+
+    assert len(tools) == 8
+    rich_tool = next(
+        tool
+        for tool in tools
+        if tool.name == "pdi_rich_retrieve_resources"
+    )
+    primary = rich_tool.input_schema["properties"]["primary"]
+    assert primary["discriminator"]["mapping"]["person_label"] == (
+        "#/$defs/PersonLabelPrimary"
+    )
+    person_schema = rich_tool.input_schema["$defs"][
+        "PersonLabelPrimary"
+    ]
+    assert person_schema["additionalProperties"] is False
+    assert person_schema["required"] == ["kind", "label"]
+    assert person_schema["properties"]["kind"]["const"] == (
+        "person_label"
+    )
 
 
 def test_rich_retrieval_max_twenty_payload_stays_bounded() -> None:

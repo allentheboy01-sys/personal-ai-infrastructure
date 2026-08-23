@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from pdi.repository.orm.person import PersonORM, PersonSourceORM
 
-from .models import Person, PersonSource, PersonSyncResult, utc_instant
+from .models import (
+    Person,
+    PersonSource,
+    PersonSyncResult,
+    ProviderPersonIdentity,
+    utc_instant,
+)
 
 
 class PersonRepository:
@@ -43,6 +49,7 @@ class PersonRepository:
             provider=row.provider,
             external_id=row.external_id,
             person_id=row.person_id,
+            display_name=row.display_name,
             inactive_at=row.inactive_at,
         )
 
@@ -67,6 +74,7 @@ class PersonRepository:
             provider=provider,
             external_id=external_id,
             person_id=person.id,
+            display_name=None,
             inactive_at=None,
         )
         session.add_all((person, source))
@@ -89,14 +97,17 @@ class PersonRepository:
     def reconcile_inventory(
         self,
         provider: str,
-        external_ids: Iterable[str],
+        identities: Iterable[ProviderPersonIdentity],
         *,
         now: datetime | None = None,
     ) -> PersonSyncResult:
         if not provider.strip():
             raise ValueError("provider must be non-empty")
-        identities = tuple(external_ids)
-        if len(set(identities)) != len(identities):
+        identities = tuple(identities)
+        external_ids = tuple(
+            identity.external_id for identity in identities
+        )
+        if len(set(external_ids)) != len(external_ids):
             raise ValueError("enumerable inventory contains duplicate IDs")
         instant = utc_instant(now or datetime.now(UTC))
         counts = {"created": 0, "existing": 0, "reactivated": 0}
@@ -109,19 +120,23 @@ class PersonRepository:
                 ),
                 {"provider": f"person-inventory:{provider}"},
             )
-            for external_id in identities:
-                _, outcome = self._resolve_in_session(
-                    session, provider, external_id, instant
+            labels_updated = 0
+            for identity in identities:
+                source, outcome = self._resolve_in_session(
+                    session, provider, identity.external_id, instant
                 )
                 counts[outcome] += 1
+                if source.display_name != identity.display_name:
+                    source.display_name = identity.display_name
+                    labels_updated += 1
 
             statement = update(PersonSourceORM).where(
                 PersonSourceORM.provider == provider,
                 PersonSourceORM.inactive_at.is_(None),
             )
-            if identities:
+            if external_ids:
                 statement = statement.where(
-                    PersonSourceORM.external_id.not_in(identities)
+                    PersonSourceORM.external_id.not_in(external_ids)
                 )
             inactivated = session.execute(
                 statement.values(inactive_at=instant)
@@ -133,6 +148,7 @@ class PersonRepository:
             existing=counts["existing"],
             reactivated=counts["reactivated"],
             inactivated=inactivated,
+            labels_updated=labels_updated,
         )
 
     def find_source(

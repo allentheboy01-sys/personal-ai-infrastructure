@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from pdi.observation.predicates import PREDICATES
+from pdi.person_identity import normalize_person_label_query
 from pdi.query import InvalidQueryError
 from pdi.retrieval import (
     ProviderCapabilityUnavailableError,
@@ -9,6 +10,7 @@ from pdi.retrieval import (
 
 from .models import (
     ObservationTextPrimary,
+    PersonLabelPrimary,
     ProviderSemanticPrimary,
     RetrievalStage,
     RichCandidate,
@@ -230,6 +232,21 @@ class RichRetrievalService:
                 ),
             )
 
+        if isinstance(primary, PersonLabelPrimary):
+            candidates = self._repository.search_current_person_label(
+                primary=primary,
+                limit=PRIMARY_CANDIDATE_LIMIT,
+            )
+            return (
+                candidates,
+                0,
+                RetrievalStage(
+                    "person_label_primary",
+                    0,
+                    len(candidates),
+                ),
+            )
+
         candidates = self._repository.search_current_observation_text(
             primary=primary,
             limit=PRIMARY_CANDIDATE_LIMIT,
@@ -267,9 +284,36 @@ class RichRetrievalService:
                 raise InvalidQueryError(
                     "observation text predicate is unsupported"
                 )
+        elif isinstance(primary, PersonLabelPrimary):
+            if primary.kind != "person_label":
+                raise InvalidQueryError(
+                    "person label primary kind must be person_label"
+                )
         else:
             raise InvalidQueryError(
                 "exactly one supported Rich Retrieval primary is required"
+            )
+
+        if isinstance(primary, PersonLabelPrimary):
+            try:
+                normalized_label = normalize_person_label_query(
+                    primary.label
+                )
+            except ValueError as error:
+                raise InvalidQueryError(str(error)) from error
+            normalized_provider = cls._optional_text(
+                primary.provider,
+                "provider",
+            )
+            if (
+                normalized_label == primary.label
+                and normalized_provider == primary.provider
+            ):
+                return primary
+            return PersonLabelPrimary(
+                kind=primary.kind,
+                label=normalized_label,
+                provider=normalized_provider,
             )
 
         normalized_query = cls._required_text(primary.query, "query")

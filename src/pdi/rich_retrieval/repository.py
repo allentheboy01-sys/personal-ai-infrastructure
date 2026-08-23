@@ -3,6 +3,7 @@ from typing import Protocol
 
 from .models import (
     ObservationTextPrimary,
+    PersonLabelPrimary,
     RichCandidate,
     RichFilterSignals,
     RichFilters,
@@ -19,6 +20,15 @@ class RichRetrievalRepository(Protocol):
         limit: int,
     ) -> tuple[RichCandidate, ...]:
         """Return deterministic current-Statement candidates."""
+        ...
+
+    def search_current_person_label(
+        self,
+        *,
+        primary: PersonLabelPrimary,
+        limit: int,
+    ) -> tuple[RichCandidate, ...]:
+        """Return deterministic active relation-backed candidates."""
         ...
 
     def load_rich_filter_signals(

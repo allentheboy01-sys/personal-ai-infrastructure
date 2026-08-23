@@ -6,6 +6,7 @@ from pdi.person_identity import (
     EnumerablePersonInventory,
     ImmichEnumerablePeopleAdapter,
     PersonSyncService,
+    ProviderPersonIdentity,
 )
 from pdi.person_identity.models import PersonSyncResult
 
@@ -22,7 +23,7 @@ class FakeResponse:
         return self._payload
 
 
-def test_immich_adapter_reads_only_enumerable_ids_and_allows_total_gap(
+def test_immich_adapter_reads_ids_and_normalized_names_and_allows_total_gap(
     monkeypatch,
 ) -> None:
     responses = [
@@ -31,7 +32,7 @@ def test_immich_adapter_reads_only_enumerable_ids_and_allows_total_gap(
                 "people": [
                     {
                         "id": "person-a",
-                        "name": "ignored",
+                        "name": "  妈妈  ",
                         "birthDate": "2000-01-01",
                         "thumbnailPath": "/ignored/private/path",
                         "updatedAt": "2026-08-18T00:00:00Z",
@@ -64,9 +65,13 @@ def test_immich_adapter_reads_only_enumerable_ids_and_allows_total_gap(
 
     assert inventory == EnumerablePersonInventory(
         provider="immich",
-        external_ids=("person-a", "person-b"),
+        identities=(
+            ProviderPersonIdentity("person-a", "妈妈"),
+            ProviderPersonIdentity("person-b", None),
+        ),
         reported_total=501,
     )
+    assert inventory.external_ids == ("person-a", "person-b")
     assert [call["params"]["page"] for call in calls] == [1, 2]
     assert all(call["params"]["withHidden"] == "true" for call in calls)
 
@@ -88,11 +93,41 @@ def test_immich_adapter_connects_to_read_only_about(monkeypatch) -> None:
     assert response.raise_for_status_called is True
 
 
+def test_person_name_is_nfc_normalized_and_empty_is_unnamed(
+    monkeypatch,
+) -> None:
+    payload = {
+        "people": [
+            {"id": "composed", "name": "  Cafe\u0301  "},
+            {"id": "empty", "name": " \n "},
+            {"id": "null", "name": None},
+        ],
+        "total": 3,
+        "hasNextPage": False,
+    }
+    monkeypatch.setattr(
+        "pdi.person_identity.immich.requests.get",
+        lambda *args, **kwargs: FakeResponse(payload),
+    )
+
+    inventory = ImmichEnumerablePeopleAdapter(
+        "https://immich.example", "secret"
+    ).scan()
+
+    assert inventory.identities == (
+        ProviderPersonIdentity("composed", "Caf\u00e9"),
+        ProviderPersonIdentity("empty", None),
+        ProviderPersonIdentity("null", None),
+    )
+
+
 @pytest.mark.parametrize(
     "payload",
     [
         {"people": [{"id": ""}], "total": 1, "hasNextPage": False},
         {"people": [{"id": "same"}, {"id": "same"}], "total": 2,
+         "hasNextPage": False},
+        {"people": [{"id": "person-a", "name": {}}], "total": 1,
          "hasNextPage": False},
         {"people": [], "total": 0, "hasNextPage": "false"},
     ],
@@ -119,12 +154,51 @@ def test_failed_or_partial_scan_never_reconciles() -> None:
     class RecordingRepository:
         called = False
 
-        def reconcile_inventory(self, provider, external_ids):
+        def reconcile_inventory(self, provider, identities):
             self.called = True
 
     repository = RecordingRepository()
     with pytest.raises(requests.HTTPError):
         PersonSyncService(FailingAdapter(), repository).sync_once()
+    assert repository.called is False
+
+
+def test_invalid_name_after_valid_page_never_reconciles(monkeypatch) -> None:
+    responses = [
+        FakeResponse({
+            "people": [{"id": "person-a", "name": "valid"}],
+            "total": 2,
+            "hasNextPage": True,
+        }),
+        FakeResponse({
+            "people": [{"id": "person-b", "name": ["invalid"]}],
+            "total": 2,
+            "hasNextPage": False,
+        }),
+    ]
+    monkeypatch.setattr(
+        "pdi.person_identity.immich.requests.get",
+        lambda *args, **kwargs: responses.pop(0),
+    )
+
+    class RecordingRepository:
+        called = False
+
+        def reconcile_inventory(self, provider, identities):
+            self.called = True
+
+    repository = RecordingRepository()
+    service = PersonSyncService(
+        ImmichEnumerablePeopleAdapter(
+            "https://immich.example", "secret"
+        ),
+        repository,
+    )
+    monkeypatch.setattr(service._adapter, "connect", lambda: None)
+
+    with pytest.raises(ValueError, match="display_name"):
+        service.sync_once()
+
     assert repository.called is False
 
 
@@ -155,7 +229,7 @@ def test_cli_prints_only_aggregate_result(monkeypatch, capsys) -> None:
             pass
 
         def sync_once(self) -> PersonSyncResult:
-            return PersonSyncResult(417, 417, 0, 0, 0)
+            return PersonSyncResult(417, 417, 0, 0, 0, 416)
 
     monkeypatch.setattr(cli, "PersonSyncService", Service)
     assert cli.main() == 0
@@ -163,6 +237,7 @@ def test_cli_prints_only_aggregate_result(monkeypatch, capsys) -> None:
     assert "enumerated=417" in output.out
     assert "created_persons=417" in output.out
     assert "created_sources=417" in output.out
+    assert "labels_updated=416" in output.out
     assert "private" not in output.out
     assert output.err == ""
     assert engine.disposed is True

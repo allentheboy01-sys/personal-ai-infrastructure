@@ -250,6 +250,17 @@ enumerable membership lifecycle。display name、metadata、face/vector、cross-
 matching、public reference、MCP 与 operational schedule 均未引入。Person
 Identity 本身仍不保存 Relation；Resource-Person Relation 由后续独立专用表承载。
 
+Person Label Retrieval V0.1 的 source contract 已冻结。它保持
+`Person` schema 不变，只在 `PersonSource` 增加 nullable Provider-derived
+`display_name`，并通过现有 `ResourcePersonRelation` 为 Rich Retrieval 增加 exact
+`person_label` primary。label 使用 NFC 与 outer-trim normalization；inactive source
+不参与当前 retrieval，rename 原位替换且不保留 label history。它不推断 `我妈`、
+`母亲` 与 `妈妈` 等价，不新增 MCP Tool、Relation model 或 Jarvis/PDI 直连。
+
+Production activation 必须单独验证 additive migration、既有 Person/Relation identity
+不变量、正常 `python -m pdi.person_identity` label backfill，以及 relation-backed
+exact Rich Retrieval；migration 本身不执行 label backfill 或 identity rewrite。
+
 ### Resource-Person Relation production freeze
 
 Resource-Person Relation V0.1 已在 production 启用，只表达 Provider-derived

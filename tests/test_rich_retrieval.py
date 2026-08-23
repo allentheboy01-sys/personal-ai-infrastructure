@@ -9,6 +9,7 @@ from pdi.query import InvalidQueryError, ResourceSummary, format_resource_ref
 from pdi.rich_retrieval import (
     MAX_PRIMARY_CANDIDATE_LIMIT,
     ObservationTextPrimary,
+    PersonLabelPrimary,
     PRIMARY_CANDIDATE_LIMIT,
     ProviderSemanticPrimary,
     RichCandidate,
@@ -45,10 +46,15 @@ class StubRichRepository:
         self.candidates = candidates
         self.signals = signals or {}
         self.search_calls = []
+        self.person_calls = []
         self.filter_calls = []
 
     def search_current_observation_text(self, *, primary, limit):
         self.search_calls.append((primary, limit))
+        return self.candidates
+
+    def search_current_person_label(self, *, primary, limit):
+        self.person_calls.append((primary, limit))
         return self.candidates
 
     def load_rich_filter_signals(self, *, resource_refs, filters):
@@ -121,6 +127,45 @@ def test_primary_dtos_are_immutable_and_exactly_one_is_required() -> None:
     with pytest.raises(InvalidQueryError):
         RichRetrievalService(StubRichRepository()).retrieve_resources(
             primary=MixedPrimary(),
+        )
+
+
+def test_person_label_primary_is_first_class_normalized_and_bounded() -> None:
+    first = _summary("first.jpg")
+    second = _summary("second.jpg")
+    repository = StubRichRepository(candidates=(
+        RichCandidate(first, 1),
+        RichCandidate(second, 2),
+    ))
+
+    result = RichRetrievalService(repository).retrieve_resources(
+        primary=PersonLabelPrimary(
+            kind="person_label",
+            label="  Cafe\u0301  ",
+            provider=" immich ",
+        ),
+        limit=1,
+    )
+
+    primary, candidate_limit = repository.person_calls[0]
+    assert primary == PersonLabelPrimary(
+        kind="person_label",
+        label="Caf\u00e9",
+        provider="immich",
+    )
+    assert candidate_limit == PRIMARY_CANDIDATE_LIMIT
+    assert [hit.resource for hit in result.hits] == [first]
+    assert [stage.stage for stage in result.stages] == [
+        "person_label_primary",
+        "final_limit",
+    ]
+    assert repository.search_calls == []
+
+
+def test_person_label_primary_rejects_empty_exact_label() -> None:
+    with pytest.raises(InvalidQueryError, match="person label"):
+        RichRetrievalService(StubRichRepository()).retrieve_resources(
+            primary=PersonLabelPrimary("person_label", " \n "),
         )
 
 

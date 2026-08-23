@@ -10,6 +10,7 @@ from pdi.query import ResourceSummary
 
 ProviderSemanticKind: TypeAlias = Literal["provider_semantic"]
 ObservationTextKind: TypeAlias = Literal["observation_text"]
+PersonLabelKind: TypeAlias = Literal["person_label"]
 ObservationTextPredicate: TypeAlias = Literal[
     "media.ocr_text",
     "document.text_excerpt",
@@ -38,7 +39,20 @@ class ObservationTextPrimary:
     predicate: ObservationTextPredicate
 
 
-RichPrimary: TypeAlias = ProviderSemanticPrimary | ObservationTextPrimary
+@validated_dataclass(
+    frozen=True,
+    slots=True,
+    config=ConfigDict(extra="forbid"),
+)
+class PersonLabelPrimary:
+    kind: PersonLabelKind
+    label: str
+    provider: str | None = None
+
+
+RichPrimary: TypeAlias = (
+    ProviderSemanticPrimary | ObservationTextPrimary | PersonLabelPrimary
+)
 
 
 @validated_dataclass(

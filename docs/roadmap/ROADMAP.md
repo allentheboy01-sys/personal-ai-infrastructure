@@ -47,6 +47,12 @@ details live in their dedicated documents.
   explicitly rejecting arbitrary polling as synchronization authority. The
   `e8125009` artifact is superseded; a new immutable release and versioned venv
   must be built before the separately reviewed production activation retry.
+  Person Label Retrieval V0.1 has a source-frozen contract: it
+  preserves Provider-declared current labels on PersonSource and adds an exact,
+  relation-backed primary to the existing rich retrieval Tool without adding a
+  Tool, canonical Person name, or language inference. Production activation is
+  a separately validated additive migration plus the existing explicit Person
+  scan; the migration itself performs no label backfill or identity rewrite.
 
 ## Future
 

@@ -39,6 +39,7 @@ from pdi.resource_access import (
 from pdi.rich_retrieval import (
     InvalidRichRetrievalStateError,
     ObservationTextPrimary,
+    PersonLabelPrimary,
     RichCandidate,
     RichFilterSignals,
     RichFilters,
@@ -53,6 +54,10 @@ from pdi.repository.orm.asset import AssetORM
 from pdi.repository.orm.asset_source import AssetSourceORM
 from pdi.repository.orm.blob import BlobORM
 from pdi.repository.orm.observation import ResourceStatementORM
+from pdi.repository.orm.person import PersonSourceORM
+from pdi.repository.orm.resource_person_relation import (
+    ResourcePersonRelationORM,
+)
 
 
 class PostgreSQLRepository(
@@ -781,6 +786,68 @@ class PostgreSQLRepository(
                 source_rank=rank,
                 matched_predicates=(primary.predicate,),
             )
+            for rank, resource in enumerate(summaries, start=1)
+        )
+
+    def search_current_person_label(
+        self,
+        *,
+        primary: PersonLabelPrimary,
+        limit: int,
+    ) -> tuple[RichCandidate, ...]:
+        source_filters = [
+            PersonSourceORM.inactive_at.is_(None),
+            PersonSourceORM.display_name.is_not(None),
+            func.lower(PersonSourceORM.display_name)
+            == func.lower(primary.label),
+        ]
+        if primary.provider is not None:
+            source_filters.append(
+                PersonSourceORM.provider == primary.provider
+            )
+
+        with self._session_factory() as session:
+            asset_orms = list(
+                session.execute(
+                    select(AssetORM)
+                    .join(
+                        ResourcePersonRelationORM,
+                        ResourcePersonRelationORM.resource_id
+                        == AssetORM.id,
+                    )
+                    .join(
+                        PersonSourceORM,
+                        PersonSourceORM.person_id
+                        == ResourcePersonRelationORM.person_id,
+                    )
+                    .where(
+                        *source_filters,
+                        ResourcePersonRelationORM.inactive_at.is_(None),
+                        AssetORM.resource_type
+                        == ResourceType.FILE.value,
+                        self._active_source_exists(
+                            provider=None,
+                            mime_type=None,
+                            mime_category=None,
+                            path_prefix=None,
+                        ),
+                    )
+                    .distinct()
+                    .order_by(
+                        AssetORM.created_at.desc(),
+                        AssetORM.id.asc(),
+                    )
+                    .limit(limit)
+                )
+                .scalars()
+                .all()
+            )
+            summaries = self._load_resource_summaries(
+                session,
+                asset_orms,
+            )
+        return tuple(
+            RichCandidate(resource=resource, source_rank=rank)
             for rank, resource in enumerate(summaries, start=1)
         )
 

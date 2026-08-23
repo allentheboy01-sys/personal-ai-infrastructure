@@ -9,7 +9,7 @@ from alembic import command
 from alembic.config import Config
 from mcp import Client
 import pytest
-from sqlalchemy import Connection, Engine, event
+from sqlalchemy import Connection, Engine, event, text, update
 
 from pdi.database import create_postgres_engine
 from pdi.query import format_resource_ref
@@ -18,9 +18,14 @@ from pdi.repository.orm.asset import AssetORM
 from pdi.repository.orm.asset_source import AssetSourceORM
 from pdi.repository.orm.blob import BlobORM
 from pdi.repository.orm.observation import ResourceStatementORM
+from pdi.repository.orm.person import PersonORM, PersonSourceORM
+from pdi.repository.orm.resource_person_relation import (
+    ResourcePersonRelationORM,
+)
 from pdi.rich_retrieval import (
     InvalidRichRetrievalStateError,
     ObservationTextPrimary,
+    PersonLabelPrimary,
     ProviderSemanticPrimary,
     RichFilters,
     RichRetrievalService,
@@ -470,6 +475,254 @@ def test_provider_candidates_use_batch_filters_same_source_and_keep_rank(
     assert data.multi_ref in {
         hit.resource.resource_ref for hit in same_source.hits
     }
+
+
+def test_person_label_primary_is_relation_backed_exact_and_filtered(
+    rich_context,
+) -> None:
+    engine, repository, data = rich_context
+    ocr_id = UUID(data.ocr_ref.removeprefix("pdi:resource:"))
+    document_id = UUID(
+        data.document_ref.removeprefix("pdi:resource:")
+    )
+    multi_id = UUID(data.multi_ref.removeprefix("pdi:resource:"))
+    missing_id = UUID(data.missing_ref.removeprefix("pdi:resource:"))
+    person_a, person_b, inactive_person = uuid4(), uuid4(), uuid4()
+    people = (person_a, person_b, inactive_person)
+    unrelated_ocr_id = uuid4()
+
+    with engine.begin() as connection:
+        connection.execute(PersonORM.__table__.insert(), [
+            {"id": person_id, "created_at": CAPTURED}
+            for person_id in people
+        ])
+        connection.execute(PersonSourceORM.__table__.insert(), [
+            {
+                "provider": "immich",
+                "external_id": f"person-a-{data.token}",
+                "person_id": person_a,
+                "display_name": "妈妈",
+                "inactive_at": None,
+            },
+            {
+                "provider": "other",
+                "external_id": f"person-a-other-{data.token}",
+                "person_id": person_a,
+                "display_name": "Mom",
+                "inactive_at": None,
+            },
+            {
+                "provider": "other",
+                "external_id": f"person-b-{data.token}",
+                "person_id": person_b,
+                "display_name": "妈妈",
+                "inactive_at": None,
+            },
+            {
+                "provider": "immich",
+                "external_id": f"inactive-person-{data.token}",
+                "person_id": inactive_person,
+                "display_name": "妈妈",
+                "inactive_at": CAPTURED,
+            },
+        ])
+        connection.execute(
+            ResourcePersonRelationORM.__table__.insert(),
+            [
+                {
+                    "resource_id": ocr_id,
+                    "person_id": person_a,
+                    "provider": "immich",
+                    "inactive_at": None,
+                },
+                {
+                    "resource_id": document_id,
+                    "person_id": person_a,
+                    "provider": "other",
+                    "inactive_at": None,
+                },
+                {
+                    "resource_id": multi_id,
+                    "person_id": person_b,
+                    "provider": "other",
+                    "inactive_at": None,
+                },
+                {
+                    "resource_id": missing_id,
+                    "person_id": inactive_person,
+                    "provider": "immich",
+                    "inactive_at": None,
+                },
+            ],
+        )
+        unrelated_ocr = _statement(
+            missing_id,
+            "media.ocr_text",
+            string_value="妈妈",
+            generator="person-label-isolation-test",
+        )
+        unrelated_ocr["id"] = unrelated_ocr_id
+        connection.execute(
+            ResourceStatementORM.__table__.insert(),
+            unrelated_ocr,
+        )
+
+    try:
+        service = RichRetrievalService(repository)
+        select_statements: list[str] = []
+
+        def record_select(_, __, statement, *args) -> None:
+            if statement.lstrip().upper().startswith("SELECT"):
+                select_statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", record_select)
+        try:
+            all_matches = service.retrieve_resources(
+                primary=PersonLabelPrimary("person_label", "妈妈"),
+                limit=20,
+            )
+        finally:
+            event.remove(engine, "before_cursor_execute", record_select)
+        candidate_sql = next(
+            statement
+            for statement in select_statements
+            if "resource_person_relations" in statement
+        )
+        assert "JOIN person_sources" in candidate_sql
+        assert "lower(person_sources.display_name)" in candidate_sql
+        assert "resource_person_relations.inactive_at IS NULL" in (
+            candidate_sql
+        )
+        expected_ids = sorted((ocr_id, document_id, multi_id))
+        assert [
+            UUID(hit.resource.resource_ref.removeprefix("pdi:resource:"))
+            for hit in all_matches.hits
+        ] == expected_ids
+        assert [hit.source_rank for hit in all_matches.hits] == [1, 2, 3]
+        assert all_matches.stages[0].stage == "person_label_primary"
+        assert data.missing_ref not in {
+            hit.resource.resource_ref for hit in all_matches.hits
+        }
+
+        images = service.retrieve_resources(
+            primary=PersonLabelPrimary("person_label", "妈妈"),
+            filters=RichFilters(mime_category="image"),
+            limit=20,
+        )
+        assert {
+            hit.resource.resource_ref for hit in images.hits
+        } == {data.ocr_ref, data.multi_ref}
+
+        immich_only = service.retrieve_resources(
+            primary=PersonLabelPrimary(
+                "person_label",
+                "妈妈",
+                "immich",
+            ),
+            limit=20,
+        )
+        assert {
+            hit.resource.resource_ref for hit in immich_only.hits
+        } == {data.ocr_ref, data.document_ref}
+
+        alternate_provider_label = service.retrieve_resources(
+            primary=PersonLabelPrimary("person_label", "mom"),
+            limit=20,
+        )
+        assert {
+            hit.resource.resource_ref
+            for hit in alternate_provider_label.hits
+        } == {data.ocr_ref, data.document_ref}
+
+        with engine.begin() as connection:
+            connection.execute(
+                update(PersonSourceORM)
+                .where(
+                    PersonSourceORM.provider == "immich",
+                    PersonSourceORM.external_id
+                    == f"person-a-{data.token}",
+                )
+                .values(display_name="母亲")
+            )
+        old_immich_label = service.retrieve_resources(
+            primary=PersonLabelPrimary(
+                "person_label",
+                "妈妈",
+                "immich",
+            ),
+            limit=20,
+        )
+        assert old_immich_label.hits == ()
+        renamed = service.retrieve_resources(
+            primary=PersonLabelPrimary(
+                "person_label",
+                "母亲",
+                "immich",
+            ),
+            limit=20,
+        )
+        assert {
+            hit.resource.resource_ref for hit in renamed.hits
+        } == {data.ocr_ref, data.document_ref}
+
+        no_inference = service.retrieve_resources(
+            primary=PersonLabelPrimary("person_label", "我妈"),
+            limit=20,
+        )
+        assert no_inference.hits == ()
+
+        observation_match = service.retrieve_resources(
+            primary=ObservationTextPrimary(
+                "observation_text",
+                "妈妈",
+                "media.ocr_text",
+            ),
+            limit=20,
+        )
+        assert [
+            hit.resource.resource_ref for hit in observation_match.hits
+        ] == [data.missing_ref]
+
+        with engine.begin() as connection:
+            connection.execute(text("SET LOCAL enable_seqscan = off"))
+            plan = "\n".join(connection.execute(text(
+                "EXPLAIN SELECT DISTINCT a.id, a.created_at "
+                "FROM assets a "
+                "JOIN resource_person_relations r "
+                "ON r.resource_id = a.id "
+                "JOIN person_sources p ON p.person_id = r.person_id "
+                "WHERE p.inactive_at IS NULL "
+                "AND p.display_name IS NOT NULL "
+                "AND lower(p.display_name) = lower(:label) "
+                "AND r.inactive_at IS NULL "
+                "ORDER BY a.created_at DESC, a.id ASC LIMIT 50"
+            ), {"label": "妈妈"}).scalars())
+        assert "ix_person_sources_active_display_name" in plan
+        assert (
+            "ix_resource_person_relations_active_person_resource" in plan
+        )
+    finally:
+        with engine.begin() as connection:
+            connection.execute(
+                ResourceStatementORM.__table__.delete().where(
+                    ResourceStatementORM.id == unrelated_ocr_id
+                )
+            )
+            connection.execute(
+                ResourcePersonRelationORM.__table__.delete().where(
+                    ResourcePersonRelationORM.person_id.in_(people)
+                )
+            )
+            connection.execute(
+                PersonSourceORM.__table__.delete().where(
+                    PersonSourceORM.person_id.in_(people)
+                )
+            )
+            connection.execute(
+                PersonORM.__table__.delete().where(
+                    PersonORM.id.in_(people)
+                )
+            )
 
 
 def test_multiple_current_captured_claims_fail_whole_request(

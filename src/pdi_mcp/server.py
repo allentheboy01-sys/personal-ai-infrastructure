@@ -277,7 +277,7 @@ def create_server(
         filters: RichFilters | None = None,
         limit: int = 10,
     ) -> ToolResult:
-        """Compose one content candidate source with deterministic filters.
+        """Compose one bounded candidate source with deterministic filters.
 
         Call this tool directly, without first calling pdi_retrieve_resources,
         when one request combines a content or visual concept with a PDI
@@ -299,7 +299,12 @@ def create_server(
         document-excerpt substring matching. It directly finds matching
         Resources but does not return the body; fetch observations only for
         the small selected set when the user needs excerpt content. This does
-        not merge candidate sources or return raw observation bodies.
+        not merge candidate sources or return raw observation bodies. Use
+        person_label only for an exact Provider-declared Person label. It
+        finds Resources through current PDI Resource-Person relations; it
+        does not infer aliases, family relationships, or fuzzy matches. The
+        optional provider on that primary restricts label provenance, while
+        filters.provider continues to restrict Resource sources.
         Result limit defaults to 10 and must not exceed 20.
         """
 

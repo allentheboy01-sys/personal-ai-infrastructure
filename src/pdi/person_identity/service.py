@@ -23,5 +23,5 @@ class PersonSyncService:
         inventory = self._adapter.scan()
         return self._repository.reconcile_inventory(
             inventory.provider,
-            inventory.external_ids,
+            inventory.identities,
         )

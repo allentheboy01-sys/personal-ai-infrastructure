@@ -8,11 +8,15 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
-from pdi.person_identity import PersonRepository
+from pdi.person_identity import PersonRepository, ProviderPersonIdentity
 from tests.integration.database_guard import require_safe_test_database_url
 
 
 NOW = datetime(2026, 8, 18, 8, tzinfo=UTC)
+
+
+def identities(*values: tuple[str, str | None]) -> tuple[ProviderPersonIdentity, ...]:
+    return tuple(ProviderPersonIdentity(*value) for value in values)
 
 
 @pytest.fixture
@@ -41,26 +45,39 @@ def test_identity_idempotency_lifecycle_merge_and_split_are_conservative(
 ) -> None:
     _, repository = people_repository
     first = repository.reconcile_inventory(
-        "immich", ("person-a", "person-b"), now=NOW
+        "immich",
+        identities(("person-a", "妈妈"), ("person-b", None)),
+        now=NOW,
     )
     source_a = repository.find_source("immich", "person-a")
     source_b = repository.find_source("immich", "person-b")
     assert first.created == 2
+    assert first.labels_updated == 1
     assert source_a is not None and source_b is not None
+    assert source_a.display_name == "妈妈"
+    assert source_b.display_name is None
 
     # Provider display metadata and membership are deliberately absent from
     # the identity input: the same external IDs cannot churn identity.
     second = repository.reconcile_inventory(
-        "immich", ("person-a", "person-b"), now=NOW + timedelta(minutes=1)
+        "immich",
+        identities(("person-a", "妈妈"), ("person-b", None)),
+        now=NOW + timedelta(minutes=1),
     )
-    assert second == second.__class__(2, 0, 2, 0, 0)
+    assert second == second.__class__(2, 0, 2, 0, 0, 0)
     assert repository.find_source("immich", "person-a").person_id == source_a.person_id
 
     # Merge-like disappearance only inactivates the missing source.
     merge_like = repository.reconcile_inventory(
-        "immich", ("person-a",), now=NOW + timedelta(minutes=2)
+        "immich",
+        identities(("person-a", "母亲")),
+        now=NOW + timedelta(minutes=2),
     )
     assert merge_like.inactivated == 1
+    assert merge_like.labels_updated == 1
+    renamed_a = repository.find_source("immich", "person-a")
+    assert renamed_a.person_id == source_a.person_id
+    assert renamed_a.display_name == "母亲"
     inactive_b = repository.find_source("immich", "person-b")
     assert inactive_b.person_id == source_b.person_id
     assert inactive_b.inactive_at == NOW + timedelta(minutes=2)
@@ -68,12 +85,17 @@ def test_identity_idempotency_lifecycle_merge_and_split_are_conservative(
     # Reappearance keeps identity; a split-like new ID creates a new Person.
     split_like = repository.reconcile_inventory(
         "immich",
-        ("person-a", "person-b", "person-c"),
+        identities(
+            ("person-a", "母亲"),
+            ("person-b", "重新出现"),
+            ("person-c", None),
+        ),
         now=NOW + timedelta(minutes=3),
     )
     assert split_like.reactivated == 1
     assert split_like.created == 1
     assert repository.find_source("immich", "person-b").person_id == source_b.person_id
+    assert repository.find_source("immich", "person-b").display_name == "重新出现"
     source_c = repository.find_source("immich", "person-c")
     assert source_c.person_id not in {source_a.person_id, source_b.person_id}
     with people_repository[0].connect() as connection:

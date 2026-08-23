@@ -2,7 +2,7 @@ from typing import Any
 
 import requests
 
-from .models import EnumerablePersonInventory
+from .models import EnumerablePersonInventory, ProviderPersonIdentity
 
 
 class ImmichEnumerablePeopleAdapter:
@@ -23,7 +23,7 @@ class ImmichEnumerablePeopleAdapter:
 
     def scan(self) -> EnumerablePersonInventory:
         page = 1
-        external_ids: list[str] = []
+        identities: list[ProviderPersonIdentity] = []
         seen: set[str] = set()
         reported_total: int | None = None
 
@@ -57,7 +57,10 @@ class ImmichEnumerablePeopleAdapter:
                 if external_id in seen:
                     raise ValueError("Immich People scan returned duplicate id")
                 seen.add(external_id)
-                external_ids.append(external_id)
+                identities.append(ProviderPersonIdentity(
+                    external_id=external_id,
+                    display_name=item.get("name"),
+                ))
 
             has_next = payload.get("hasNextPage")
             if not isinstance(has_next, bool):
@@ -68,7 +71,7 @@ class ImmichEnumerablePeopleAdapter:
 
         return EnumerablePersonInventory(
             provider=self.provider,
-            external_ids=tuple(external_ids),
+            identities=tuple(identities),
             reported_total=reported_total if reported_total is not None else 0,
         )
 

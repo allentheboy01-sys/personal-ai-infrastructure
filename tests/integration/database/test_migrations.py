@@ -36,6 +36,7 @@ DATA_STATUS_V0_1_REVISION = "4d8a2c6e9f10"
 PERSON_IDENTITY_V0_1_REVISION = "6a7c8d9e0f12"
 RESOURCE_PERSON_RELATION_V0_1_REVISION = "9c4e1a7b2d30"
 TYPED_RESOURCE_V0_1_REVISION = "3b1e6f8a4c20"
+PERSON_LABEL_RETRIEVAL_V0_1_REVISION = "7d2f4a6b8c10"
 
 
 def _alembic_config(connection) -> Config:
@@ -195,7 +196,7 @@ def test_empty_database_upgrade_and_schema(
                 "SELECT version_num "
                 "FROM alembic_version"
             )
-        ).scalar_one() == TYPED_RESOURCE_V0_1_REVISION
+        ).scalar_one() == PERSON_LABEL_RETRIEVAL_V0_1_REVISION
 
 
 def test_query_v0_2_indexes_upgrade_reflection_and_downgrade(
@@ -420,13 +421,18 @@ def test_person_identity_schema_constraints_and_downgrade(
             for column in inspector.get_columns("person_sources")
         }
         assert source_columns == {
-            "provider", "external_id", "person_id", "inactive_at"
+            "provider",
+            "external_id",
+            "person_id",
+            "display_name",
+            "inactive_at",
         }
         assert "id" not in source_columns
         assert {
             check["name"]
             for check in inspector.get_check_constraints("person_sources")
         } == {
+            "ck_person_sources_display_name_nonempty",
             "ck_person_sources_external_id_nonempty",
             "ck_person_sources_provider_nonempty",
         }
@@ -438,7 +444,18 @@ def test_person_identity_schema_constraints_and_downgrade(
             for foreign_key in inspector.get_foreign_keys("person_sources")
         } == {"fk_person_sources_person": "RESTRICT"}
         assert inspector.get_indexes("persons") == []
-        assert inspector.get_indexes("person_sources") == []
+        source_indexes = {
+            index["name"]: index
+            for index in inspector.get_indexes("person_sources")
+        }
+        label_index = source_indexes[
+            "ix_person_sources_active_display_name"
+        ]
+        assert label_index["unique"] is False
+        assert label_index["column_names"] == [None, "person_id"]
+        assert label_index["dialect_options"][
+            "postgresql_where"
+        ] is not None
 
     _run_alembic(
         migration_engine, command.downgrade, DATA_STATUS_V0_1_REVISION
@@ -483,7 +500,7 @@ def test_upgrade_downgrade_upgrade(
     with migration_engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == TYPED_RESOURCE_V0_1_REVISION
+        ).scalar_one() == PERSON_LABEL_RETRIEVAL_V0_1_REVISION
 
 
 def test_resource_person_relation_schema_constraints_and_downgrade(
@@ -511,7 +528,23 @@ def test_resource_person_relation_schema_constraints_and_downgrade(
             "fk_resource_person_relations_person": "RESTRICT",
             "fk_resource_person_relations_resource": "RESTRICT",
         }
-        assert inspector.get_indexes("resource_person_relations") == []
+        relation_indexes = {
+            index["name"]: index
+            for index in inspector.get_indexes(
+                "resource_person_relations"
+            )
+        }
+        reverse_index = relation_indexes[
+            "ix_resource_person_relations_active_person_resource"
+        ]
+        assert reverse_index["column_names"] == [
+            "person_id",
+            "resource_id",
+        ]
+        assert reverse_index["unique"] is False
+        assert reverse_index["dialect_options"][
+            "postgresql_where"
+        ] is not None
 
     _run_alembic(
         migration_engine, command.downgrade, PERSON_IDENTITY_V0_1_REVISION
@@ -521,6 +554,80 @@ def test_resource_person_relation_schema_constraints_and_downgrade(
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one() == PERSON_IDENTITY_V0_1_REVISION
+
+
+def test_person_label_migration_preserves_identity_and_relations(
+    migration_engine: Engine,
+) -> None:
+    _run_alembic(
+        migration_engine,
+        command.upgrade,
+        TYPED_RESOURCE_V0_1_REVISION,
+    )
+    person_id = uuid4()
+    asset_id = uuid4()
+    blob_id = uuid4()
+    source_id = uuid4()
+    with migration_engine.begin() as connection:
+        connection.execute(text(
+            "INSERT INTO persons (id, created_at) VALUES (:id, now())"
+        ), {"id": person_id})
+        connection.execute(text(
+            "INSERT INTO person_sources "
+            "(provider, external_id, person_id, inactive_at) "
+            "VALUES ('immich', 'person-a', :person_id, NULL)"
+        ), {"person_id": person_id})
+        connection.execute(text(
+            "INSERT INTO assets "
+            "(id, resource_type, title, metadata, created_at, updated_at) "
+            "VALUES (:id, 'file', 'photo.jpg', '{}'::jsonb, now(), now())"
+        ), {"id": asset_id})
+        connection.execute(text(
+            "INSERT INTO blobs (id, asset_id, hash, size, mime_type) "
+            "VALUES (:id, :asset_id, 'hash-a', 1, 'image/jpeg')"
+        ), {"id": blob_id, "asset_id": asset_id})
+        connection.execute(text(
+            "INSERT INTO asset_sources "
+            "(id, blob_id, provider, external_id, metadata, is_active) "
+            "VALUES (:id, :blob_id, 'immich', 'asset-a', "
+            "'{}'::jsonb, TRUE)"
+        ), {"id": source_id, "blob_id": blob_id})
+        connection.execute(text(
+            "INSERT INTO resource_person_relations "
+            "(resource_id, person_id, provider, inactive_at) "
+            "VALUES (:resource_id, :person_id, 'immich', NULL)"
+        ), {"resource_id": asset_id, "person_id": person_id})
+
+    _run_alembic(migration_engine, command.upgrade, "head")
+    with migration_engine.connect() as connection:
+        assert connection.execute(text(
+            "SELECT person_id, display_name, inactive_at "
+            "FROM person_sources WHERE provider = 'immich' "
+            "AND external_id = 'person-a'"
+        )).one() == (person_id, None, None)
+        assert connection.execute(text(
+            "SELECT resource_id, person_id, provider, inactive_at "
+            "FROM resource_person_relations"
+        )).one() == (asset_id, person_id, "immich", None)
+
+    _run_alembic(
+        migration_engine,
+        command.downgrade,
+        TYPED_RESOURCE_V0_1_REVISION,
+    )
+    with migration_engine.connect() as connection:
+        assert "display_name" not in {
+            column["name"]
+            for column in inspect(connection).get_columns("person_sources")
+        }
+        assert connection.execute(text(
+            "SELECT person_id, inactive_at FROM person_sources "
+            "WHERE provider = 'immich' AND external_id = 'person-a'"
+        )).one() == (person_id, None)
+        assert connection.execute(text(
+            "SELECT resource_id, person_id, provider, inactive_at "
+            "FROM resource_person_relations"
+        )).one() == (asset_id, person_id, "immich", None)
 
 
 def test_typed_resource_schema_backfill_constraints_and_downgrade(

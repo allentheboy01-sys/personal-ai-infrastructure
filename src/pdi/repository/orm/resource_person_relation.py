@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,3 +39,11 @@ class ResourcePersonRelationORM(Base):
     inactive_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+Index(
+    "ix_resource_person_relations_active_person_resource",
+    ResourcePersonRelationORM.person_id,
+    ResourcePersonRelationORM.resource_id,
+    postgresql_where=ResourcePersonRelationORM.inactive_at.is_(None),
+)

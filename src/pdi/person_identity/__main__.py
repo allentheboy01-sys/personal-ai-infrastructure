@@ -36,6 +36,7 @@ def main() -> int:
         f"reactivated_sources={result.reactivated} "
         f"inactivated_sources={result.inactivated} "
         f"unchanged_sources={result.existing} "
+        f"labels_updated={result.labels_updated} "
         f"duration={duration:.2f}s"
     )
     return 0
