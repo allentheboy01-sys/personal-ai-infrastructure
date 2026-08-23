@@ -178,7 +178,7 @@ export function AppShell() {
     <section className="main-column">
       <TopBar title={title} eyebrow={eyebrow} onMenu={() => setDrawer(true)} panelAvailable={initial.review ? scene === 'working' : page === 'chat' && (liveChat.running || Boolean(liveChat.executionTrace))} panelActive={!initial.review && liveChat.running} onPanel={showExecution} />
       {page === 'chat' && scene === 'home' && <HomePage onStart={(prompt) => { setScene('conversation'); if (!initial.review) void liveChat.submit(prompt) }} />}
-      {page === 'chat' && scene !== 'home' && <ChatPage working={initial.review ? scene === 'working' : liveChat.running} stopping={!initial.review && liveChat.cancelling} onResource={showResource} messages={initial.review ? undefined : liveChat.messages} phase={initial.review ? 'reviewing' : liveChat.phase} onSubmit={initial.review ? undefined : liveChat.submit} onStop={initial.review ? undefined : liveChat.cancel} />}
+      {page === 'chat' && scene !== 'home' && <ChatPage working={initial.review ? scene === 'working' : liveChat.running} stopping={!initial.review && liveChat.cancelling} onResource={showResource} messages={initial.review ? undefined : liveChat.messages} phase={initial.review ? 'reviewing' : liveChat.phase} progress={initial.review ? undefined : liveChat.progress} conversationKey={initial.review ? 'review' : liveChat.conversationId} turnStartedAtMs={initial.review ? null : liveChat.turnStartedAtMs} onSubmit={initial.review ? undefined : liveChat.submit} onStop={initial.review ? undefined : liveChat.cancel} />}
       {page === 'resources' && <ResourcesPage onResource={showResource} review={initial.review} />}
       {page === 'providers' && <ProvidersPage onProvider={showProvider} review={initial.review} />}
     </section>

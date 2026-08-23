@@ -164,6 +164,7 @@ describe('canonical conversation shell', () => {
     act(() => MockEventSource.instances[0].emit('tool.started', { turn_id: 'turn-mobile', sequence: 1, type: 'tool.started', operation_id: 1, category: 'exec', capability: 'run_python' }))
 
     expect(screen.queryByRole('dialog', { name: 'Work' })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Working through the calculation'))
     await userEvent.click(screen.getByRole('button', { name: 'Open work panel' }))
     const dialog = screen.getByRole('dialog', { name: 'Work' })
     expect(dialog).toBeInTheDocument()

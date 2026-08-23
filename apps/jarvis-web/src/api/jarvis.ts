@@ -35,6 +35,20 @@ export interface ApiConversation extends ApiConversationSummary {
   messages: ApiMessage[]
 }
 
+export interface ApiTurn {
+  id: string
+  conversation_id: string
+  user_message_id: string
+  assistant_message_id: string | null
+  status: string
+  started_at: string
+  completed_at: string | null
+  error_code: string | null
+  sequence: number | null
+  phase: 'thinking' | 'searching' | 'reviewing' | 'computing' | 'composing' | null
+  provisional_text: string | null
+}
+
 export type RuntimeToolCategory = 'pdi' | 'exec' | 'web' | 'action' | 'other'
 export type RuntimeCapability = 'search_personal_resources' | 'read_personal_resource' | 'review_personal_resources' | 'run_python' | 'write_workspace' | 'read_workspace' | 'manage_workspace' | 'use_tool'
 
@@ -63,6 +77,7 @@ export const jarvisApi = {
   listConversations: () => json<ApiConversationSummary[]>(fetch('/api/v1/conversations', { cache: 'no-store' })),
   createConversation: (title: string) => json<ApiConversationSummary>(fetch('/api/v1/conversations', { method: 'POST', headers: writeHeaders, body: JSON.stringify({ title }) })),
   getConversation: (id: string) => json<ApiConversation>(fetch(`/api/v1/conversations/${encodeURIComponent(id)}`, { cache: 'no-store' })),
+  getTurn: (turnId: string) => json<ApiTurn>(fetch(`/api/v1/turns/${encodeURIComponent(turnId)}`, { cache: 'no-store' })),
   createTurn: (conversationId: string, body: string) => json<{ turn_id: string }>(fetch(`/api/v1/conversations/${encodeURIComponent(conversationId)}/turns`, { method: 'POST', headers: writeHeaders, body: JSON.stringify({ body }) })),
   cancelTurn: (turnId: string) => json<{ status: string }>(fetch(`/api/v1/turns/${encodeURIComponent(turnId)}/cancel`, { method: 'POST', headers: writeHeaders, body: '{}' })),
   eventsUrl: (turnId: string) => `/api/v1/turns/${encodeURIComponent(turnId)}/events`,

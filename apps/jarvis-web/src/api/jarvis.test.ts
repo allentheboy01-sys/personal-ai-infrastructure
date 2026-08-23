@@ -24,4 +24,13 @@ describe('Jarvis API boundary', () => {
     await expect(jarvisApi.listConversations()).resolves.toEqual(conversations)
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/conversations', { cache: 'no-store' })
   })
+
+  it('reads authoritative Turn status without mutating it', async () => {
+    const turn = { id: 'turn-1', conversation_id: 'conversation-1', status: 'running', phase: 'searching' }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(turn), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(jarvisApi.getTurn('turn-1')).resolves.toEqual(turn)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/turns/turn-1', { cache: 'no-store' })
+  })
 })

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { jarvisApi, type ApiConversation, type RuntimeEvent } from '../../api/jarvis'
-import type { AgentPhase, ConversationMessage } from '../../models/chat'
+import type { AgentPhase, AgentProgress, ConversationMessage } from '../../models/chat'
 import { resourceSummary } from '../../api/productViews'
 import { createExecutionTrace, reduceExecutionTrace, type ExecutionTrace } from './executionTrace'
 
@@ -10,6 +10,13 @@ interface ChatOptions {
   onConversationChanged?: () => void
 }
 
+interface ActiveTurnObservation {
+  turnId: string
+  startedAtMs: number
+}
+
+const progressFromPhase: Record<AgentPhase, AgentProgress> = { thinking: 'processing', searching: 'searching', reviewing: 'reviewing', computing: 'computing', composing: 'composing' }
+
 const messagesFrom = (conversation: ApiConversation): ConversationMessage[] => conversation.messages.map(({ id, role, body, resources }) => ({ id, role, body, resources: resources.map(resourceSummary) }))
 
 export function useJarvisChat(initialConversationId: string | null, initialTurnId: string | null = null, options: ChatOptions = {}) {
@@ -17,14 +24,18 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
   const [conversationTitle, setConversationTitle] = useState<string | null>(null)
   const [messages, setMessages] = useState<ConversationMessage[]>([])
   const [phase, setPhase] = useState<AgentPhase>('thinking')
+  const [progress, setProgress] = useState<AgentProgress | null>(initialTurnId ? 'processing' : null)
   const [running, setRunning] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  const [activeTurnId, setActiveTurnId] = useState<string | null>(initialTurnId)
+  const [turnStartedAtMs, setTurnStartedAtMs] = useState<number | null>(initialTurnId ? Date.now() : null)
   const [executionTrace, setExecutionTrace] = useState<ExecutionTrace | null>(initialTurnId ? createExecutionTrace(initialTurnId) : null)
   const [error, setError] = useState<string | null>(null)
   const conversationRef = useRef(initialConversationId)
   const turnRef = useRef<string | null>(null)
   const streamRef = useRef<EventSource | null>(null)
   const generationRef = useRef(0)
+  const activeTurnsRef = useRef(new Map<string, ActiveTurnObservation>(initialConversationId && initialTurnId ? [[initialConversationId, { turnId: initialTurnId, startedAtMs: Date.now() }]] : []))
   const changedRef = useRef(options.onConversationChanged)
   changedRef.current = options.onConversationChanged
 
@@ -40,6 +51,10 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
     setMessages(messagesFrom(conversation))
   }, [])
 
+  const forgetActiveTurn = useCallback((id: string, turnId: string) => {
+    if (activeTurnsRef.current.get(id)?.turnId === turnId) activeTurnsRef.current.delete(id)
+  }, [])
+
   const watch = useCallback((turnId: string, id: string) => {
     closeStream()
     const stream = new EventSource(jarvisApi.eventsUrl(turnId))
@@ -48,7 +63,15 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
       if (streamRef.current !== stream || conversationRef.current !== id || turnRef.current !== turnId) return
       const event = JSON.parse(raw.data) as RuntimeEvent
       setExecutionTrace((current) => reduceExecutionTrace(current, event))
-      if (event.type === 'phase.changed' && event.phase) setPhase(event.phase)
+      if (event.type === 'turn.started') setProgress('processing')
+      if (event.type === 'phase.changed' && event.phase) {
+        setPhase(event.phase)
+        setProgress(progressFromPhase[event.phase])
+      }
+      if (event.type === 'tool.started' && event.category === 'pdi') setProgress('searching')
+      if (event.type === 'tool.started' && event.category === 'exec') setProgress('computing')
+      if (event.type === 'tool.completed' && event.category === 'pdi') setProgress('search_complete')
+      if (event.type === 'tool.completed' && event.category === 'exec') setProgress('reviewing')
       if (event.type === 'message.delta' && event.delta) {
         setMessages((current) => {
           const withoutDraft = current.filter((message) => message.id !== `draft:${turnId}`)
@@ -57,13 +80,13 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
         })
       }
       if (event.type === 'turn.completed') {
-        closeStream(); setRunning(false); setCancelling(false); turnRef.current = null
+        closeStream(); forgetActiveTurn(id, turnId); setRunning(false); setCancelling(false); setProgress(null); setActiveTurnId(null); setTurnStartedAtMs(null); turnRef.current = null
         window.history.replaceState(null, '', `?page=chat&conversation=${encodeURIComponent(id)}`)
         void load(id).catch(() => setError('conversation_refresh_failed'))
         changedRef.current?.()
       }
       if (event.type === 'turn.failed' || event.type === 'turn.cancelled') {
-        closeStream(); setRunning(false); setCancelling(false); turnRef.current = null
+        closeStream(); forgetActiveTurn(id, turnId); setRunning(false); setCancelling(false); setProgress(null); setActiveTurnId(null); setTurnStartedAtMs(null); turnRef.current = null
         window.history.replaceState(null, '', `?page=chat&conversation=${encodeURIComponent(id)}`)
         setMessages((current) => current.filter((message) => message.id !== `draft:${turnId}`))
         if (event.type === 'turn.failed') setError(event.error_code ?? 'turn_failed')
@@ -72,33 +95,81 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
     }
     eventTypes.forEach((type) => stream.addEventListener(type, receive as EventListener))
     stream.onerror = () => {
-      if (streamRef.current === stream && stream.readyState === EventSource.CLOSED) setError('stream_unavailable')
+      if (streamRef.current !== stream || stream.readyState !== EventSource.CLOSED) return
+      void jarvisApi.getTurn(turnId).then((turn) => {
+        if (streamRef.current !== stream || conversationRef.current !== id || turnRef.current !== turnId) return
+        if (turn.status === 'running') { setError('stream_unavailable'); return }
+        closeStream(); forgetActiveTurn(id, turnId); setRunning(false); setCancelling(false); setProgress(null); setActiveTurnId(null); setTurnStartedAtMs(null); turnRef.current = null
+        window.history.replaceState(null, '', `?page=chat&conversation=${encodeURIComponent(id)}`)
+        void load(id).catch(() => setError('conversation_refresh_failed'))
+        changedRef.current?.()
+      }).catch(() => setError('stream_unavailable'))
     }
-  }, [closeStream, load])
+  }, [closeStream, forgetActiveTurn, load])
 
   const selectConversation = useCallback(async (id: string, turnId: string | null = null) => {
     const generation = ++generationRef.current
+    const known = turnId ? { turnId, startedAtMs: Date.now() } : activeTurnsRef.current.get(id) ?? null
+    if (turnId) activeTurnsRef.current.set(id, known!)
     closeStream()
     conversationRef.current = id
-    turnRef.current = turnId
+    turnRef.current = known?.turnId ?? null
     setConversationId(id)
     setConversationTitle(null)
     setMessages([])
     setPhase('thinking')
-    setRunning(Boolean(turnId))
+    setProgress(known ? 'processing' : null)
+    setRunning(Boolean(known))
     setCancelling(false)
-    setExecutionTrace(turnId ? createExecutionTrace(turnId) : null)
+    setActiveTurnId(known?.turnId ?? null)
+    setTurnStartedAtMs(known?.startedAtMs ?? null)
+    setExecutionTrace(known ? createExecutionTrace(known.turnId) : null)
     setError(null)
     try {
       await load(id, generation)
-      if (generation === generationRef.current && conversationRef.current === id && turnId) watch(turnId, id)
     } catch {
       if (generation === generationRef.current) {
         setRunning(false)
+        setProgress(null)
+        setActiveTurnId(null)
+        setTurnStartedAtMs(null)
+        setExecutionTrace(null)
+        turnRef.current = null
         setError('conversation_unavailable')
       }
+      return
     }
-  }, [closeStream, load, watch])
+    if (generation !== generationRef.current || conversationRef.current !== id || !known) return
+    try {
+      const turn = await jarvisApi.getTurn(known.turnId)
+      if (generation !== generationRef.current || conversationRef.current !== id || turnRef.current !== known.turnId) return
+      if (turn.conversation_id !== id) {
+        forgetActiveTurn(id, known.turnId); turnRef.current = null; setRunning(false); setProgress(null); setActiveTurnId(null); setTurnStartedAtMs(null); setExecutionTrace(null); setError('turn_conversation_mismatch')
+        return
+      }
+      if (turn.status !== 'running') {
+        forgetActiveTurn(id, known.turnId); turnRef.current = null; setRunning(false); setProgress(null); setActiveTurnId(null); setTurnStartedAtMs(null); setExecutionTrace(null)
+        await load(id, generation)
+        changedRef.current?.()
+        return
+      }
+      const startedAtMs = Date.parse(turn.started_at)
+      const authoritativeStart = Number.isFinite(startedAtMs) ? startedAtMs : known.startedAtMs
+      activeTurnsRef.current.set(id, { turnId: known.turnId, startedAtMs: authoritativeStart })
+      setRunning(true)
+      setPhase(turn.phase ?? 'thinking')
+      setProgress(progressFromPhase[turn.phase ?? 'thinking'])
+      setActiveTurnId(known.turnId)
+      setTurnStartedAtMs(authoritativeStart)
+      window.history.replaceState(null, '', `?page=chat&conversation=${encodeURIComponent(id)}&turn=${encodeURIComponent(known.turnId)}`)
+      watch(known.turnId, id)
+    } catch {
+      if (generation === generationRef.current && conversationRef.current === id) {
+        setRunning(true)
+        setError('turn_status_unavailable')
+      }
+    }
+  }, [closeStream, forgetActiveTurn, load, watch])
 
   const resetConversation = useCallback(() => {
     generationRef.current += 1
@@ -109,8 +180,11 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
     setConversationTitle(null)
     setMessages([])
     setPhase('thinking')
+    setProgress(null)
     setRunning(false)
     setCancelling(false)
+    setActiveTurnId(null)
+    setTurnStartedAtMs(null)
     setExecutionTrace(null)
     setError(null)
   }, [closeStream])
@@ -129,6 +203,8 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
     setError(null)
     setCancelling(false)
     setExecutionTrace(null)
+    setProgress('processing')
+    setTurnStartedAtMs(Date.now())
     const generation = generationRef.current
     let id = conversationRef.current
     if (!id) {
@@ -146,8 +222,12 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
     setPhase('thinking')
     try {
       const { turn_id: turnId } = await jarvisApi.createTurn(id, body)
+      const startedAtMs = Date.now()
+      activeTurnsRef.current.set(id, { turnId, startedAtMs })
       if (generation !== generationRef.current || conversationRef.current !== id) return
       turnRef.current = turnId
+      setActiveTurnId(turnId)
+      setTurnStartedAtMs(startedAtMs)
       setExecutionTrace(createExecutionTrace(turnId))
       window.history.replaceState(null, '', `?page=chat&conversation=${encodeURIComponent(id)}&turn=${encodeURIComponent(turnId)}`)
       changedRef.current?.()
@@ -155,6 +235,8 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
     } catch {
       if (generation !== generationRef.current || conversationRef.current !== id) return
       setRunning(false)
+      setProgress(null)
+      setTurnStartedAtMs(null)
       setError('turn_start_failed')
       await load(id).catch(() => undefined)
     }
@@ -173,5 +255,5 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
 
   const clearExecutionTrace = useCallback(() => setExecutionTrace(null), [])
 
-  return { conversationId, conversationTitle, messages, phase, running, cancelling, executionTrace, error, submit, cancel, selectConversation, resetConversation, clearExecutionTrace }
+  return { conversationId, conversationTitle, messages, phase, progress, running, cancelling, activeTurnId, turnStartedAtMs, executionTrace, error, submit, cancel, selectConversation, resetConversation, clearExecutionTrace }
 }
