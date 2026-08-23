@@ -21,7 +21,7 @@ test.describe('deterministic visual review', () => {
   test('desktop Agent Working and Work Panel', async ({ page, isMobile }) => {
     test.skip(isMobile)
     await page.goto('/?page=chat&scene=working')
-    await expect(page.getByText('Reviewing likely matches').first()).toBeVisible()
+    await expect(page.getByRole('status')).toContainText(/Checking the details|Reviewing the response/)
     await page.screenshot({ path: review('desktop-agent-working.png'), fullPage: true })
   })
 

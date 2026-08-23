@@ -29,6 +29,7 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
   const [running, setRunning] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [activeTurnId, setActiveTurnId] = useState<string | null>(initialTurnId)
+  const [activeConversationIds, setActiveConversationIds] = useState<ReadonlySet<string>>(() => new Set(initialConversationId && initialTurnId ? [initialConversationId] : []))
   const [turnStartedAtMs, setTurnStartedAtMs] = useState<number | null>(initialTurnId ? Date.now() : null)
   const [executionTrace, setExecutionTrace] = useState<ExecutionTrace | null>(initialTurnId ? createExecutionTrace(initialTurnId) : null)
   const [error, setError] = useState<string | null>(null)
@@ -52,8 +53,15 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
     setMessages(messagesFrom(conversation))
   }, [])
 
+  const rememberActiveTurn = useCallback((id: string, observation: ActiveTurnObservation) => {
+    activeTurnsRef.current.set(id, observation)
+    setActiveConversationIds(new Set(activeTurnsRef.current.keys()))
+  }, [])
+
   const forgetActiveTurn = useCallback((id: string, turnId: string) => {
-    if (activeTurnsRef.current.get(id)?.turnId === turnId) activeTurnsRef.current.delete(id)
+    if (activeTurnsRef.current.get(id)?.turnId !== turnId) return
+    activeTurnsRef.current.delete(id)
+    setActiveConversationIds(new Set(activeTurnsRef.current.keys()))
   }, [])
 
   const watch = useCallback((turnId: string, id: string) => {
@@ -111,7 +119,7 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
   const selectConversation = useCallback(async (id: string, turnId: string | null = null) => {
     const generation = ++generationRef.current
     const known = turnId ? { turnId, startedAtMs: Date.now() } : activeTurnsRef.current.get(id) ?? null
-    if (turnId) activeTurnsRef.current.set(id, known!)
+    if (turnId) rememberActiveTurn(id, known!)
     closeStream()
     conversationRef.current = id
     turnRef.current = known?.turnId ?? null
@@ -156,7 +164,7 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
       }
       const startedAtMs = Date.parse(turn.started_at)
       const authoritativeStart = Number.isFinite(startedAtMs) ? startedAtMs : known.startedAtMs
-      activeTurnsRef.current.set(id, { turnId: known.turnId, startedAtMs: authoritativeStart })
+      rememberActiveTurn(id, { turnId: known.turnId, startedAtMs: authoritativeStart })
       setRunning(true)
       setPhase(turn.phase ?? 'thinking')
       resetProgress(progressFromPhase[turn.phase ?? 'thinking'])
@@ -170,7 +178,7 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
         setError('turn_status_unavailable')
       }
     }
-  }, [clearProgress, closeStream, forgetActiveTurn, load, resetProgress, watch])
+  }, [clearProgress, closeStream, forgetActiveTurn, load, rememberActiveTurn, resetProgress, watch])
 
   const resetConversation = useCallback(() => {
     generationRef.current += 1
@@ -224,7 +232,7 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
     try {
       const { turn_id: turnId } = await jarvisApi.createTurn(id, body)
       const startedAtMs = Date.now()
-      activeTurnsRef.current.set(id, { turnId, startedAtMs })
+      rememberActiveTurn(id, { turnId, startedAtMs })
       if (generation !== generationRef.current || conversationRef.current !== id) return
       turnRef.current = turnId
       setActiveTurnId(turnId)
@@ -241,7 +249,7 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
       setError('turn_start_failed')
       await load(id).catch(() => undefined)
     }
-  }, [clearProgress, load, resetProgress, watch])
+  }, [clearProgress, load, rememberActiveTurn, resetProgress, watch])
 
   const cancel = useCallback(async () => {
     if (!turnRef.current || cancelling) return
@@ -256,5 +264,5 @@ export function useJarvisChat(initialConversationId: string | null, initialTurnI
 
   const clearExecutionTrace = useCallback(() => setExecutionTrace(null), [])
 
-  return { conversationId, conversationTitle, messages, phase, progress, running, cancelling, activeTurnId, turnStartedAtMs, executionTrace, error, submit, cancel, selectConversation, resetConversation, clearExecutionTrace }
+  return { conversationId, conversationTitle, messages, phase, progress, running, cancelling, activeTurnId, activeConversationIds, turnStartedAtMs, executionTrace, error, submit, cancel, selectConversation, resetConversation, clearExecutionTrace }
 }

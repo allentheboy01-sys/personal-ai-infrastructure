@@ -54,13 +54,16 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .nav-list button { height: 42px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; display: flex; gap: 11px; align-items: center; cursor: pointer; color: var(--ink-soft); font-size: 14px; }
 .nav-list button:hover, .nav-list button.active { background: #e9e8e2; color: var(--ink); }
 .nav-list button.active { font-weight: 600; }
-.recent-section { margin-top: 28px; min-height: 0; overflow: hidden; }
+.recent-section { flex: 1 1 0; min-height: 0; margin-top: 28px; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
 .recent-section > p { margin: 0 10px 8px; color: var(--ink-faint); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
-.recent-section button { width: 100%; padding: 9px 10px; border: 0; border-radius: 9px; background: transparent; text-align: left; cursor: pointer; display: grid; gap: 3px; }
+.recent-list { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.recent-section button { width: 100%; padding: 9px 10px; border: 0; border-radius: 9px; background: transparent; text-align: left; cursor: pointer; display: grid; grid-template-columns: 15px minmax(0, 1fr); grid-template-areas: "activity title" "activity meta"; column-gap: 6px; row-gap: 3px; }
 .recent-section button:hover, .recent-section button.active { background: #ecebe5; }
-.recent-section button.active span { color: var(--accent-ink); font-weight: 650; }
-.recent-section span { font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.recent-section small { color: var(--ink-faint); font-size: 11px; }
+.recent-section button.active .conversation-title { color: var(--accent-ink); font-weight: 650; }
+.conversation-activity-slot { grid-area: activity; width: 15px; height: 15px; display: grid; place-items: center; align-self: center; color: var(--accent); }
+.conversation-running { animation: rotate 1.25s linear infinite; }
+.conversation-title { grid-area: title; min-width: 0; font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.recent-section small { grid-area: meta; color: var(--ink-faint); font-size: 11px; }
 .recent-section .recent-empty { display: block; padding: 9px 10px; color: var(--ink-faint); font-size: 12px; white-space: normal; }
 .sidebar-footer { margin-top: auto; border-top: 1px solid var(--line); padding: 16px 7px 0; display: flex; align-items: center; gap: 10px; }
 .avatar { width: 30px; height: 30px; border-radius: 50%; background: #d9ddd4; display: grid; place-items: center; font-size: 10px; font-weight: 700; }
@@ -311,7 +314,8 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   .drawer-content { display: block; position: fixed; inset: 0 auto 0 0; width: min(82vw, 300px); z-index: 41; background: var(--canvas); box-shadow: var(--shadow-panel); }
   .drawer-content .sidebar { padding-top: max(18px, env(safe-area-inset-top)); }
   .drawer-content .brand-row { justify-content: flex-start; padding: 0 8px; }
-  .drawer-content .brand-name, .drawer-content .new-chat span, .drawer-content .nav-list span, .drawer-content .recent-section, .drawer-content .sidebar-footer div { display: initial; }
+  .drawer-content .brand-name, .drawer-content .new-chat span, .drawer-content .nav-list span, .drawer-content .sidebar-footer div { display: initial; }
+  .drawer-content .recent-section { display: grid; }
   .drawer-content .new-chat { width: auto; padding: 0 13px; margin-inline: 2px; justify-content: flex-start; }
   .drawer-content .nav-list button { justify-content: flex-start; padding: 0 12px; }
   .drawer-content .sidebar-footer { justify-content: flex-start; padding-inline: 7px; }

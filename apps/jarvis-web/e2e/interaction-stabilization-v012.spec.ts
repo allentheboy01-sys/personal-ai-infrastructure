@@ -134,14 +134,14 @@ test('rapid replayed progress receives a browser paint without delaying terminal
   await page.getByRole('button', { name: 'Send message' }).click()
 
   const status = page.getByRole('status')
-  await expect(status).toContainText('Searching your resources')
+  await expect(status).toContainText(/Searching your resources|Looking through your information/)
   const searchingObservedAt = await page.evaluate(() => performance.now())
   const paintedText = await status.evaluate(async (element) => {
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
     return element.textContent
   })
-  expect(paintedText).toContain('Searching your resources')
-  await expect(status).toContainText('Composing an answer')
+  expect(paintedText).toMatch(/Searching your resources|Looking through your information/)
+  await expect(status).toContainText(/Composing an answer|Organizing the response/)
   const composingObservedAt = await page.evaluate(() => performance.now())
   expect(composingObservedAt - searchingObservedAt).toBeGreaterThan(150)
   await expect(status).toContainText(/1s/)

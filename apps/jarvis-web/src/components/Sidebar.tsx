@@ -1,4 +1,5 @@
-import { Archive, MessageCircle, PanelLeftClose, Plus, Radio } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { Archive, LoaderCircle, MessageCircle, PanelLeftClose, Plus, Radio } from 'lucide-react'
 import type { ApiConversationSummary } from '../api/jarvis'
 import { JarvisMark } from './JarvisMark'
 
@@ -33,14 +34,29 @@ interface SidebarProps {
   onNewConversation: () => void
   conversations?: ApiConversationSummary[]
   activeConversationId?: string | null
+  runningConversationIds?: ReadonlySet<string>
   onConversation?: (id: string) => void
   onClose?: () => void
   compact?: boolean
   review?: boolean
 }
 
-export function Sidebar({ page, onNavigate, onNewConversation, conversations = [], activeConversationId, onConversation, onClose, compact = false, review = false }: SidebarProps) {
+const noRunningConversations: ReadonlySet<string> = new Set()
+
+export function Sidebar({ page, onNavigate, onNewConversation, conversations = [], activeConversationId, runningConversationIds = noRunningConversations, onConversation, onClose, compact = false, review = false }: SidebarProps) {
   const recent = review ? reviewRecent : conversations.map((conversation) => ({ id: conversation.id, title: conversation.title, label: dateLabel(conversation.updated_at) }))
+  const listRef = useRef<HTMLDivElement>(null)
+  const selectedRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    const list = listRef.current
+    const selected = selectedRef.current
+    if (!list || !selected) return
+    const listBounds = list.getBoundingClientRect()
+    const selectedBounds = selected.getBoundingClientRect()
+    if (selectedBounds.top < listBounds.top || selectedBounds.bottom > listBounds.bottom) selected.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activeConversationId, recent.length])
+
   return (
     <aside className={`sidebar ${compact ? 'compact' : ''}`} aria-label="Jarvis sidebar">
       <div className="brand-row">
@@ -58,8 +74,19 @@ export function Sidebar({ page, onNavigate, onNewConversation, conversations = [
       </nav>
       <div className="recent-section">
         <p>Recent</p>
-        {recent.map((conversation) => <button key={conversation.id} className={conversation.id === activeConversationId ? 'active' : ''} onClick={() => review ? onNavigate('chat') : onConversation?.(conversation.id)} aria-current={conversation.id === activeConversationId ? 'page' : undefined}><span>{conversation.title}</span><small>{conversation.label}</small></button>)}
-        {!review && recent.length === 0 && <span className="recent-empty">No conversations yet</span>}
+        <div className="recent-list" ref={listRef} data-testid="conversation-list">
+          {recent.map((conversation) => {
+            const selected = conversation.id === activeConversationId
+            const running = !review && runningConversationIds.has(conversation.id)
+            return <button key={conversation.id} ref={selected ? selectedRef : undefined} className={selected ? 'active' : ''} onClick={() => review ? onNavigate('chat') : onConversation?.(conversation.id)} aria-current={selected ? 'page' : undefined}>
+              <span className="conversation-activity-slot" aria-hidden="true">{running && <LoaderCircle className="conversation-running" size={13} />}</span>
+              <span className="conversation-title">{conversation.title}</span>
+              <small>{conversation.label}</small>
+              {running && <span className="sr-only">Running</span>}
+            </button>
+          })}
+          {!review && recent.length === 0 && <span className="recent-empty">No conversations yet</span>}
+        </div>
       </div>
       <div className="sidebar-footer"><span className="avatar">HF</span><div><strong>Personal Jarvis</strong><small>Private workspace</small></div></div>
     </aside>

@@ -164,7 +164,7 @@ export function AppShell() {
     ? initial.review && scene !== 'home' ? 'Interface review' : liveChat.conversationTitle ?? 'New conversation'
     : page === 'resources' ? 'Resources' : 'Providers'
   const eyebrow = page === 'chat' && scene !== 'home' ? 'Today' : undefined
-  const sidebar = <Sidebar page={page} onNavigate={navigate} onNewConversation={newConversation} conversations={conversations} activeConversationId={liveChat.conversationId} onConversation={openConversation} review={initial.review} />
+  const sidebar = <Sidebar page={page} onNavigate={navigate} onNewConversation={newConversation} conversations={conversations} activeConversationId={liveChat.conversationId} runningConversationIds={liveChat.activeConversationIds} onConversation={openConversation} review={initial.review} />
   const executionPanel: PanelContent | null = executionOpen && liveChat.executionTrace ? {
     eyebrow: 'Live execution',
     title: 'Work',
@@ -174,7 +174,7 @@ export function AppShell() {
 
   return <div className={`app-shell ${visiblePanel ? 'panel-open' : ''}`}>
     <div className="desktop-sidebar">{sidebar}</div>
-    <Dialog.Root open={drawer} onOpenChange={setDrawer}><Dialog.Portal><Dialog.Overlay className="drawer-overlay" /><Dialog.Content className="drawer-content" aria-describedby={undefined}><Dialog.Title className="sr-only">Navigation</Dialog.Title><Sidebar page={page} onNavigate={navigate} onNewConversation={newConversation} conversations={conversations} activeConversationId={liveChat.conversationId} onConversation={openConversation} onClose={() => setDrawer(false)} review={initial.review} /></Dialog.Content></Dialog.Portal></Dialog.Root>
+    <Dialog.Root open={drawer} onOpenChange={setDrawer}><Dialog.Portal><Dialog.Overlay className="drawer-overlay" /><Dialog.Content className="drawer-content" aria-describedby={undefined}><Dialog.Title className="sr-only">Navigation</Dialog.Title><Sidebar page={page} onNavigate={navigate} onNewConversation={newConversation} conversations={conversations} activeConversationId={liveChat.conversationId} runningConversationIds={liveChat.activeConversationIds} onConversation={openConversation} onClose={() => setDrawer(false)} review={initial.review} /></Dialog.Content></Dialog.Portal></Dialog.Root>
     <section className="main-column">
       <TopBar title={title} eyebrow={eyebrow} onMenu={() => setDrawer(true)} panelAvailable={initial.review ? scene === 'working' : page === 'chat' && (liveChat.running || Boolean(liveChat.executionTrace))} panelActive={!initial.review && liveChat.running} onPanel={showExecution} />
       {page === 'chat' && scene === 'home' && <HomePage onStart={(prompt) => { setScene('conversation'); if (!initial.review) void liveChat.submit(prompt) }} />}

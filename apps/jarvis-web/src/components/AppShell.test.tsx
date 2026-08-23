@@ -89,6 +89,34 @@ describe('canonical conversation shell', () => {
     expect(screen.queryByText('History B')).not.toBeInTheDocument()
   })
 
+  it('keeps a background running Conversation marked until its exact Turn terminates', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/v1/conversations') return new Response(JSON.stringify([summaryA, summaryB]), { status: 200 })
+      if (url === '/api/v1/conversations/conversation-a') return new Response(JSON.stringify(detail(summaryA, 'History A')), { status: 200 })
+      if (url === '/api/v1/conversations/conversation-b') return new Response(JSON.stringify(detail(summaryB as typeof summaryA, 'History B')), { status: 200 })
+      if (url === '/api/v1/turns/turn-a') return new Response(JSON.stringify({ id: 'turn-a', conversation_id: 'conversation-a', user_message_id: 'user-a', assistant_message_id: null, status: 'running', started_at: '2026-08-22T00:00:00Z', completed_at: null, error_code: null, sequence: 1, phase: 'searching', provisional_text: null }), { status: 200 })
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('EventSource', MockEventSource)
+    window.history.replaceState(null, '', '/?page=chat&conversation=conversation-a&turn=turn-a')
+
+    render(<AppShell />)
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1))
+    expect(await screen.findByRole('button', { name: /conversation a.*running/i })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /message b/i }))
+    await screen.findByText('History B')
+    expect(screen.getByRole('button', { name: /conversation a.*running/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /message b/i })).not.toHaveAccessibleName(/running/i)
+
+    await userEvent.click(screen.getByRole('button', { name: /conversation a.*running/i }))
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(2))
+    act(() => MockEventSource.instances[1].emit('turn.completed', { turn_id: 'turn-a', sequence: 2, type: 'turn.completed' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /conversation a/i })).not.toHaveAccessibleName(/running/i))
+  })
+
   it('auto-opens the desktop Work Panel on the first real tool event', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
@@ -164,7 +192,7 @@ describe('canonical conversation shell', () => {
     act(() => MockEventSource.instances[0].emit('tool.started', { turn_id: 'turn-mobile', sequence: 1, type: 'tool.started', operation_id: 1, category: 'exec', capability: 'run_python' }))
 
     expect(screen.queryByRole('dialog', { name: 'Work' })).not.toBeInTheDocument()
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Working through the calculation'))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/Working through the calculation|Analyzing the data/))
     await userEvent.click(screen.getByRole('button', { name: 'Open work panel' }))
     const dialog = screen.getByRole('dialog', { name: 'Work' })
     expect(dialog).toBeInTheDocument()

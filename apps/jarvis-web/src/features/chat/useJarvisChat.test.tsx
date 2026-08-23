@@ -42,6 +42,7 @@ function Harness({ conversationId = null, turnId = null }: { conversationId?: st
     <span data-testid="conversation-title">{chat.conversationTitle ?? 'untitled'}</span>
     <span data-testid="trace-status">{chat.executionTrace?.status ?? 'none'}</span>
     <span data-testid="active-turn">{chat.activeTurnId ?? 'none'}</span>
+    <span data-testid="active-conversations">{[...chat.activeConversationIds].sort().join(',') || 'none'}</span>
     <span data-testid="progress-state">{chat.progress ?? 'none'}</span>
     <span>{chat.cancelling ? 'stopping' : 'not-stopping'}</span>
     {chat.executionTrace?.steps.map((step) => <span key={step.id}>{step.label}:{step.detail}</span>)}
@@ -118,6 +119,7 @@ describe('persistent Chat boundary', () => {
     expect(firstStream.readyState).toBe(MockEventSource.CLOSED)
     expect(screen.getByTestId('running-status')).toHaveTextContent('idle')
     expect(screen.getByTestId('progress-state')).toHaveTextContent('none')
+    expect(screen.getByTestId('active-conversations')).toHaveTextContent('conversation-a')
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/cancel'))).toBe(false)
 
     fireEvent.click(screen.getByRole('button', { name: 'Open A' }))
@@ -125,6 +127,7 @@ describe('persistent Chat boundary', () => {
     expect(MockEventSource.instances[1].url).toBe('/api/v1/turns/turn-a/events')
     expect(screen.getByTestId('running-status')).toHaveTextContent('running')
     expect(screen.getByTestId('active-turn')).toHaveTextContent('turn-a')
+    expect(screen.getByTestId('active-conversations')).toHaveTextContent('conversation-a')
     expect(screen.getByTestId('progress-state')).toHaveTextContent('processing')
     expect(window.location.search).toContain('turn=turn-a')
   })
@@ -154,6 +157,7 @@ describe('persistent Chat boundary', () => {
     expect(await screen.findByText('Canonical response')).toBeInTheDocument()
     expect(screen.getByTestId('running-status')).toHaveTextContent('idle')
     expect(screen.getByTestId('active-turn')).toHaveTextContent('none')
+    expect(screen.getByTestId('active-conversations')).toHaveTextContent('none')
     expect(MockEventSource.instances).toHaveLength(1)
   })
 
@@ -183,6 +187,7 @@ describe('persistent Chat boundary', () => {
     await waitFor(() => expect(screen.getByTestId('active-turn')).toHaveTextContent('turn-b'))
     fireEvent.click(screen.getByRole('button', { name: 'Open A' }))
     await waitFor(() => expect(screen.getByTestId('active-turn')).toHaveTextContent('turn-a'))
+    expect(screen.getByTestId('active-conversations')).toHaveTextContent('conversation-a,conversation-b')
     fireEvent.click(screen.getByRole('button', { name: 'Stop current' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/turns/turn-a/cancel', expect.objectContaining({ method: 'POST' })))
