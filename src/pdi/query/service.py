@@ -115,6 +115,20 @@ class QueryService:
         )
         validated_group_by = self._group_by(group_by)
 
+        if validated_group_by is ResourceGroupBy.PERSON_LABEL:
+            if (
+                time_range.observed_from is not None
+                or time_range.observed_to is not None
+                or filters.resource_type is not None
+                or filters.mime_type is not None
+                or filters.mime_category is not None
+                or filters.path_prefix is not None
+            ):
+                raise InvalidQueryError(
+                    "person_label aggregation supports only the optional "
+                    "provider filter"
+                )
+
         if validated_group_by is ResourceGroupBy.DAY:
             if (
                 time_range.observed_from is None
@@ -489,7 +503,7 @@ class QueryService:
         except (ValueError, TypeError) as error:
             raise InvalidQueryError(
                 "group_by must be provider, day, mime_type, or "
-                "mime_category"
+                "mime_category, or person_label"
             ) from error
 
     @staticmethod

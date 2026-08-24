@@ -129,6 +129,22 @@ def test_aggregation_normalizes_time_and_builds_typed_query() -> None:
         result.total_count = 1
 
 
+def test_person_label_aggregation_is_bounded_and_provider_scoped() -> None:
+    now = datetime(2026, 8, 12, 12, tzinfo=UTC)
+    repository = RecordingRepository(now)
+    service = QueryService(repository, clock=lambda: now)
+
+    service.aggregate_resources(
+        group_by="person_label",
+        provider="immich",
+    )
+
+    query = repository.aggregation_queries[0]
+    assert query.group_by is ResourceGroupBy.PERSON_LABEL
+    assert query.filters.provider == "immich"
+    assert query.bucket_limit == 100
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
@@ -152,6 +168,32 @@ def test_aggregation_rejects_invalid_arguments(kwargs: dict) -> None:
 
     with pytest.raises(InvalidQueryError):
         service.aggregate_resources(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "unsupported",
+    [
+        {"observed_from": datetime(2026, 8, 1, tzinfo=UTC)},
+        {"observed_to": datetime(2026, 8, 2, tzinfo=UTC)},
+        {"resource_type": "file"},
+        {"mime_type": "image/jpeg"},
+        {"mime_category": "image"},
+        {"path_prefix": "/photos"},
+    ],
+)
+def test_person_label_aggregation_rejects_resource_filters(
+    unsupported: dict[str, object],
+) -> None:
+    service = QueryService(RecordingRepository(datetime.now(UTC)))
+
+    with pytest.raises(
+        InvalidQueryError,
+        match="supports only the optional provider filter",
+    ):
+        service.aggregate_resources(
+            group_by="person_label",
+            **unsupported,
+        )
 
 
 def test_day_aggregation_requires_bounded_366_day_range() -> None:

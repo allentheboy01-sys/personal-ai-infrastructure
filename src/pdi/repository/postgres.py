@@ -16,6 +16,7 @@ from pdi.query.models import (
 from pdi.query.repository import QueryRepository
 from pdi.query.resources import (
     ContentSummary,
+    PERSON_LABEL_TIME_BASIS,
     RecentResourcesQuery,
     RESOURCE_TIME_BASIS,
     ResourceAggregationBucket,
@@ -1157,6 +1158,9 @@ class PostgreSQLRepository(
         self,
         query: ResourceAggregationQuery,
     ) -> ResourceAggregationResult:
+        if query.group_by is ResourceGroupBy.PERSON_LABEL:
+            return self._aggregate_current_person_labels(query)
+
         source_filters = self._source_filters(
             provider=query.filters.provider,
             mime_type=query.filters.mime_type,
@@ -1279,6 +1283,72 @@ class PostgreSQLRepository(
                 ),
                 buckets_truncated=buckets_truncated,
             )
+
+    def _aggregate_current_person_labels(
+        self,
+        query: ResourceAggregationQuery,
+    ) -> ResourceAggregationResult:
+        source_filters = [
+            PersonSourceORM.inactive_at.is_(None),
+            PersonSourceORM.display_name.is_not(None),
+        ]
+        if query.filters.provider is not None:
+            source_filters.append(
+                PersonSourceORM.provider == query.filters.provider
+            )
+
+        normalized_label = func.lower(
+            PersonSourceORM.display_name
+        ).label("normalized_label")
+        label_buckets = (
+            select(
+                normalized_label,
+                func.min(PersonSourceORM.display_name).label("bucket"),
+                func.count(
+                    func.distinct(PersonSourceORM.person_id)
+                ).label("bucket_count"),
+            )
+            .where(*source_filters)
+            .group_by(normalized_label)
+            .subquery()
+        )
+
+        with self._session_factory() as session:
+            total_count = session.execute(
+                select(
+                    func.count(
+                        func.distinct(PersonSourceORM.person_id)
+                    )
+                ).where(*source_filters)
+            ).scalar_one()
+            rows = session.execute(
+                select(
+                    label_buckets.c.bucket,
+                    label_buckets.c.bucket_count,
+                )
+                .order_by(
+                    label_buckets.c.normalized_label.asc(),
+                    label_buckets.c.bucket.asc(),
+                )
+                .limit(query.bucket_limit + 1)
+            ).all()
+
+        buckets_truncated = len(rows) > query.bucket_limit
+        return ResourceAggregationResult(
+            time_basis=PERSON_LABEL_TIME_BASIS,
+            time_range=query.time_range,
+            applied_filters=query.filters,
+            group_by=query.group_by,
+            total_count=total_count,
+            buckets=tuple(
+                ResourceAggregationBucket(
+                    key=row.bucket,
+                    count=row.bucket_count,
+                )
+                for row in rows[: query.bucket_limit]
+            ),
+            buckets_truncated=buckets_truncated,
+        )
 
     @classmethod
     def _aggregation_bucket_expression(

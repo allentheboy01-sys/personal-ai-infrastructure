@@ -60,7 +60,8 @@ bounded grouping:
 - `provider`;
 - `day`;
 - `mime_type`; or
-- `mime_category`.
+- `mime_category`; or
+- `person_label`.
 
 With no grouping, `total_count` is the count API and buckets are empty. A
 separate count method or MCP Tool is intentionally not added.
@@ -70,6 +71,16 @@ return the time basis, normalized range, applied filters, grouping, total,
 buckets, and truncation state. Provider and MIME buckets are ordered by count
 descending and key ascending. UTC day buckets are ordered chronologically.
 At most 100 buckets are returned and truncation is never silent.
+
+`person_label` is a narrow current-state discovery projection rather than a
+Resource-text aggregation. It reads only active non-null
+`PersonSource.display_name` values, groups them case-insensitively, preserves a
+deterministic Provider spelling for each bucket, and counts distinct canonical
+Persons. Its `time_basis` is `current_person_source`; only the optional
+Provider-provenance filter is accepted. Resource/time/MIME/path filters are
+rejected because they have no honest meaning for this projection. It never
+reads OCR, titles, paths, semantic search results, inactive labels, or label
+history. The existing 100-bucket bound and truncation signal apply.
 
 ## Provider and multi-source semantics
 

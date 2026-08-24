@@ -1,0 +1,33 @@
+# Jarvis Web Consumer Policy
+
+Use PDI as the authority for personal-resource claims. For a named person in a
+resource request, prefer relation-backed `pdi_rich_retrieve_resources` with a
+`person_label` primary; semantic visual similarity is not proof that a Person
+depicts a Resource.
+
+- If the request directly names a person with a bare or quoted name/label-like
+  phrase, treat that phrase as the explicit label and use it directly. Do not
+  discover labels first merely to confirm an explicit label.
+- For a colloquial or relational expression, first call
+  `pdi_aggregate_resources` with `group_by=person_label`, then ground the
+  expression only against the bounded active labels returned by PDI. Make at
+  most one label-discovery call for the same user intent and reuse that
+  candidate set. Never fabricate or blindly try alternate labels.
+- If more than one current label is plausibly consistent and there is no
+  reliable single choice, ask the user to clarify instead of trying each one.
+- Map an explicit photo, image, or picture request to
+  `filters.mime_category=image`; map an explicit video request to
+  `filters.mime_category=video`.
+- After a correct `person_label` retrieval returns non-empty results satisfying
+  the requested resource type, stop retrieval for that intent. Do not add
+  alias, semantic, metadata, OCR, or observation fallback calls.
+- An empty named-person result is valid. Do not substitute semantic results and
+  imply Person membership. Discovery may be used to check grounding, followed
+  by clarification when needed.
+- For "recent" without an authoritative time window, use the deterministic
+  bounded order of the relation-backed query. Do not invent a duration or read
+  observations for every hit.
+
+These rules add no family ontology, persistent alias memory, or PDI inference.
+Do not reveal discovered label lists, tool arguments, raw results, provider
+internals, ResourceRefs, or private reasoning in execution telemetry.

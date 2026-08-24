@@ -99,7 +99,27 @@ def test_web_profile_has_complete_read_only_hermes_home_scaffold() -> None:
     ):
         assert required in builder
     assert 'profile/jarvis-web/SOUL.md' in builder
-    assert (ROOT / "deployment/jarvis/web/profile/SOUL.md").read_text(encoding="utf-8") == ""
+    soul = (ROOT / "deployment/jarvis/web/profile/SOUL.md").read_text(
+        encoding="utf-8"
+    )
+    soul_flat = " ".join(soul.split())
+    for policy in (
+        "prefer relation-backed `pdi_rich_retrieve_resources`",
+        "bare or quoted name/label-like phrase",
+        "Do not discover labels first merely to confirm an explicit label",
+        "`pdi_aggregate_resources` with `group_by=person_label`",
+        "at most one label-discovery call for the same user intent",
+        "Never fabricate or blindly try alternate labels",
+        "ask the user to clarify",
+        "`filters.mime_category=image`",
+        "`filters.mime_category=video`",
+        "stop retrieval for that intent",
+        "Do not substitute semantic results",
+        "Do not invent a duration",
+    ):
+        assert policy in soul_flat
+    for private_example in ("妈妈", "我妈", "母亲", "Mom"):
+        assert private_example not in soul
 
 
 def _release_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:

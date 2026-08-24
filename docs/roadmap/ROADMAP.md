@@ -53,6 +53,10 @@ details live in their dedicated documents.
   Tool, canonical Person name, or language inference. Production activation is
   a separately validated additive migration plus the existing explicit Person
   scan; the migration itself performs no label backfill or identity rewrite.
+  Jarvis Person Query Interpretation V0.1 is an implementation candidate that
+  adds bounded current Person-label discovery to the existing aggregate Tool
+  and concise Hermes grounding/stop guidance, without a new Tool, schema,
+  persistent alias store, family ontology, Runtime protocol, or frontend change.
 
 ## Future
 

@@ -327,41 +327,47 @@ def test_recent_tool_description_protects_time_semantics() -> None:
 
 def test_search_and_retrieval_descriptions_define_distinct_intent() -> None:
     server = create_server(QueryService(RecordingRepository()))
+    tools = asyncio.run(server.list_tools())
 
-    async def inspect_tools() -> None:
-        async with Client(server) as client:
-            tools = (await client.list_tools()).tools
-
-        descriptions = {
-            tool.name: tool.description or ""
-            for tool in tools
-        }
-        search = descriptions["pdi_search_resources"]
-        retrieval = descriptions["pdi_retrieve_resources"]
-        rich = " ".join(
-            descriptions["pdi_rich_retrieve_resources"].split()
-        )
-        assert "filename, title, source path, metadata" in search
-        assert "automatic fallback" in search
-        assert "resource content or visual concepts" in retrieval
-        assert "do not automatically follow it" in retrieval
-        assert "one bounded candidate source" in rich
-        assert "without first calling pdi_retrieve_resources" in rich
-        assert "set mime_category to image" in rich
-        assert "literal current OCR or document-excerpt" in rich
-        assert "does not merge candidate sources" in rich
-        assert "do not call observations per hit" in rich
-        assert "exactly that one filtered call" in rich
-        assert "do not make an unfiltered comparison call" in rich
-        assert "require media.captured_at" in rich
-        assert "file_modified_from/to" in rich
-        assert "Provider-reported file modification time" in rich
-        assert "small selected" in rich
-        assert "exact Provider-declared Person label" in rich
-        assert "does not infer aliases, family relationships" in rich
-        assert "defaults to 10 and must not exceed 20" in rich
-
-    asyncio.run(inspect_tools())
+    descriptions = {
+        tool.name: tool.description or ""
+        for tool in tools
+    }
+    search = descriptions["pdi_search_resources"]
+    retrieval = descriptions["pdi_retrieve_resources"]
+    aggregation = " ".join(
+        descriptions["pdi_aggregate_resources"].split()
+    )
+    rich = " ".join(
+        descriptions["pdi_rich_retrieve_resources"].split()
+    )
+    assert "filename, title, source path, metadata" in search
+    assert "automatic fallback" in search
+    assert "resource content or visual concepts" in retrieval
+    assert "do not automatically follow it" in retrieval
+    assert "group_by=person_label" in aggregation
+    assert "active, Provider-declared Person labels" in aggregation
+    assert "does not use Resource text, OCR, filenames" in aggregation
+    assert "at most one discovery call per user intent" in aggregation
+    assert "Skip discovery" in aggregation
+    assert "one bounded candidate source" in rich
+    assert "without first calling pdi_retrieve_resources" in rich
+    assert "set mime_category to image" in rich
+    assert "literal current OCR or document-excerpt" in rich
+    assert "does not merge candidate sources" in rich
+    assert "do not call observations per hit" in rich
+    assert "exactly that one filtered call" in rich
+    assert "do not make an unfiltered comparison call" in rich
+    assert "require media.captured_at" in rich
+    assert "file_modified_from/to" in rich
+    assert "Provider-reported file modification time" in rich
+    assert "small selected" in rich
+    assert "exact current Provider-declared Person label" in rich
+    assert "does not infer aliases, family relationships" in rich
+    assert "mime_category to image or video" in rich
+    assert "do not make speculative alias" in rich
+    assert "does not authorize semantic results" in rich
+    assert "defaults to 10 and must not exceed 20" in rich
 
 
 def test_mcp_aggregation_is_the_only_new_tool_and_serializes_semantics() -> None:
@@ -425,6 +431,21 @@ def test_mcp_aggregation_is_the_only_new_tool_and_serializes_semantics() -> None
         )
 
     asyncio.run(exercise())
+
+
+def test_person_label_discovery_is_visible_in_existing_aggregate_schema() -> None:
+    tools = asyncio.run(
+        create_server(QueryService(RecordingRepository())).list_tools()
+    )
+
+    assert len(tools) == 8
+    aggregate = next(
+        tool for tool in tools if tool.name == "pdi_aggregate_resources"
+    )
+    group_by = aggregate.input_schema["properties"]["group_by"]
+    encoded = json.dumps(group_by)
+    assert "person_label" in encoded
+    assert "pdi_list_person_labels" not in {tool.name for tool in tools}
 
 
 def test_observation_tool_is_the_only_v0_1_addition_and_does_not_leak_ids() -> None:

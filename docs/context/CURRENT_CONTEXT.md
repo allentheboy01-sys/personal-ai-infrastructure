@@ -261,6 +261,16 @@ Production activation 必须单独验证 additive migration、既有 Person/Rela
 不变量、正常 `python -m pdi.person_identity` label backfill，以及 relation-backed
 exact Rich Retrieval；migration 本身不执行 label backfill 或 identity rewrite。
 
+Jarvis Person Query Interpretation V0.1 当前为 implementation candidate。现有
+`pdi_aggregate_resources` 增加 `group_by=person_label` 的 bounded current-state
+projection，只从 active non-null `PersonSource.display_name` 发现当前 Provider label；
+它不读取 OCR、title、path 或 semantic results，且不新增 MCP Tool。Hermes Web profile
+对 exact label 直接使用 relation-backed `person_label` Rich Retrieval；colloquial
+表达先对 bounded current labels grounding，ambiguous 时询问，正确 non-empty Person
+结果后停止 speculative fallback。照片/图片与视频分别映射现有 image/video MIME
+category；不增加 family ontology、alias store、Memory、DB migration、Runtime 或
+frontend contract。
+
 ### Resource-Person Relation production freeze
 
 Resource-Person Relation V0.1 已在 production 启用，只表达 Provider-derived

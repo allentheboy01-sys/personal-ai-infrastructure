@@ -3,19 +3,27 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from alembic import command
 from alembic.config import Config
 from mcp import Client
 import pytest
-from sqlalchemy import Connection, Engine
+from sqlalchemy import Connection, Engine, delete
+from sqlalchemy.orm import Session
 
 from pdi.database import create_postgres_engine
 from pdi.decision import Action, ActionType, Decision
 from pdi.models import Asset, AssetSource, Blob
-from pdi.query import QueryService, ResourceGroupBy, format_resource_ref
+from pdi.query import (
+    QueryService,
+    ResourceGroupBy,
+    format_resource_ref,
+    parse_resource_ref,
+)
 from pdi.repository import PostgreSQLRepository
+from pdi.repository.orm.observation import ResourceStatementORM
+from pdi.repository.orm.person import PersonORM, PersonSourceORM
 from pdi_mcp.bootstrap import create_runtime_server
 from tests.integration.database_guard import require_safe_test_database_url
 
@@ -442,6 +450,152 @@ def test_provider_buckets_are_bounded_and_report_truncation(
     )[:100]
 
 
+def test_person_label_discovery_is_active_distinct_bounded_and_ocr_free(
+    v02_context,
+) -> None:
+    database_url, _, service, data = v02_context
+    token = uuid4().hex
+    provider = f"person-label-discovery-{token}"
+    bounded_provider = f"person-label-bound-{token}"
+    now = datetime.now(UTC)
+    people = [PersonORM(id=uuid4(), created_at=now) for _ in range(107)]
+    sources = [
+        PersonSourceORM(
+            provider=provider,
+            external_id=f"alice-a-{token}",
+            person_id=people[0].id,
+            display_name="Alice",
+            inactive_at=None,
+        ),
+        PersonSourceORM(
+            provider=provider,
+            external_id=f"alice-duplicate-{token}",
+            person_id=people[0].id,
+            display_name="Alice",
+            inactive_at=None,
+        ),
+        PersonSourceORM(
+            provider=provider,
+            external_id=f"alice-b-{token}",
+            person_id=people[1].id,
+            display_name="alice",
+            inactive_at=None,
+        ),
+        PersonSourceORM(
+            provider=provider,
+            external_id=f"named-{token}",
+            person_id=people[2].id,
+            display_name="妈妈",
+            inactive_at=None,
+        ),
+        PersonSourceORM(
+            provider=provider,
+            external_id=f"unnamed-{token}",
+            person_id=people[3].id,
+            display_name=None,
+            inactive_at=None,
+        ),
+        PersonSourceORM(
+            provider=provider,
+            external_id=f"inactive-{token}",
+            person_id=people[4].id,
+            display_name="Inactive Label",
+            inactive_at=now,
+        ),
+        PersonSourceORM(
+            provider=provider,
+            external_id=f"renamed-{token}",
+            person_id=people[5].id,
+            display_name="Current Label",
+            inactive_at=None,
+        ),
+    ]
+    sources.extend(
+        PersonSourceORM(
+            provider=bounded_provider,
+            external_id=f"bounded-{index:03d}-{token}",
+            person_id=people[index + 6].id,
+            display_name=f"Label {index:03d}",
+            inactive_at=None,
+        )
+        for index in range(101)
+    )
+    ocr_only_label = f"OCR Only {token}"
+    statement = ResourceStatementORM(
+        subject_asset_id=UUID(parse_resource_ref(data.multi_provider_ref)),
+        predicate="media.ocr_text",
+        value_type="string",
+        string_value=ocr_only_label,
+        generator_type="deterministic_extractor",
+        generator_name="person-label-discovery-test",
+        generator_version="1",
+        source_kind="resource_content",
+        source_locator=f"test:{token}",
+        is_current=True,
+    )
+    engine = create_postgres_engine(database_url)
+    statement_id = None
+    person_ids = [person.id for person in people]
+    try:
+        with Session(engine) as session:
+            session.add_all([*people, *sources, statement])
+            session.commit()
+            statement_id = statement.id
+
+        first = service.aggregate_resources(
+            group_by="person_label",
+            provider=provider,
+        )
+        second = service.aggregate_resources(
+            group_by="person_label",
+            provider=provider,
+        )
+        assert first.time_basis == "current_person_source"
+        assert first.total_count == 4
+        assert first.buckets == second.buckets
+        assert {bucket.key.lower(): bucket.count for bucket in first.buckets} == {
+            "alice": 2,
+            "current label": 1,
+            "妈妈": 1,
+        }
+        assert all(bucket.key != "Inactive Label" for bucket in first.buckets)
+        assert all(bucket.key != ocr_only_label for bucket in first.buckets)
+
+        bounded = service.aggregate_resources(
+            group_by=ResourceGroupBy.PERSON_LABEL,
+            provider=bounded_provider,
+        )
+        assert bounded.total_count == 101
+        assert len(bounded.buckets) == 100
+        assert bounded.buckets_truncated is True
+        assert [bucket.key for bucket in bounded.buckets] == [
+            f"Label {index:03d}" for index in range(100)
+        ]
+        assert all(bucket.count == 1 for bucket in bounded.buckets)
+    finally:
+        with Session(engine) as session:
+            if statement_id is not None:
+                session.execute(
+                    delete(ResourceStatementORM).where(
+                        ResourceStatementORM.id == statement_id
+                    )
+                )
+            session.execute(
+                delete(PersonSourceORM).where(
+                    PersonSourceORM.provider.in_(
+                        (provider, bounded_provider)
+                    )
+                )
+            )
+            session.execute(
+                delete(PersonORM).where(
+                    PersonORM.id.in_(person_ids)
+                )
+            )
+            session.commit()
+        engine.dispose()
+
+
 def test_mcp_v02_surface_serialization_and_postgresql(v02_context) -> None:
     database_url, _, _, data = v02_context
     server = create_runtime_server(database_url)
@@ -456,6 +610,13 @@ def test_mcp_v02_surface_serialization_and_postgresql(v02_context) -> None:
                     "observed_from": data.observed_from.isoformat(),
                     "observed_to": data.observed_to.isoformat(),
                     "path_prefix": data.path_prefix,
+                },
+            )
+            person_labels = await client.call_tool(
+                "pdi_aggregate_resources",
+                {
+                    "group_by": "person_label",
+                    "provider": data.provider,
                 },
             )
             recent = await client.call_tool(
@@ -486,6 +647,25 @@ def test_mcp_v02_surface_serialization_and_postgresql(v02_context) -> None:
         assert payload["group_by"] == "provider"
         assert payload["total_count"] == 6
         assert payload["buckets_truncated"] is False
+        label_payload = person_labels.structured_content
+        assert label_payload is not None
+        assert label_payload == {
+            "ok": True,
+            "time_basis": "current_person_source",
+            "observed_from": None,
+            "observed_to": None,
+            "applied_filters": {
+                "provider": data.provider,
+                "resource_type": None,
+                "mime_type": None,
+                "mime_category": None,
+                "path_prefix": None,
+            },
+            "group_by": "person_label",
+            "total_count": 0,
+            "buckets": [],
+            "buckets_truncated": False,
+        }
         encoded = json.dumps(payload)
         for internal_name in (
             "asset_id",

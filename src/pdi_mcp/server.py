@@ -199,7 +199,14 @@ def create_server(
 
     @server.tool(structured_output=True)
     def pdi_aggregate_resources(
-        group_by: str | None = None,
+        group_by: Literal[
+            "provider",
+            "day",
+            "mime_type",
+            "mime_category",
+            "person_label",
+        ]
+        | None = None,
         observed_from: str | None = None,
         observed_to: str | None = None,
         provider: str | None = None,
@@ -208,11 +215,17 @@ def create_server(
         mime_category: str | None = None,
         path_prefix: str | None = None,
     ) -> ToolResult:
-        """Count or group Resources by PDI first-observed time.
+        """Count Resources or discover bounded current Person labels.
 
-        This aggregation describes when PDI first recognized Resources. It
-        does not describe capture, upload, user creation, provider creation,
-        or provider modification time.
+        Use group_by=person_label to discover active, Provider-declared Person
+        labels before grounding a colloquial named-person request. That
+        projection is deterministic, bounded, and accepts only the optional
+        provider filter; it does not use Resource text, OCR, filenames, or
+        semantic inference. Make at most one discovery call per user intent and
+        reuse its buckets. Skip discovery when the user already supplied an
+        exact Person label. Other groupings describe when PDI first recognized
+        Resources; they do not describe capture, upload, user creation,
+        provider creation, or provider modification time.
         """
 
         def operation() -> ToolResult:
@@ -300,11 +313,17 @@ def create_server(
         Resources but does not return the body; fetch observations only for
         the small selected set when the user needs excerpt content. This does
         not merge candidate sources or return raw observation bodies. Use
-        person_label only for an exact Provider-declared Person label. It
+        person_label for named-person requests and only with an exact current
+        Provider-declared Person label. For explicit photo/image or video
+        requests, set mime_category to image or video in the same call. It
         finds Resources through current PDI Resource-Person relations; it
-        does not infer aliases, family relationships, or fuzzy matches. The
-        optional provider on that primary restricts label provenance, while
-        filters.provider continues to restrict Resource sources.
+        does not infer aliases, family relationships, or fuzzy matches. Once
+        a correct person_label call returns non-empty type-appropriate hits,
+        do not make speculative alias, semantic, metadata, or observation
+        fallback calls for the same intent. An empty exact named-person result
+        does not authorize semantic results as proof of Person membership.
+        The optional provider on that primary restricts label provenance,
+        while filters.provider continues to restrict Resource sources.
         Result limit defaults to 10 and must not exceed 20.
         """
 

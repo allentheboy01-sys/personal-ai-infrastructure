@@ -8,6 +8,7 @@ from .errors import InvalidResourceRefError
 
 RESOURCE_REF_PREFIX = "pdi:resource:"
 RESOURCE_TIME_BASIS = "pdi_first_observed_at"
+PERSON_LABEL_TIME_BASIS = "current_person_source"
 
 
 class ResourceGroupBy(StrEnum):
@@ -15,6 +16,7 @@ class ResourceGroupBy(StrEnum):
     DAY = "day"
     MIME_TYPE = "mime_type"
     MIME_CATEGORY = "mime_category"
+    PERSON_LABEL = "person_label"
 
 
 @dataclass(frozen=True, slots=True)
