@@ -99,12 +99,50 @@ def create_app(
             background=BackgroundTask(opened.aclose),
         )
 
+    async def video(request: Request) -> Response:
+        try:
+            opened = await service.open_video(
+                request.path_params["resource_ref"],
+                request.headers.get("range"),
+            )
+        except ResourceAccessError as error:
+            return _error_response(error)
+
+        descriptor = opened.descriptor
+        headers = {"Cache-Control": "private, no-store"}
+        if descriptor.content_length is not None:
+            headers["Content-Length"] = str(descriptor.content_length)
+        if descriptor.content_range is not None:
+            headers["Content-Range"] = descriptor.content_range
+        if descriptor.accept_ranges is not None:
+            headers["Accept-Ranges"] = descriptor.accept_ranges
+
+        async def body() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in opened:
+                    yield chunk
+            finally:
+                await opened.aclose()
+
+        return StreamingResponse(
+            body(),
+            status_code=descriptor.status_code,
+            media_type=descriptor.media_type,
+            headers=headers,
+            background=BackgroundTask(opened.aclose),
+        )
+
     return Starlette(
         routes=[
             Route(
                 "/v1/resources/{resource_ref}/representations/"
                 "{representation_kind}",
                 representation,
+                methods=["GET"],
+            ),
+            Route(
+                "/v1/resources/{resource_ref}/video",
+                video,
                 methods=["GET"],
             ),
         ],

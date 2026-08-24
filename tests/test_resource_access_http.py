@@ -15,12 +15,12 @@ from pdi.resource_access import (
 from pdi_resource_access import create_app, create_uds_server, serve_uds
 
 
-def _source(locator: str) -> ResourceAccessSource:
+def _source(locator: str, mime_type: str = "image/jpeg") -> ResourceAccessSource:
     return ResourceAccessSource(
         provider="immich",
         provider_locator=locator,
         resource_type="file",
-        mime_type="image/jpeg",
+        mime_type=mime_type,
     )
 
 
@@ -71,6 +71,40 @@ class RouteAdapter:
             close=close,
         )
 
+    async def open_video(self, locator, byte_range):
+        assert byte_range == "bytes=0-0"
+
+        async def body():
+            if locator == "video":
+                yield b"v"
+
+        async def close():
+            return None
+
+        if locator == "video-unsat":
+            return ProviderRepresentation(
+                416,
+                "application/json",
+                "30",
+                None,
+                None,
+                body(),
+                close,
+                content_range="bytes */42",
+                accept_ranges="bytes",
+            )
+        return ProviderRepresentation(
+            206,
+            "video/mp4",
+            "1",
+            None,
+            None,
+            body(),
+            close,
+            content_range="bytes 0-0/42",
+            accept_ranges="bytes",
+        )
+
     async def aclose(self):
         return None
 
@@ -84,6 +118,8 @@ def test_real_uds_http_contract_and_socket_lifecycle() -> None:
         "oversized",
         "invalid",
         "unavailable",
+        "video",
+        "video-unsat",
     )}
     mappings = {
         ids["thumbnail"]: (_source("thumbnail"),),
@@ -93,6 +129,10 @@ def test_real_uds_http_contract_and_socket_lifecycle() -> None:
         ids["oversized"]: (_source("oversized"),),
         ids["invalid"]: (_source("invalid"),),
         ids["unavailable"]: (_source("unavailable"),),
+        ids["video"]: (_source("video", "video/mp4"),),
+        ids["video-unsat"]: (
+            _source("video-unsat", "video/quicktime"),
+        ),
     }
     adapter = RouteAdapter()
     service = ResourceAccessService(
@@ -139,6 +179,28 @@ def test_real_uds_http_contract_and_socket_lifecycle() -> None:
             assert preview.status_code == 200
             assert preview.content == b"preview"
             assert preview.headers["content-type"] == "image/jpeg"
+
+            video_ref = format_resource_ref(ids["video"])
+            video = await client.get(
+                f"/v1/resources/{video_ref}/video",
+                headers={"Range": "bytes=0-0"},
+            )
+            assert video.status_code == 206
+            assert video.content == b"v"
+            assert video.headers["content-type"] == "video/mp4"
+            assert video.headers["content-range"] == "bytes 0-0/42"
+            assert video.headers["accept-ranges"] == "bytes"
+            assert video.headers["content-length"] == "1"
+
+            unsat_ref = format_resource_ref(ids["video-unsat"])
+            unsat = await client.get(
+                f"/v1/resources/{unsat_ref}/video",
+                headers={"Range": "bytes=0-0"},
+            )
+            assert unsat.status_code == 416
+            assert unsat.content == b""
+            assert unsat.headers["content-range"] == "bytes */42"
+            assert "private" not in unsat.text
 
             invalid_ref = await client.get(
                 "/v1/resources/pdi:resource:not-a-uuid/"

@@ -13,10 +13,10 @@ export interface ApiResourceSummary {
   title: string
   secondary_text: string | null
   timestamp: string | null
-  presentation_kind: 'image' | 'document' | 'message' | 'generic'
+  presentation_kind: 'image' | 'video' | 'document' | 'message' | 'generic'
   presentation_label: string
   providers: string[]
-  capabilities: { detail: boolean; preview: boolean; open: boolean }
+  capabilities: { detail: boolean; preview: boolean; open: boolean; playback: boolean }
 }
 
 export interface ApiResourceDetail { summary: ApiResourceSummary; facts: Array<[string, string]>; mime_type: string | null; size_bytes: number | null; notice: string | null }

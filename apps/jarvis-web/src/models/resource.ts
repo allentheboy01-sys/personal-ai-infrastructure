@@ -1,10 +1,11 @@
 export type ResourceType = 'file' | 'message'
-export type PresentationKind = 'image' | 'document' | 'message' | 'generic'
+export type PresentationKind = 'image' | 'video' | 'document' | 'message' | 'generic'
 
 export interface ResourceCapabilities {
   detail: boolean
   preview: boolean
   open: boolean
+  playback: boolean
 }
 
 export interface ResourceView {
@@ -19,6 +20,7 @@ export interface ResourceView {
     label: string
     thumbnail?: string
     preview?: string
+    playback?: string
   }
   capabilities: ResourceCapabilities
   facts: Array<{ label: string; value: string }>

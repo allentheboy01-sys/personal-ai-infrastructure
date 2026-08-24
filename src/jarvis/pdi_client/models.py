@@ -5,7 +5,7 @@ from typing import Literal
 
 
 ResourceType = Literal["file", "message"]
-PresentationKind = Literal["image", "document", "message", "generic"]
+PresentationKind = Literal["image", "video", "document", "message", "generic"]
 ProviderState = Literal["not_synced", "syncing", "processing", "ready", "attention"]
 
 
@@ -14,6 +14,7 @@ class ResourceCapabilities:
     detail: bool
     preview: bool
     open: bool
+    playback: bool = False
 
 
 @dataclass(frozen=True, slots=True)

@@ -94,6 +94,61 @@ class ImmichRepresentationAdapter:
             close=response.aclose,
         )
 
+    async def open_video(
+        self,
+        provider_locator: str,
+        byte_range: str | None,
+    ) -> ProviderRepresentation:
+        try:
+            locator = UUID(provider_locator)
+        except (TypeError, ValueError, AttributeError):
+            raise ProviderInvalidResponseError(
+                "Provider Source has an invalid locator"
+            ) from None
+
+        if str(locator) != provider_locator:
+            raise ProviderInvalidResponseError(
+                "Provider Source has an invalid locator"
+            )
+
+        headers = {"x-api-key": self._api_key}
+        if byte_range is not None:
+            headers["range"] = byte_range
+        request = self._client.build_request(
+            "GET",
+            f"{self._base_url}/api/assets/{locator}/video/playback",
+            headers=headers,
+        )
+
+        try:
+            response = await self._client.send(request, stream=True)
+        except (httpx.TimeoutException, httpx.RequestError):
+            raise ProviderUnavailableError(
+                "Immich video service is unavailable"
+            ) from None
+
+        async def body() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in response.aiter_raw(chunk_size=CHUNK_SIZE):
+                    if chunk:
+                        yield chunk
+            except (httpx.TimeoutException, httpx.RequestError):
+                raise ProviderUnavailableError(
+                    "Immich video stream is unavailable"
+                ) from None
+
+        return ProviderRepresentation(
+            status_code=response.status_code,
+            media_type=response.headers.get("content-type"),
+            content_length=response.headers.get("content-length"),
+            etag=response.headers.get("etag"),
+            last_modified=response.headers.get("last-modified"),
+            body=body(),
+            close=response.aclose,
+            content_range=response.headers.get("content-range"),
+            accept_ranges=response.headers.get("accept-ranges"),
+        )
+
     async def aclose(self) -> None:
         if self._owns_client:
             await self._client.aclose()

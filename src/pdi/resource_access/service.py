@@ -24,6 +24,8 @@ from .models import (
     ResourceRepresentation,
     ResourceRepresentationDescriptor,
     ResourceRepresentationKind,
+    ResourceVideo,
+    ResourceVideoDescriptor,
 )
 from .provider import (
     ProviderRepresentation,
@@ -37,6 +39,13 @@ PREVIEW_MAX_BYTES = 16 * 1024 * 1024
 MAX_ACTIVE_STREAMS = 8
 _IMAGE_MEDIA_TYPE = re.compile(
     r"image/[a-z0-9!#$&^_.+\-]+",
+)
+_VIDEO_MEDIA_TYPE = re.compile(
+    r"video/[a-z0-9!#$&^_.+\-]+",
+)
+_BYTE_RANGE = re.compile(r"bytes=(?:[0-9]+-[0-9]*|-[0-9]+)")
+_CONTENT_RANGE = re.compile(
+    r"bytes (?:[0-9]+-[0-9]+/[0-9]+|\*/[0-9]+)",
 )
 
 
@@ -60,35 +69,18 @@ class ResourceAccessService:
         representation_kind: ResourceRepresentationKind | str,
     ) -> ResourceRepresentation:
         try:
-            asset_id = parse_resource_ref(resource_ref)
-        except InvalidResourceRefError as error:
-            raise InvalidResourceReferenceError(
-                "Resource reference is invalid"
-            ) from error
-
-        try:
             kind = ResourceRepresentationKind(representation_kind)
         except (TypeError, ValueError) as error:
             raise UnsupportedRepresentationError(
                 "Representation kind is unsupported"
             ) from error
 
-        try:
-            sources = await anyio.to_thread.run_sync(
-                self._repository.resolve_access_sources,
-                asset_id,
-            )
-        except Exception:
-            raise ResourceAccessUnavailableError(
-                "Resource access persistence is unavailable"
-            ) from None
-        if sources is None:
-            raise ResourceNotFoundError("Resource was not found")
+        sources = await self._resolve_sources(resource_ref)
 
         eligible = tuple(
             source
             for source in sources
-            if self._is_eligible(source)
+            if self._is_eligible(source, ("image/", "video/"))
         )
         if not eligible:
             raise RepresentationUnavailableError(
@@ -178,12 +170,120 @@ class ResourceAccessService:
             close=finish,
         )
 
-    def _is_eligible(self, source: ResourceAccessSource) -> bool:
+    async def open_video(
+        self,
+        resource_ref: str,
+        byte_range: str | None = None,
+    ) -> ResourceVideo:
+        if byte_range is not None and _BYTE_RANGE.fullmatch(byte_range) is None:
+            raise UnsupportedRepresentationError("Video Range is unsupported")
+
+        sources = await self._resolve_sources(resource_ref)
+        eligible = tuple(
+            source
+            for source in sources
+            if self._is_eligible(source, ("video/",))
+        )
+        if not eligible:
+            raise RepresentationUnavailableError("Video is unavailable")
+        if len(eligible) > 1:
+            raise AmbiguousAccessSourceError(
+                "Resource has multiple eligible access Sources"
+            )
+
+        source = eligible[0]
+        adapter = self._provider_adapters[source.provider]
+        await self._semaphore.acquire()
+        released = False
+        upstream: ProviderRepresentation | None = None
+
+        async def finish() -> None:
+            nonlocal released
+            if released:
+                return
+            released = True
+            try:
+                if upstream is not None:
+                    await upstream.close()
+            finally:
+                self._semaphore.release()
+
+        try:
+            upstream = await adapter.open_video(
+                source.provider_locator,
+                byte_range,
+            )
+            descriptor = self._validate_video_upstream(
+                resource_ref=resource_ref,
+                source=source,
+                upstream=upstream,
+            )
+        except BaseException:
+            await finish()
+            raise
+
+        async def streaming_body() -> AsyncIterator[bytes]:
+            try:
+                if descriptor.status_code == 416:
+                    return
+                async for chunk in upstream.body:
+                    if not isinstance(chunk, (bytes, bytearray, memoryview)):
+                        raise ProviderInvalidResponseError(
+                            "Provider returned an invalid byte stream"
+                        )
+                    normalized = bytes(chunk)
+                    if normalized:
+                        yield normalized
+            except asyncio.CancelledError:
+                raise
+            except (ProviderUnavailableError, ResourceAccessError):
+                raise
+            except Exception:
+                raise ProviderUnavailableError(
+                    "Provider video stream failed"
+                ) from None
+            finally:
+                await finish()
+
+        return ResourceVideo(
+            descriptor=descriptor,
+            body=streaming_body(),
+            close=finish,
+        )
+
+    async def _resolve_sources(
+        self,
+        resource_ref: str,
+    ) -> tuple[ResourceAccessSource, ...]:
+        try:
+            asset_id = parse_resource_ref(resource_ref)
+        except InvalidResourceRefError as error:
+            raise InvalidResourceReferenceError(
+                "Resource reference is invalid"
+            ) from error
+        try:
+            sources = await anyio.to_thread.run_sync(
+                self._repository.resolve_access_sources,
+                asset_id,
+            )
+        except Exception:
+            raise ResourceAccessUnavailableError(
+                "Resource access persistence is unavailable"
+            ) from None
+        if sources is None:
+            raise ResourceNotFoundError("Resource was not found")
+        return sources
+
+    def _is_eligible(
+        self,
+        source: ResourceAccessSource,
+        mime_prefixes: tuple[str, ...],
+    ) -> bool:
         return (
             source.provider == "immich"
             and source.provider in self._provider_adapters
             and source.resource_type == "file"
-            and source.mime_type.lower().startswith("image/")
+            and source.mime_type.lower().startswith(mime_prefixes)
         )
 
     @staticmethod
@@ -249,4 +349,78 @@ class ResourceAccessService:
                 provider=source.provider,
             ),
             declared_length,
+        )
+
+    @staticmethod
+    def _validate_video_upstream(
+        *,
+        resource_ref: str,
+        source: ResourceAccessSource,
+        upstream: ProviderRepresentation,
+    ) -> ResourceVideoDescriptor:
+        if upstream.status_code >= 500:
+            raise ProviderUnavailableError(
+                "Provider video service is unavailable"
+            )
+        if upstream.status_code not in (200, 206, 416):
+            raise ProviderInvalidResponseError(
+                "Provider returned an unexpected status"
+            )
+
+        media_type: str | None = None
+        if upstream.status_code != 416:
+            raw_media_type = upstream.media_type
+            if not isinstance(raw_media_type, str):
+                raise ProviderInvalidResponseError(
+                    "Provider returned no valid Content-Type"
+                )
+            media_type = raw_media_type.split(";", 1)[0].strip().lower()
+            if _VIDEO_MEDIA_TYPE.fullmatch(media_type) is None:
+                raise ProviderInvalidResponseError(
+                    "Provider returned no valid Content-Type"
+                )
+
+        content_length: int | None = None
+        if upstream.content_length is not None:
+            try:
+                content_length = int(upstream.content_length)
+            except (TypeError, ValueError) as error:
+                raise ProviderInvalidResponseError(
+                    "Provider returned an invalid Content-Length"
+                ) from error
+            if content_length < 0 or (
+                upstream.status_code != 416 and content_length == 0
+            ):
+                raise ProviderInvalidResponseError(
+                    "Provider returned an invalid Content-Length"
+                )
+        if upstream.status_code == 416:
+            content_length = None
+
+        content_range = upstream.content_range
+        if content_range is not None and _CONTENT_RANGE.fullmatch(
+            content_range
+        ) is None:
+            raise ProviderInvalidResponseError(
+                "Provider returned an invalid Content-Range"
+            )
+        if upstream.status_code in (206, 416) and content_range is None:
+            raise ProviderInvalidResponseError(
+                "Provider returned no valid Content-Range"
+            )
+
+        accept_ranges = upstream.accept_ranges
+        if accept_ranges is not None and accept_ranges.lower() != "bytes":
+            raise ProviderInvalidResponseError(
+                "Provider returned an invalid Accept-Ranges"
+            )
+
+        return ResourceVideoDescriptor(
+            resource_ref=resource_ref,
+            status_code=upstream.status_code,
+            media_type=media_type,
+            content_length=content_length,
+            content_range=content_range,
+            accept_ranges="bytes" if accept_ranges is not None else None,
+            provider=source.provider,
         )

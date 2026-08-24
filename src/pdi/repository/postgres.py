@@ -440,7 +440,7 @@ class PostgreSQLRepository(
         self,
         asset_id: str,
     ) -> tuple[ResourceAccessSource, ...] | None:
-        """Resolve detached active Immich image Sources for access."""
+        """Resolve detached active Immich file Sources for controlled access."""
 
         parsed_id = UUID(asset_id)
         with self._session_factory() as session:
@@ -459,7 +459,6 @@ class PostgreSQLRepository(
                     AssetORM.resource_type == ResourceType.FILE.value,
                     AssetSourceORM.is_active.is_(True),
                     AssetSourceORM.provider == "immich",
-                    func.lower(BlobORM.mime_type).like("image/%"),
                 )
                 .order_by(AssetSourceORM.id.asc())
             ).all()

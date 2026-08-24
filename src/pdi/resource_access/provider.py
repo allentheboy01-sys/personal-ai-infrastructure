@@ -14,6 +14,8 @@ class ProviderRepresentation:
     last_modified: str | None
     body: AsyncIterator[bytes]
     close: Callable[[], Awaitable[None]]
+    content_range: str | None = None
+    accept_ranges: str | None = None
 
 
 class ProviderRepresentationAdapter(Protocol):
@@ -25,6 +27,13 @@ class ProviderRepresentationAdapter(Protocol):
         self,
         provider_locator: str,
         representation_kind: ResourceRepresentationKind,
+    ) -> ProviderRepresentation:
+        ...
+
+    async def open_video(
+        self,
+        provider_locator: str,
+        byte_range: str | None,
     ) -> ProviderRepresentation:
         ...
 

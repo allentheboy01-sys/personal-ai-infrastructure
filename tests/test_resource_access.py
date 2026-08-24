@@ -23,6 +23,7 @@ from pdi.resource_access import (
     ResourceNotFoundError,
     ResourceRepresentationDescriptor,
     ResourceRepresentationKind,
+    ResourceVideoDescriptor,
     THUMBNAIL_MAX_BYTES,
     UnsupportedRepresentationError,
 )
@@ -69,6 +70,7 @@ class StubAdapter:
         self.content_length = content_length
         self.chunks = chunks
         self.calls: list[tuple[str, ResourceRepresentationKind]] = []
+        self.video_calls: list[tuple[str, str | None]] = []
         self.close_count = 0
         self.read_count = 0
 
@@ -91,6 +93,29 @@ class StubAdapter:
             last_modified="Sat, 16 Aug 2026 00:00:00 GMT",
             body=body(),
             close=close,
+        )
+
+    async def open_video(self, locator, byte_range):
+        self.video_calls.append((locator, byte_range))
+
+        async def body():
+            for chunk in self.chunks:
+                self.read_count += 1
+                yield chunk
+
+        async def close():
+            self.close_count += 1
+
+        return ProviderRepresentation(
+            status_code=206 if byte_range else 200,
+            media_type="video/mp4",
+            content_length=self.content_length,
+            etag='"opaque"',
+            last_modified="Sat, 16 Aug 2026 00:00:00 GMT",
+            body=body(),
+            close=close,
+            content_range="bytes 0-0/42" if byte_range else None,
+            accept_ranges="bytes",
         )
 
     async def aclose(self):
@@ -160,7 +185,6 @@ def test_service_validates_canonical_ref_and_kind() -> None:
         (None, ResourceNotFoundError),
         ((), RepresentationUnavailableError),
         ((_source(resource_type="message"),), RepresentationUnavailableError),
-        ((_source(mime_type="video/mp4"),), RepresentationUnavailableError),
         ((_source(provider="nextcloud"),), RepresentationUnavailableError),
         ((_source(), _source("source-b")), AmbiguousAccessSourceError),
     ],
@@ -177,6 +201,137 @@ def test_service_source_resolution(sources, expected) -> None:
 
     asyncio.run(run())
     assert adapter.calls == []
+
+
+def test_video_thumbnail_is_a_bounded_image_representation() -> None:
+    resource_ref = format_resource_ref(uuid4())
+    adapter = StubAdapter(content_length="5")
+    service, _ = _service(
+        StubRepository((_source(mime_type="video/mp4"),)),
+        adapter,
+    )
+
+    async def run() -> None:
+        opened = await service.open_representation(resource_ref, "thumbnail")
+        assert opened.descriptor.media_type == "image/webp"
+        assert await _collect(opened) == b"image"
+
+    asyncio.run(run())
+
+
+def test_video_playback_preserves_range_and_streams_without_image_bounds() -> None:
+    resource_ref = format_resource_ref(uuid4())
+    chunks = (b"first", b"second")
+    adapter = StubAdapter(content_length="11", chunks=chunks)
+    service, _ = _service(
+        StubRepository((_source(mime_type="video/quicktime"),)),
+        adapter,
+    )
+
+    async def run() -> None:
+        opened = await service.open_video(resource_ref, "bytes=0-0")
+        assert adapter.read_count == 0
+        assert opened.descriptor == ResourceVideoDescriptor(
+            resource_ref=resource_ref,
+            status_code=206,
+            media_type="video/mp4",
+            content_length=11,
+            content_range="bytes 0-0/42",
+            accept_ranges="bytes",
+            provider="immich",
+        )
+        iterator = opened.__aiter__()
+        assert await anext(iterator) == b"first"
+        assert adapter.read_count == 1
+        assert await anext(iterator) == b"second"
+        await opened.aclose()
+
+    asyncio.run(run())
+    assert adapter.calls == []
+    assert adapter.video_calls == [("source-a", "bytes=0-0")]
+
+
+def test_video_playback_rejects_invalid_range_before_provider_call() -> None:
+    adapter = StubAdapter()
+    service, _ = _service(
+        StubRepository((_source(mime_type="video/mp4"),)),
+        adapter,
+    )
+
+    async def run() -> None:
+        with pytest.raises(UnsupportedRepresentationError):
+            await service.open_video(
+                format_resource_ref(uuid4()),
+                "bytes=0-1,4-5",
+            )
+
+    asyncio.run(run())
+    assert adapter.video_calls == []
+
+
+def test_video_stream_cancellation_closes_upstream_and_releases_slot() -> None:
+    closed = asyncio.Event()
+
+    class CancelAdapter(StubAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.video_count = 0
+
+        async def open_video(self, locator, byte_range):
+            del locator, byte_range
+            self.video_count += 1
+            current = self.video_count
+
+            async def body():
+                yield b"first"
+                if current == 1:
+                    await asyncio.Event().wait()
+
+            async def close():
+                if current == 1:
+                    closed.set()
+
+            return ProviderRepresentation(
+                200,
+                "video/mp4",
+                None,
+                None,
+                None,
+                body(),
+                close,
+                accept_ranges="bytes",
+            )
+
+    adapter = CancelAdapter()
+    resource_ref = format_resource_ref(uuid4())
+    service, _ = _service(
+        StubRepository((_source(mime_type="video/mp4"),)),
+        adapter,
+        cap=1,
+    )
+
+    async def run() -> None:
+        first = await service.open_video(resource_ref)
+
+        async def consume() -> None:
+            async for _ in first:
+                pass
+
+        task = asyncio.create_task(consume())
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await asyncio.wait_for(closed.wait(), timeout=0.5)
+
+        second = await asyncio.wait_for(
+            service.open_video(resource_ref),
+            timeout=0.5,
+        )
+        assert await _collect(second) == b"first"
+
+    asyncio.run(run())
+    assert adapter.video_count == 2
 
 
 def test_repository_failure_is_sanitized_without_connection_details() -> None:
@@ -451,6 +606,54 @@ def test_immich_adapter_uses_official_endpoint_and_64k_streaming() -> None:
     assert request_seen is not None
     assert request_seen.url.path == f"/api/assets/{locator}/thumbnail"
     assert dict(request_seen.url.params) == {"size": "preview"}
+    assert request_seen.headers["x-api-key"] == "sensitive-key"
+
+
+def test_immich_adapter_forwards_range_to_official_video_endpoint() -> None:
+    locator = str(uuid4())
+    request_seen: httpx.Request | None = None
+
+    class MockVideoStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b"a"
+            yield b"b"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal request_seen
+        request_seen = request
+        return httpx.Response(
+            206,
+            headers={
+                "content-type": "video/mp4",
+                "content-length": "2",
+                "content-range": "bytes 0-1/42",
+                "accept-ranges": "bytes",
+            },
+            stream=MockVideoStream(),
+        )
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        follow_redirects=False,
+    )
+    adapter = ImmichRepresentationAdapter(
+        "https://immich.example/",
+        "sensitive-key",
+        client=client,
+    )
+
+    async def run() -> None:
+        opened = await adapter.open_video(locator, "bytes=0-1")
+        assert b"".join([chunk async for chunk in opened.body]) == b"ab"
+        assert opened.content_range == "bytes 0-1/42"
+        assert opened.accept_ranges == "bytes"
+        await opened.close()
+        await client.aclose()
+
+    asyncio.run(run())
+    assert request_seen is not None
+    assert request_seen.url.path == f"/api/assets/{locator}/video/playback"
+    assert request_seen.headers["range"] == "bytes=0-1"
     assert request_seen.headers["x-api-key"] == "sensitive-key"
 
 

@@ -39,7 +39,30 @@ class SelectiveHydrationPDI(FakePDI):
 
 
 async def test_product_api_is_allowlisted_and_private(app_factory):
-    async def image(request): return httpx.Response(200, headers={"content-type": "image/jpeg", "content-length": "4"}, content=b"data")
+    async def image(request):
+        if request.url.path.endswith("/video"):
+            if request.headers["range"] == "bytes=99-100":
+                return httpx.Response(
+                    416,
+                    headers={
+                        "content-type": "application/json",
+                        "content-range": "bytes */4",
+                        "accept-ranges": "bytes",
+                    },
+                    content=b'{"private":"provider detail"}',
+                )
+            assert request.headers["range"] == "bytes=0-0"
+            return httpx.Response(
+                206,
+                headers={
+                    "content-type": "video/mp4",
+                    "content-length": "1",
+                    "content-range": "bytes 0-0/4",
+                    "accept-ranges": "bytes",
+                },
+                content=b"d",
+            )
+        return httpx.Response(200, headers={"content-type": "image/jpeg", "content-length": "4"}, content=b"data")
     app = app_factory(pdi_client=FakePDI(), resource_access=ResourceAccessClient(None, transport=httpx.MockTransport(image)))
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="https://jarvis.test") as client:
@@ -56,6 +79,23 @@ async def test_product_api_is_allowlisted_and_private(app_factory):
             assert provider.status_code == 200 and provider.json()["summary"]["operational_state"] == "ready"
             representation = await client.get(f"/api/v1/resources/{ref}/representation?kind=thumbnail")
             assert representation.status_code == 200 and representation.content == b"data"
+            video = await client.get(
+                f"/api/v1/resources/{ref}/video",
+                headers={"Range": "bytes=0-0"},
+            )
+            assert video.status_code == 206 and video.content == b"d"
+            assert video.headers["content-range"] == "bytes 0-0/4"
+            assert video.headers["accept-ranges"] == "bytes"
+            assert video.headers["content-type"] == "video/mp4"
+            assert "provider" not in video.text
+            unsat = await client.get(
+                f"/api/v1/resources/{ref}/video",
+                headers={"Range": "bytes=99-100"},
+            )
+            assert unsat.status_code == 416
+            assert unsat.content == b""
+            assert unsat.headers["content-range"] == "bytes */4"
+            assert "private" not in unsat.text
 
 
 async def test_live_mode_never_returns_synthetic_product_data(app_factory):

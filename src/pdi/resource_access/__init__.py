@@ -16,6 +16,8 @@ from .models import (
     ResourceRepresentation,
     ResourceRepresentationDescriptor,
     ResourceRepresentationKind,
+    ResourceVideo,
+    ResourceVideoDescriptor,
 )
 from .provider import ProviderRepresentation, ProviderRepresentationAdapter
 from .repository import ResourceAccessRepository
@@ -48,6 +50,8 @@ __all__ = [
     "ResourceRepresentation",
     "ResourceRepresentationDescriptor",
     "ResourceRepresentationKind",
+    "ResourceVideo",
+    "ResourceVideoDescriptor",
     "THUMBNAIL_MAX_BYTES",
     "UnsupportedRepresentationError",
 ]

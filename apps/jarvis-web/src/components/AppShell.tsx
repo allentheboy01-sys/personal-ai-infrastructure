@@ -96,6 +96,7 @@ export function AppShell() {
     if (initial.detail === 'image') showResource(resources[0])
     if (initial.detail === 'document') showResource(resources[1])
     if (initial.detail === 'message') showResource(resources[2])
+    if (initial.detail === 'video') showResource(resources[5])
     if (initial.detail === 'provider') showProvider(providers[1])
     if (initial.scene === 'working') showExecution()
     // deterministic review-state initialization only

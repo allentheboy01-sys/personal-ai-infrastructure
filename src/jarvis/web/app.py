@@ -169,6 +169,39 @@ def create_app(*, engine: Engine, settings: JarvisWebSettings, auth_adapter: Aut
             headers["Content-Length"] = str(stream.content_length)
         return StreamingResponse(body(), media_type=stream.content_type, headers=headers)
 
+    @router.get("/resources/{resource_ref}/video")
+    async def get_video(resource_ref: str, request: Request) -> Response:
+        try:
+            context = representations.stream_video(
+                resource_ref,
+                request.headers.get("range"),
+            )
+            stream = await context.__aenter__()
+        except RepresentationError as error:
+            raise HTTPException(error.status_code, error.code) from error
+
+        headers = {"Cache-Control": "private, no-store"}
+        if stream.content_length is not None and stream.status_code != 416:
+            headers["Content-Length"] = str(stream.content_length)
+        if stream.content_range is not None:
+            headers["Content-Range"] = stream.content_range
+        if stream.accept_ranges is not None:
+            headers["Accept-Ranges"] = stream.accept_ranges
+
+        async def video_body() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in stream.body:
+                    yield chunk
+            finally:
+                await context.__aexit__(None, None, None)
+
+        return StreamingResponse(
+            video_body(),
+            status_code=stream.status_code,
+            media_type=stream.content_type,
+            headers=headers,
+        )
+
     @router.get("/providers", response_model=list[ProviderSummaryResponse])
     async def list_providers() -> list[ProviderSummaryResponse]:
         try:
@@ -224,7 +257,7 @@ def _sse(event: RuntimeEvent) -> str:
 
 
 def _resource_summary(item) -> ResourceSummaryResponse:
-    return ResourceSummaryResponse(resource_ref=item.resource_ref, resource_type=item.resource_type, title=item.title, secondary_text=item.secondary_text, timestamp=item.timestamp, presentation_kind=item.presentation_kind, presentation_label=item.presentation_label, providers=list(item.providers), capabilities={"detail": item.capabilities.detail, "preview": item.capabilities.preview, "open": item.capabilities.open})
+    return ResourceSummaryResponse(resource_ref=item.resource_ref, resource_type=item.resource_type, title=item.title, secondary_text=item.secondary_text, timestamp=item.timestamp, presentation_kind=item.presentation_kind, presentation_label=item.presentation_label, providers=list(item.providers), capabilities={"detail": item.capabilities.detail, "preview": item.capabilities.preview, "open": item.capabilities.open, "playback": item.capabilities.playback})
 
 
 def _provider_summary(item) -> ProviderSummaryResponse:

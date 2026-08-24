@@ -29,4 +29,18 @@ describe('ResourceCard', () => {
     expect(screen.queryByRole('img', { name: resources[0].title })).not.toBeInTheDocument()
     expect(screen.getByRole('img', { name: `${resources[0].title} preview unavailable` })).toBeInTheDocument()
   })
+
+  it('renders video thumbnail with a restrained play indicator', () => {
+    const { container } = render(<ResourceCard resource={resources[5]} />)
+    expect(screen.getByRole('img', { name: resources[5].title })).toHaveAttribute('src', resources[5].presentation.thumbnail)
+    expect(container.querySelector('.video-play-indicator')).toBeInTheDocument()
+    expect(screen.queryByText('File')).not.toBeInTheDocument()
+  })
+
+  it('falls back safely when a video thumbnail fails', () => {
+    const { container } = render(<ResourceCard resource={resources[5]} />)
+    fireEvent.error(screen.getByRole('img', { name: resources[5].title }))
+    expect(screen.getByRole('img', { name: `${resources[5].title} video preview unavailable` })).toBeInTheDocument()
+    expect(container.querySelector('.video-play-indicator')).toBeInTheDocument()
+  })
 })

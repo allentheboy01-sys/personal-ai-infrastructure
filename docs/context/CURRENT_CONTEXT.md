@@ -360,6 +360,19 @@ smoke 验证 Resources、Resource Detail、Immich image proxy 与三个 Provider
 
 ## 6. 当前限制
 
+### Immich Video Presentation V0.1 implementation candidate
+
+普通 Immich `video/*` Resource 现在具有独立 `video` presentation kind。其 card
+thumbnail/preview 继续通过 ResourceRef-authorized、bounded image representation
+访问 Immich generated thumbnail；detail playback 使用独立的 ResourceRef-authorized
+video stream，端到端保留受验证的单段 `Range`、`206`、`Content-Range`、
+`Accept-Ranges`、`Content-Type` 与 `Content-Length`，且不聚合完整媒体 body。
+
+Browser 不接收 Immich URL、asset ID 或 credential；Jarvis 不转码、不使用 Safe Exec，
+也不实现 HLS。`image/*`、generic file、final ResourceRef snapshot 与 max-8 collector
+语义保持不变。Live Photo pairing、`livePhotoVideoId` ingestion、Resource-to-Resource
+relation、identity merge 与 presentation grouping 明确 deferred。
+
 - 没有通用 Jarvis/PDI long-term memory；
 - 没有 write Tool、任务系统或 proactive agent loop；
 - Jarvis Web UI V0.1 Stage 1 的视觉与 Beacon / Guide identity 保持冻结；Stage 2

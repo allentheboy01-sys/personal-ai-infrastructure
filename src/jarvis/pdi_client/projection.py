@@ -8,7 +8,7 @@ from .contract import PDIContractError, PDIProviderNotFound, PDIResourceNotFound
 from .models import ProviderDetail, ProviderSummary, ResourceCapabilities, ResourceDetail, ResourcePage, ResourceSummary
 
 PROVIDERS = {
-    "immich": {"name": "Immich", "category": "Photos", "sync": "provider.immich.sync", "pipelines": ("enrichment.file_metadata", "enrichment.immich_geo", "enrichment.immich_metadata", "enrichment.immich_ocr"), "description": "Photos available to Jarvis through a read-only connection.", "capabilities": ("Browse image metadata", "View bounded image previews", "Use resources in agent context")},
+    "immich": {"name": "Immich", "category": "Photos", "sync": "provider.immich.sync", "pipelines": ("enrichment.file_metadata", "enrichment.immich_geo", "enrichment.immich_metadata", "enrichment.immich_ocr"), "description": "Photos available to Jarvis through a read-only connection.", "capabilities": ("Browse image and video metadata", "View controlled media previews", "Use resources in agent context")},
     "nextcloud": {"name": "Nextcloud", "category": "Files", "sync": "provider.nextcloud.sync", "pipelines": ("enrichment.nextcloud_text", "enrichment.nextcloud_documents", "enrichment.file_metadata"), "description": "Files and documents available through a read-only connection.", "capabilities": ("Browse file metadata", "Search indexed documents", "Use resources in agent context")},
     "gmail": {"name": "Gmail", "category": "Messages", "sync": "provider.gmail.sync", "pipelines": ("enrichment.gmail_metadata",), "description": "Message metadata available through a manually managed, read-only connection.", "capabilities": ("Browse message metadata", "Search indexed message context", "Use metadata in agent context")},
 }
@@ -56,14 +56,17 @@ def project_resource(raw: Any, *, detail: bool = False) -> ResourceSummary | Res
         kind, label = "message", "Message"
     elif isinstance(mime, str) and mime.startswith("image/"):
         kind, label = "image", mime.split("/", 1)[1].upper()
+    elif isinstance(mime, str) and mime.startswith("video/"):
+        kind, label = "video", "Video"
     elif isinstance(mime, str) and (mime.startswith("text/") or mime == "application/pdf" or any(token in mime for token in ("document", "wordprocessing", "opendocument"))):
         kind, label = "document", _document_label(mime)
     else:
         kind, label = "generic", "File"
-    preview = kind == "image" and "immich" in provider_refs
+    preview = kind in {"image", "video"} and "immich" in provider_refs
+    playback = kind == "video" and "immich" in provider_refs
     title = _string(item.get("display_name")) or ("Untitled message" if resource_type == "message" else "Untitled resource")
     timestamp = _string(item.get("pdi_first_observed_at"))
-    summary = ResourceSummary(ref, resource_type, title, mime or ("Metadata only" if resource_type == "message" else None), timestamp, kind, label, providers, ResourceCapabilities(True, preview, False))
+    summary = ResourceSummary(ref, resource_type, title, mime or ("Metadata only" if resource_type == "message" else None), timestamp, kind, label, providers, ResourceCapabilities(True, preview, False, playback))
     if not detail:
         return summary
     facts: list[tuple[str, str]] = [("Type", label)]

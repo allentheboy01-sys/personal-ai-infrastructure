@@ -126,14 +126,20 @@ def test_postgres_resource_access_mapping_is_read_only_and_detached() -> None:
         )
         missing = repository.resolve_access_sources(str(uuid4()))
 
-        assert eligible == (
+        assert eligible is not None and set(eligible) == {
             ResourceAccessSource(
                 provider="immich",
                 provider_locator=locators["eligible"],
                 resource_type="file",
                 mime_type="image/jpeg",
             ),
-        )
+            ResourceAccessSource(
+                provider="immich",
+                provider_locator=locators["video"],
+                resource_type="file",
+                mime_type="video/mp4",
+            ),
+        }
         assert no_source == ()
         assert ambiguous is not None and len(ambiguous) == 2
         assert {item.provider_locator for item in ambiguous} == {

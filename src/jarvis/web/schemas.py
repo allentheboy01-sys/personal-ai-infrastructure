@@ -29,6 +29,7 @@ class ResourceCapabilitiesResponse(BaseModel):
     detail: bool
     preview: bool
     open: bool
+    playback: bool
 
 
 class ResourceSummaryResponse(BaseModel):

@@ -11,11 +11,20 @@ def resource(resource_type="file", provider="immich", mime="image/jpeg"):
 
 def test_resource_renderers_and_capabilities_are_content_driven():
     image = project_resource(resource())
+    mp4 = project_resource(resource(mime="video/mp4"))
+    quicktime = project_resource(resource(mime="video/quicktime"))
+    unsupported_video = project_resource(
+        resource(provider="nextcloud", mime="video/mp4")
+    )
     document = project_resource(resource(provider="nextcloud", mime="application/pdf"))
     message = project_resource(resource("message", "gmail", "message/rfc822"))
     generic = project_resource(resource(provider="nextcloud", mime="application/octet-stream"))
-    assert [image.presentation_kind, document.presentation_kind, message.presentation_kind, generic.presentation_kind] == ["image", "document", "message", "generic"]
+    assert [image.presentation_kind, mp4.presentation_kind, quicktime.presentation_kind, document.presentation_kind, message.presentation_kind, generic.presentation_kind] == ["image", "video", "video", "document", "message", "generic"]
     assert image.capabilities.preview is True
+    assert mp4.capabilities.preview is mp4.capabilities.playback is True
+    assert quicktime.capabilities.preview is quicktime.capabilities.playback is True
+    assert unsupported_video.capabilities.preview is False
+    assert unsupported_video.capabilities.playback is False
     assert document.capabilities.preview is message.capabilities.preview is False
 
 

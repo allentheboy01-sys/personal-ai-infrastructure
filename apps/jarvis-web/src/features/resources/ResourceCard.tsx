@@ -1,4 +1,4 @@
-import { File, FileText, ImageOff, Mail, MoreHorizontal } from 'lucide-react'
+import { CirclePlay, File, FileText, ImageOff, Mail, MoreHorizontal } from 'lucide-react'
 import { useState } from 'react'
 import type { ResourceView } from '../../models/resource'
 
@@ -6,6 +6,16 @@ function ImageRenderer({ resource }: { resource: ResourceView }) {
   const [failed, setFailed] = useState(false)
   if (failed || !resource.presentation.thumbnail) return <div className="resource-visual icon-renderer image-fallback" role="img" aria-label={`${resource.title} preview unavailable`}><span className="renderer-icon"><ImageOff size={24} /></span><span>Image</span></div>
   return <div className="resource-visual image-renderer"><img src={resource.presentation.thumbnail} alt={resource.title} loading="lazy" onError={() => setFailed(true)} /></div>
+}
+
+function VideoRenderer({ resource }: { resource: ResourceView }) {
+  const [failed, setFailed] = useState(false)
+  const image = !failed && resource.presentation.thumbnail
+  return <div className={`resource-visual video-renderer ${image ? '' : 'video-fallback'}`} role={image ? undefined : 'img'} aria-label={image ? undefined : `${resource.title} video preview unavailable`}>
+    {image && <img src={image} alt={resource.title} loading="lazy" onError={() => setFailed(true)} />}
+    <span className="video-play-indicator" aria-hidden="true"><CirclePlay size={30} /></span>
+    {!image && <span className="video-fallback-label">Video</span>}
+  </div>
 }
 
 function DocumentRenderer({ resource }: { resource: ResourceView }) {
@@ -16,7 +26,7 @@ function MessageRenderer() { return <div className="resource-visual icon-rendere
 function GenericRenderer() { return <div className="resource-visual icon-renderer generic"><span className="renderer-icon"><File size={24} /></span><span>File</span></div> }
 
 export function ResourceCard({ resource, onOpen, compact = false }: { resource: ResourceView; onOpen?: (resource: ResourceView) => void; compact?: boolean }) {
-  const renderer = resource.presentation.kind === 'image' ? <ImageRenderer resource={resource} /> : resource.presentation.kind === 'document' ? <DocumentRenderer resource={resource} /> : resource.presentation.kind === 'message' ? <MessageRenderer /> : <GenericRenderer />
+  const renderer = resource.presentation.kind === 'image' ? <ImageRenderer resource={resource} /> : resource.presentation.kind === 'video' ? <VideoRenderer resource={resource} /> : resource.presentation.kind === 'document' ? <DocumentRenderer resource={resource} /> : resource.presentation.kind === 'message' ? <MessageRenderer /> : <GenericRenderer />
   return (
     <article className={`resource-card ${compact ? 'compact' : ''}`}>
       <button className="resource-hitbox" onClick={() => onOpen?.(resource)} aria-label={`View ${resource.title}`}>

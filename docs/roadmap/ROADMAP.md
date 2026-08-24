@@ -57,11 +57,17 @@ details live in their dedicated documents.
   adds bounded current Person-label discovery to the existing aggregate Tool
   and concise Hermes grounding/stop guidance, without a new Tool, schema,
   persistent alias store, family ontology, Runtime protocol, or frontend change.
+  Immich Video Presentation V0.1 is an implementation candidate that adds
+  provider-generated thumbnails and ResourceRef-authorized, range-aware
+  streaming playback for ordinary video Resources. It adds no transcoding,
+  HLS, Live Photo pairing, schema, identity, collector, Exec, or Hermes change.
 
 ## Future
 
 - Consumer-facing relationship retrieval and broader cross-resource reasoning,
   only after a separate architecture review.
+- Provider-derived Live Photo Resource relations and presentation grouping,
+  only after a separate world-model and lifecycle design review.
 - User-controlled memory derived from PDI rather than owned by an AI runtime.
 - Explicit permission and write/action boundaries before any write-capable
   consumer Tool is introduced.

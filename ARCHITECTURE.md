@@ -114,15 +114,18 @@ and concrete repositories never cross the service boundary.
 Resource access is separate from query and retrieval:
 
 ```text
-Resource reference + representation kind
+Resource reference + approved access kind
         |
-ResourceAccessService -> eligible Provider source -> bounded byte stream
+ResourceAccessService -> eligible Provider source -> controlled byte stream
 ```
 
 It returns controlled representations rather than filesystem paths or Provider
-credentials. Eligibility, size limits, upstream validation, concurrency, and
-stream cleanup are enforced at the service boundary. The deployed process uses
-its own launcher and Unix-domain-socket/HTTP boundary.
+credentials. Image and video thumbnails remain bounded image representations.
+Video playback is a distinct streaming contract that preserves validated
+single-range HTTP semantics without buffering the media body. Eligibility,
+upstream validation, concurrency, and stream cleanup are enforced at the
+service boundary. The deployed process uses its own launcher and
+Unix-domain-socket/HTTP boundary.
 
 ## MCP boundary
 

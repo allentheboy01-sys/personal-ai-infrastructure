@@ -138,6 +138,12 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .resource-visual { height: 138px; }
 .image-renderer { background: #d9ddd5; overflow: hidden; }
 .image-renderer img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.video-renderer { position: relative; overflow: hidden; background: #242824; color: white; }
+.video-renderer img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.video-play-indicator { position: absolute; inset: 0; display: grid; place-items: center; filter: drop-shadow(0 1px 5px rgba(0,0,0,.45)); pointer-events: none; }
+.video-play-indicator svg { fill: rgba(20, 23, 20, .38); stroke-width: 1.7; }
+.video-fallback { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 30px; }
+.video-fallback-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: rgba(255,255,255,.78); }
 .icon-renderer { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 9px; font-weight: 650; text-transform: none; letter-spacing: .03em; }
 .renderer-icon { width: 42px; height: 42px; border: 1px solid currentColor; border-radius: 13px; display: grid; place-items: center; opacity: .9; }
 .icon-renderer.document { background: #eee9df; color: #75583d; }
@@ -243,6 +249,10 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .lightbox-close { position: fixed; top: max(20px, env(safe-area-inset-top)); right: max(20px, env(safe-area-inset-right)); width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.2); border-radius: 12px; background: rgba(20,22,20,.72); color: white; display: grid; place-items: center; cursor: pointer; }
 .detail-hero { height: 145px; border-radius: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--warm); background: #eee9df; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
 .detail-hero.message { background: #e7ece8; color: var(--accent); }
+.detail-hero.video { background: #242824; color: #f4f5f1; }
+.detail-video { position: relative; min-height: 145px; border-radius: 15px; overflow: hidden; background: #111; display: grid; place-items: center; }
+.detail-video video { display: block; width: 100%; max-height: min(58vh, 560px); background: #111; object-fit: contain; }
+.video-unavailable { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: rgba(18, 20, 18, .82); color: #f4f5f1; font-size: 12px; font-weight: 650; }
 .detail-heading { padding: 22px 2px 17px; }
 .detail-kicker { color: var(--accent); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
 .detail-heading h2 { margin: 7px 0 6px; font-family: Newsreader, serif; font-size: 24px; font-weight: 500; line-height: 1.2; }
@@ -381,6 +391,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   .detail-content { padding: 16px; }
   .detail-image { height: min(40vh, 260px); }
   .lightbox-content { inset: max(68px, env(safe-area-inset-top)) 12px max(24px, env(safe-area-inset-bottom)); }
+  .detail-video video { max-height: 46vh; }
   .detail-heading h2 { font-size: 25px; }
 }
 
