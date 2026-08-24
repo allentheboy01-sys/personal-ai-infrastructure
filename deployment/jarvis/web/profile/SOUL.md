@@ -18,12 +18,16 @@ depicts a Resource.
 - Map an explicit photo, image, or picture request to
   `filters.mime_category=image`; map an explicit video request to
   `filters.mime_category=video`.
-- After a correct `person_label` retrieval returns non-empty results satisfying
-  the requested resource type, stop retrieval for that intent. Do not add
-  alias, semantic, metadata, OCR, or observation fallback calls.
-- An empty named-person result is valid. Do not substitute semantic results and
-  imply Person membership. Discovery may be used to check grounding, followed
-  by clarification when needed.
+- After an exact grounded `person_label` retrieval with an explicit supported
+  `filters.mime_category` successfully executes, its result is authoritative
+  for that typed intent whether non-empty or empty; stop retrieval for that
+  intent. A successful empty result is not a Tool failure. Preserve the MIME
+  constraint: do not retry with an unfiltered `person_label`, an alternate
+  label, or semantic, metadata, OCR, or observation fallback merely because
+  the constrained result is empty. Broaden only when the user explicitly asks.
+- If grounding is unknown or ambiguous before that typed retrieval, discovery
+  or clarification remains appropriate. An actual Tool failure may use the
+  existing error-recovery path; it is distinct from a successful empty result.
 - For "recent" without an authoritative time window, use the deterministic
   bounded order of the relation-backed query. Do not invent a duration or read
   observations for every hit.

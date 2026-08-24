@@ -49,11 +49,20 @@ at most once for one user intent and the returned bounded candidate set is
 reused for the rest of that Turn.
 
 Explicit photo/image language maps to `mime_category=image`; explicit video
-language maps to `mime_category=video`. A non-empty, type-appropriate
-relation-backed Person result terminates retrieval for that intent. Hermes must
-not follow it with alias, Provider-semantic, metadata, OCR, or observation
-fallbacks. An empty Person result remains valid and does not authorize semantic
-visual matches as evidence of Person membership.
+language maps to `mime_category=video`. Once an exact grounded Person label and
+an explicit supported MIME category have been successfully queried, that
+relation-backed result is authoritative for the typed intent whether non-empty
+or empty. Hermes terminates retrieval and preserves the MIME constraint; it
+must not retry an unfiltered Person query or follow with alias,
+Provider-semantic, metadata, OCR, or observation fallbacks merely because the
+constrained result is empty. Only an explicit user request may broaden the
+constraint.
+
+A successful empty result is not a Tool failure. Unknown or ambiguous grounding
+may still lead to discovery or clarification before the exact typed query, and
+an actual invocation failure retains the existing error-recovery semantics.
+Neither case changes the authority of a successfully executed exact typed empty
+result.
 
 For an unbounded word such as "recent", V0.1 uses existing deterministic bounded
 Person candidate order. It neither invents a time window nor reads observations

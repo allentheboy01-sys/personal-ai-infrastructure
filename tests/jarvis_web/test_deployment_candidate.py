@@ -113,13 +113,48 @@ def test_web_profile_has_complete_read_only_hermes_home_scaffold() -> None:
         "ask the user to clarify",
         "`filters.mime_category=image`",
         "`filters.mime_category=video`",
+        "whether non-empty or empty",
         "stop retrieval for that intent",
-        "Do not substitute semantic results",
+        "A successful empty result is not a Tool failure",
+        "do not retry with an unfiltered `person_label`",
+        "Broaden only when the user explicitly asks",
+        "An actual Tool failure may use the existing error-recovery path",
         "Do not invent a duration",
     ):
         assert policy in soul_flat
     for private_example in ("妈妈", "我妈", "母亲", "Mom"):
         assert private_example not in soul
+
+
+def test_web_profile_treats_typed_person_empty_as_authoritative() -> None:
+    soul = (ROOT / "deployment/jarvis/web/profile/SOUL.md").read_text(
+        encoding="utf-8"
+    )
+    soul_flat = " ".join(soul.split())
+
+    # The same terminal rule covers synthetic image/video requests (E1/E2),
+    # while preserving the already-frozen non-empty behavior (E3).
+    assert "`filters.mime_category=image`" in soul_flat
+    assert "`filters.mime_category=video`" in soul_flat
+    assert (
+        "its result is authoritative for that typed intent whether non-empty or empty"
+        in soul_flat
+    )
+    assert "Preserve the MIME constraint" in soul_flat
+    assert "do not retry with an unfiltered `person_label`" in soul_flat
+    assert "an alternate label" in soul_flat
+    assert "semantic, metadata, OCR, or observation fallback" in soul_flat
+
+    # Ambiguous grounding (E4) and actual invocation failure (E5) remain
+    # separate from a successful, exact, typed empty result.
+    assert (
+        "If grounding is unknown or ambiguous before that typed retrieval" in soul_flat
+    )
+    assert "discovery or clarification remains appropriate" in soul_flat
+    assert (
+        "An actual Tool failure may use the existing error-recovery path" in soul_flat
+    )
+    assert "it is distinct from a successful empty result" in soul_flat
 
 
 def _release_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:

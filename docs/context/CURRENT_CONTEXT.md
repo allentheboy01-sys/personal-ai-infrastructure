@@ -267,7 +267,10 @@ projection，只从 active non-null `PersonSource.display_name` 发现当前 Pro
 它不读取 OCR、title、path 或 semantic results，且不新增 MCP Tool。Hermes Web profile
 对 exact label 直接使用 relation-backed `person_label` Rich Retrieval；colloquial
 表达先对 bounded current labels grounding，ambiguous 时询问，正确 non-empty Person
-结果后停止 speculative fallback。照片/图片与视频分别映射现有 image/video MIME
+结果后停止 speculative fallback。对 exact grounded Person 加显式 MIME filter 的成功
+查询，空结果同样是该 typed intent 的 authoritative completion：不得因空结果移除 MIME
+约束或追加 unfiltered Person、alias、semantic、metadata、OCR 或 observation fallback；
+只有实际 Tool failure 才沿用错误恢复。照片/图片与视频分别映射现有 image/video MIME
 category；不增加 family ontology、alias store、Memory、DB migration、Runtime 或
 frontend contract。
 
