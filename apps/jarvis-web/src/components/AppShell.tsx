@@ -46,7 +46,7 @@ export function AppShell() {
 
   const refreshConversations = useCallback(() => {
     if (initial.review) return
-    void jarvisApi.listConversations().then((items) => setConversations(items.slice(0, 10))).catch(() => undefined)
+    void jarvisApi.listConversations().then(setConversations).catch(() => undefined)
   }, [initial.review])
 
   const liveChat = useJarvisChat(initial.review ? null : initial.conversation, initial.review ? null : initial.turn, { onConversationChanged: refreshConversations })

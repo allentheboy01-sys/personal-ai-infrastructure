@@ -35,6 +35,25 @@ describe('canonical conversation shell', () => {
     window.history.replaceState(null, '', '/')
   })
 
+  it('keeps the complete canonical conversation history available to the sidebar', async () => {
+    const summaries = Array.from({ length: 24 }, (_, index) => ({
+      ...summaryA,
+      id: `stored-conversation-${index + 1}`,
+      title: `Stored Conversation ${index + 1}`,
+    }))
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === '/api/v1/conversations') return new Response(JSON.stringify(summaries), { status: 200 })
+      throw new Error(`unexpected fetch ${String(input)}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('EventSource', MockEventSource)
+    window.history.replaceState(null, '', '/?page=chat')
+
+    render(<AppShell />)
+
+    expect(await screen.findAllByRole('button', { name: /^Stored Conversation \d+/ })).toHaveLength(24)
+  })
+
   it('opens real Recent history and creates a distinct conversation after New', async () => {
     let recent = [summaryA]
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
