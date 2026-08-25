@@ -68,10 +68,14 @@ details live in their dedicated documents.
   DNS validation, pinned numeric connections, TLS hostname preservation, peer
   checks, manual redirect validation, identity-only encoding, and bounded text
   extraction. Safe Exec remains offline and Web data is neither PDI nor Memory.
-  Keyless DDGS is the default qualification candidate; Tavily remains an
-  optional credentialed adapter. Production remains blocked on immutable
-  deployment plus real Chinese/English DDGS quality/stability, region, sandbox,
-  and privacy qualification—not on a credential for DDGS mode.
+  Keyless DDGS is the default qualification candidate and uses one
+  deployment-selected backend only; `brave` with `wt-wt` passed bounded
+  Chinese/English quality and stability qualification through the Human-
+  approved external loopback Xray endpoint as provider-scoped egress;
+  Tavily remains an optional credentialed adapter and never inherits that
+  route. Direct fetch remains proxy-free, and isolated sandbox/AF_UNIX
+  qualification has passed. Production remains blocked on immutable deployment
+  and final privacy acceptance—not on a credential for DDGS mode.
 
 ## Future
 

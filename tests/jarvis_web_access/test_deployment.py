@@ -1,13 +1,16 @@
+import inspect
 from pathlib import Path
 
 import pytest
 
 from jarvis.web_access.__main__ import (
+    DDGS_BACKEND_ENV,
+    DDGS_PROXY_ENV,
     PROXY_ENV_NAMES,
     _build_search_provider,
     _sanitize_proxy_environment,
 )
-from jarvis.web_access.providers import DDGSSearchProvider, TavilySearchProvider
+from jarvis.web_access.providers import DDGS_PROXY_ENDPOINT, DDGSSearchProvider, SearchProvider, TavilySearchProvider
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,6 +33,8 @@ def test_web_access_units_use_only_private_unix_ipc_and_hardened_public_egress()
         "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6",
         "Environment=JARVIS_WEB_SEARCH_PROVIDER=ddgs",
         "Environment=JARVIS_WEB_SEARCH_REGION=wt-wt",
+        "Environment=JARVIS_WEB_DDGS_BACKEND=brave",
+        f"Environment=JARVIS_WEB_DDGS_PROXY={DDGS_PROXY_ENDPOINT}",
         "MemoryMax=192M",
         "TasksMax=32",
         "LimitNOFILE=128",
@@ -44,6 +49,7 @@ def test_web_access_units_use_only_private_unix_ipc_and_hardened_public_egress()
     assert "LoadCredential=tavily-api-key:/etc/jarvis/tavily-api-key" in tavily
     assert "User=harry" not in service
     assert "PrivateNetwork=yes" not in service
+    assert "pdi-xray.service" not in service
 
 
 def test_web_access_release_pins_ddgs_and_its_immutable_lock() -> None:
@@ -58,6 +64,8 @@ def test_web_access_release_pins_ddgs_and_its_immutable_lock() -> None:
 def test_ddgs_is_credential_free_default_and_tavily_fails_closed_without_credential(monkeypatch) -> None:
     monkeypatch.delenv("JARVIS_WEB_SEARCH_PROVIDER", raising=False)
     monkeypatch.delenv("JARVIS_WEB_SEARCH_REGION", raising=False)
+    monkeypatch.delenv(DDGS_BACKEND_ENV, raising=False)
+    monkeypatch.delenv(DDGS_PROXY_ENV, raising=False)
     monkeypatch.delenv("CREDENTIALS_DIRECTORY", raising=False)
     assert isinstance(_build_search_provider(object()), DDGSSearchProvider)  # type: ignore[arg-type]
     monkeypatch.setenv("JARVIS_WEB_SEARCH_PROVIDER", "tavily")
@@ -69,6 +77,8 @@ def test_tavily_mode_reads_only_systemd_credential(monkeypatch, tmp_path) -> Non
     credential = tmp_path / "tavily-api-key"
     credential.write_text("tvly-synthetic-test", encoding="utf-8")
     monkeypatch.setenv("JARVIS_WEB_SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv(DDGS_BACKEND_ENV, "invalid-for-ddgs")
+    monkeypatch.setenv(DDGS_PROXY_ENV, "socks5://127.0.0.1:1")
     monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(tmp_path))
     assert isinstance(_build_search_provider(object()), TavilySearchProvider)  # type: ignore[arg-type]
 
@@ -81,6 +91,17 @@ def test_unknown_provider_and_region_fail_closed(monkeypatch) -> None:
     monkeypatch.setenv("JARVIS_WEB_SEARCH_REGION", "model-controlled")
     with pytest.raises(ValueError, match="unsupported DDGS region"):
         _build_search_provider(object())  # type: ignore[arg-type]
+    monkeypatch.setenv("JARVIS_WEB_SEARCH_REGION", "wt-wt")
+    monkeypatch.setenv(DDGS_BACKEND_ENV, "auto")
+    with pytest.raises(ValueError, match="unsupported DDGS backend"):
+        _build_search_provider(object())  # type: ignore[arg-type]
+    monkeypatch.setenv(DDGS_BACKEND_ENV, "brave,yahoo")
+    with pytest.raises(ValueError, match="unsupported DDGS backend"):
+        _build_search_provider(object())  # type: ignore[arg-type]
+    monkeypatch.setenv(DDGS_BACKEND_ENV, "brave")
+    monkeypatch.setenv(DDGS_PROXY_ENV, "socks5://127.0.0.1:10809")
+    with pytest.raises(ValueError, match="unsupported DDGS proxy"):
+        _build_search_provider(object())  # type: ignore[arg-type]
 
 
 def test_web_access_process_sanitizes_every_proxy_environment(monkeypatch) -> None:
@@ -89,6 +110,25 @@ def test_web_access_process_sanitizes_every_proxy_environment(monkeypatch) -> No
     _sanitize_proxy_environment()
     for name in PROXY_ENV_NAMES:
         assert name not in __import__("os").environ
+    monkeypatch.setenv(DDGS_PROXY_ENV, DDGS_PROXY_ENDPOINT)
+    _sanitize_proxy_environment()
+    assert __import__("os").environ[DDGS_PROXY_ENV] == DDGS_PROXY_ENDPOINT
+
+
+def test_ddgs_proxy_is_not_visible_to_tools_runtime_frontend_or_fetcher() -> None:
+    proxy = (ROOT / "src/jarvis/web_proxy/main.py").read_text()
+    runtime = (ROOT / "src/jarvis/runtime/hermes_bridge.py").read_text()
+    frontend = (ROOT / "apps/jarvis-web/src/features/chat/executionTrace.ts").read_text()
+    fetcher = (ROOT / "src/jarvis/web_access/http.py").read_text()
+    service = (ROOT / "src/jarvis/web_access/service.py").read_text()
+    for text in (proxy, runtime, frontend, fetcher, service):
+        assert DDGS_PROXY_ENDPOINT not in text
+        assert DDGS_PROXY_ENV not in text
+        assert DDGS_BACKEND_ENV not in text
+    assert "jarvis_web_search" in proxy and "query" in proxy and "limit" in proxy
+    assert '"jarvis_web_search": ("web", "search_web", "searching")' in runtime
+    assert "search_web: 'Search the web'" in frontend
+    assert tuple(inspect.signature(SearchProvider.search).parameters) == ("self", "query", "limit")
 
 
 def test_proxy_is_af_unix_only_and_has_no_provider_or_product_credentials() -> None:

@@ -39,6 +39,8 @@ _DUCKDUCKGO_WRAPPER_PATHS = frozenset({"/l", "/l/"})
 _DUCKDUCKGO_WRAPPER_KEYS = frozenset({"uddg", "rut"})
 _DDGS_TIMEOUT_SECONDS = 5
 _DDGS_REGIONS = frozenset({"wt-wt", "cn-zh", "us-en"})
+_DDGS_BACKENDS = frozenset({"brave", "duckduckgo", "mojeek", "yahoo"})
+DDGS_PROXY_ENDPOINT = "socks5://127.0.0.1:10808"
 
 
 def _normalize_ddgs_result_url(raw_url: str) -> str | None:
@@ -78,7 +80,7 @@ def _normalize_ddgs_result_url(raw_url: str) -> str | None:
 
 
 class DDGSSearchProvider:
-    """Keyless DuckDuckGo text search behind one bounded sync worker.
+    """Keyless DDGS text search through one deployment-selected backend.
 
     Cancelling an async waiter cannot kill an already-running Python thread.
     The semaphore is therefore released only when that worker actually exits,
@@ -89,14 +91,22 @@ class DDGSSearchProvider:
         self,
         *,
         region: str,
+        backend: str,
+        proxy: str,
         timeout: int = _DDGS_TIMEOUT_SECONDS,
         factory: _DDGSFactory = DDGS,
     ) -> None:
         if region not in _DDGS_REGIONS:
             raise ValueError("unsupported DDGS region")
+        if backend not in _DDGS_BACKENDS:
+            raise ValueError("unsupported DDGS backend")
+        if proxy != DDGS_PROXY_ENDPOINT:
+            raise ValueError("unsupported DDGS proxy")
         if not 1 <= timeout <= _DDGS_TIMEOUT_SECONDS:
             raise ValueError("invalid DDGS timeout")
         self._region = region
+        self._backend = backend
+        self._proxy = proxy
         self._timeout = timeout
         self._factory = factory
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="jarvis-ddgs")
@@ -104,7 +114,7 @@ class DDGSSearchProvider:
 
     def _search_sync(self, query: str, limit: int) -> tuple[ProviderSearchResult, ...]:
         try:
-            client = self._factory(proxy=None, timeout=self._timeout, verify=True)
+            client = self._factory(proxy=self._proxy, timeout=self._timeout, verify=True)
             rows = client.text(
                 query,
                 region=self._region,
@@ -112,7 +122,7 @@ class DDGSSearchProvider:
                 timelimit=None,
                 max_results=limit,
                 page=1,
-                backend="duckduckgo",
+                backend=self._backend,
             )
         except RatelimitException:
             raise WebAccessError("provider_quota") from None

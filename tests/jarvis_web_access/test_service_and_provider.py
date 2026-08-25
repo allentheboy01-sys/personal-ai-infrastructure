@@ -9,7 +9,7 @@ from ddgs.exceptions import DDGSException, RatelimitException, TimeoutException 
 
 from jarvis.web_access.contract import MAX_TOOL_RESULT_CHARS, WebAccessError
 from jarvis.web_access.http import HttpResponse
-from jarvis.web_access.providers import DDGSSearchProvider, ProviderSearchResult, TavilySearchProvider
+from jarvis.web_access.providers import DDGS_PROXY_ENDPOINT, DDGSSearchProvider, ProviderSearchResult, TavilySearchProvider
 from jarvis.web_access.security import PublicResolver
 from jarvis.web_access.service import WebAccessService
 
@@ -73,18 +73,18 @@ class RecordingDDGSFactory:
         return Client()
 
 
-def test_ddgs_adapter_uses_one_bounded_duckduckgo_text_call_off_event_loop() -> None:
+def test_ddgs_adapter_uses_one_bounded_deployment_backend_text_call_off_event_loop() -> None:
     factory = RecordingDDGSFactory(
         [
             {"title": " One ", "href": "https://8.8.8.8/a#fragment", "body": " snippet ", "date": "ignored"},
             {"title": "Two", "href": "https://1.1.1.1/b", "body": "second"},
         ]
     )
-    provider = DDGSSearchProvider(region="cn-zh", factory=factory)
+    provider = DDGSSearchProvider(region="cn-zh", backend="brave", proxy=DDGS_PROXY_ENDPOINT, factory=factory)
     event_loop_thread = threading.get_ident()
     result = asyncio.run(provider.search("公开查询", 1))
     assert result == (ProviderSearchResult(" One ", "https://8.8.8.8/a#fragment", " snippet ", None),)
-    assert factory.instances == [{"proxy": None, "timeout": 5, "verify": True}]
+    assert factory.instances == [{"proxy": DDGS_PROXY_ENDPOINT, "timeout": 5, "verify": True}]
     assert factory.calls == [
         (
             "公开查询",
@@ -94,7 +94,7 @@ def test_ddgs_adapter_uses_one_bounded_duckduckgo_text_call_off_event_loop() -> 
                 "timelimit": None,
                 "max_results": 1,
                 "page": 1,
-                "backend": "duckduckgo",
+                "backend": "brave",
             },
         )
     ]
@@ -103,7 +103,7 @@ def test_ddgs_adapter_uses_one_bounded_duckduckgo_text_call_off_event_loop() -> 
 
 def test_ddgs_provider_serializes_workers_and_creates_one_instance_per_request() -> None:
     factory = RecordingDDGSFactory([], delay=0.03)
-    provider = DDGSSearchProvider(region="wt-wt", factory=factory)
+    provider = DDGSSearchProvider(region="wt-wt", backend="brave", proxy=DDGS_PROXY_ENDPOINT, factory=factory)
 
     async def run():
         return await asyncio.gather(provider.search("one", 5), provider.search("two", 5))
@@ -115,7 +115,7 @@ def test_ddgs_provider_serializes_workers_and_creates_one_instance_per_request()
 
 def test_cancelled_ddgs_waiter_does_not_allow_an_overlapping_worker() -> None:
     factory = RecordingDDGSFactory([], delay=0.05)
-    provider = DDGSSearchProvider(region="us-en", factory=factory)
+    provider = DDGSSearchProvider(region="us-en", backend="brave", proxy=DDGS_PROXY_ENDPOINT, factory=factory)
 
     async def run() -> None:
         first = asyncio.create_task(provider.search("one", 5))
@@ -140,11 +140,19 @@ def test_cancelled_ddgs_waiter_does_not_allow_an_overlapping_worker() -> None:
     ],
 )
 def test_ddgs_provider_failures_are_stable_and_sanitized(error: Exception, expected: str) -> None:
-    provider = DDGSSearchProvider(region="wt-wt", factory=RecordingDDGSFactory(error=error))
+    factory = RecordingDDGSFactory(error=error)
+    provider = DDGSSearchProvider(
+        region="wt-wt",
+        backend="brave",
+        proxy=DDGS_PROXY_ENDPOINT,
+        factory=factory,
+    )
     with pytest.raises(WebAccessError) as caught:
         asyncio.run(provider.search("query", 5))
     assert caught.value.code == expected
     assert "challenge" not in str(caught.value) and "private" not in str(caught.value)
+    assert len(factory.instances) == 1
+    assert len(factory.calls) == 1
 
 
 def test_ddgs_tracking_wrapper_is_strict_and_target_still_uses_public_validation() -> None:
@@ -163,7 +171,9 @@ def test_ddgs_tracking_wrapper_is_strict_and_target_still_uses_public_validation
         {"title": "Malformed", "href": "https://duckduckgo.com/l/?rut=missing", "body": "drop"},
         {"title": "Unknown", "href": "https://duckduckgo.com/redirect?uddg=https%3A%2F%2F8.8.4.4", "body": "drop"},
     ]
-    provider = DDGSSearchProvider(region="wt-wt", factory=RecordingDDGSFactory(rows))
+    provider = DDGSSearchProvider(
+        region="wt-wt", backend="brave", proxy=DDGS_PROXY_ENDPOINT, factory=RecordingDDGSFactory(rows)
+    )
     service = WebAccessService(provider, resolver=PublicResolver())
     result = asyncio.run(service.search("query", 5))
     assert result["ok"] is True
@@ -173,7 +183,33 @@ def test_ddgs_tracking_wrapper_is_strict_and_target_still_uses_public_validation
 @pytest.mark.parametrize("region", ["", "zh", "auto", "cn-ZH"])
 def test_ddgs_region_is_a_bounded_deployment_value(region: str) -> None:
     with pytest.raises(ValueError, match="unsupported DDGS region"):
-        DDGSSearchProvider(region=region)
+        DDGSSearchProvider(region=region, backend="brave", proxy=DDGS_PROXY_ENDPOINT)
+
+
+@pytest.mark.parametrize("backend", ["", "auto", "all", "bing", "brave,yahoo", "BRAVE"])
+def test_ddgs_backend_is_one_bounded_deployment_value(backend: str) -> None:
+    with pytest.raises(ValueError, match="unsupported DDGS backend"):
+        DDGSSearchProvider(region="wt-wt", backend=backend, proxy=DDGS_PROXY_ENDPOINT)
+
+
+@pytest.mark.parametrize("backend", ["brave", "duckduckgo", "mojeek", "yahoo"])
+def test_ddgs_backend_accepts_only_installed_single_text_engines(backend: str) -> None:
+    DDGSSearchProvider(region="wt-wt", backend=backend, proxy=DDGS_PROXY_ENDPOINT)
+
+
+@pytest.mark.parametrize(
+    "proxy",
+    [
+        "",
+        "socks5://127.0.0.1:10809",
+        "http://127.0.0.1:10808",
+        "socks5://192.168.1.1:10808",
+        "socks5://example.com:10808",
+    ],
+)
+def test_ddgs_proxy_is_the_one_reviewed_provider_endpoint(proxy: str) -> None:
+    with pytest.raises(ValueError, match="unsupported DDGS proxy"):
+        DDGSSearchProvider(region="wt-wt", backend="brave", proxy=proxy)
 
 
 def test_search_returns_only_bounded_canonical_public_contract() -> None:

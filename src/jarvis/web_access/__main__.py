@@ -8,15 +8,18 @@ from pathlib import Path
 
 from .http import PinnedHttpClient
 from .ipc import serve_systemd
-from .providers import DDGSSearchProvider, SearchProvider, TavilySearchProvider
+from .providers import DDGS_PROXY_ENDPOINT, DDGSSearchProvider, SearchProvider, TavilySearchProvider
 from .service import WebAccessService
 
 
 CREDENTIAL_NAME = "tavily-api-key"
 SEARCH_PROVIDER_ENV = "JARVIS_WEB_SEARCH_PROVIDER"
 SEARCH_REGION_ENV = "JARVIS_WEB_SEARCH_REGION"
+DDGS_BACKEND_ENV = "JARVIS_WEB_DDGS_BACKEND"
+DDGS_PROXY_ENV = "JARVIS_WEB_DDGS_PROXY"
 DEFAULT_SEARCH_PROVIDER = "ddgs"
 DEFAULT_DDGS_REGION = "wt-wt"
+DEFAULT_DDGS_BACKEND = "brave"
 PROXY_ENV_NAMES = (
     "HTTP_PROXY",
     "HTTPS_PROXY",
@@ -50,7 +53,9 @@ def _build_search_provider(client: PinnedHttpClient) -> SearchProvider:
     provider = os.environ.get(SEARCH_PROVIDER_ENV, DEFAULT_SEARCH_PROVIDER).strip().lower()
     if provider == "ddgs":
         region = os.environ.get(SEARCH_REGION_ENV, DEFAULT_DDGS_REGION).strip().lower()
-        return DDGSSearchProvider(region=region)
+        backend = os.environ.get(DDGS_BACKEND_ENV, DEFAULT_DDGS_BACKEND).strip().lower()
+        proxy = os.environ.get(DDGS_PROXY_ENV, DDGS_PROXY_ENDPOINT).strip()
+        return DDGSSearchProvider(region=region, backend=backend, proxy=proxy)
     if provider == "tavily":
         return TavilySearchProvider(_read_credential(), client)
     raise RuntimeError("unsupported search provider")

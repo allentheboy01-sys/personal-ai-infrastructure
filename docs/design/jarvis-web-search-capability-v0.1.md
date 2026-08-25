@@ -54,22 +54,43 @@ authentication forwarding.
 ## Search Provider
 
 `SearchProvider` is the stable internal interface. `DDGSSearchProvider` uses
-exactly `ddgs==9.15.0` for generic DuckDuckGo text search. The deployment owns
-the fixed backend (`duckduckgo`), region candidate, moderate SafeSearch, and a
-five-second provider timeout; the model controls only query and limit. Each
+exactly `ddgs==9.15.0` for generic text search. Deployment owns one explicit
+backend, the region, moderate SafeSearch, and a five-second provider timeout;
+the model controls only query and limit. `auto`, `all`, comma-delimited engine
+sets, disabled engines, and unknown names fail closed. The current candidate is
+the single `brave` backend with region `wt-wt`; `duckduckgo`, `mojeek`, and
+`yahoo` remain bounded deployment choices rather than runtime fallbacks. Each
 request creates one DDGS client and runs on one dedicated worker, so synchronous
 provider work does not block the async service and provider concurrency is one.
 Cancellation of the async waiter cannot forcibly stop a running Python thread;
 the concurrency slot therefore remains held until that worker exits.
 
+DDGS search egress is provider-scoped. The only V0.1 endpoint is the externally
+owned Xray SOCKS5 listener `socks5://127.0.0.1:10808`; deployment config passes
+it explicitly to the `DDGS` constructor. `DDGSSearchProvider` rejects every
+other proxy endpoint. Host proxy variables remain removed, and the system
+service neither manages nor declares a cross-manager dependency on the
+`pdi-xray.service` user unit. Proxy loss becomes a sanitized Provider failure;
+there is no direct-DDGS or cross-Provider fallback.
+
 DDGS output is not trusted. Only title, `href`, and body are mapped; publication
 time is null. Recognized DuckDuckGo `/l/?uddg=` wrappers are narrowly decoded,
 while malformed or unknown tracking forms are dropped. Every resulting URL then
 passes the existing public/canonical SearchProvider result validation. DDGS is
-search-only: source-page reading still uses the pinned direct fetcher. It needs
-no API key, login, cookie, browser, persistent Home, or proxy, but search queries
-are still disclosed to DuckDuckGo. Keyless service does not imply private or
+search-only: source-page reading still uses the proxy-free pinned direct
+fetcher. It needs no Jarvis-side API key, proxy credential, login, cookie,
+browser, or persistent Home, but search queries are still disclosed to the
+configured public search engine. Keyless service does not imply private or
 offline operation, and DDGS reliability is weaker than a contracted API.
+
+The qualification on 2026-08-25 used the approved Xray route and one request per
+initial candidate. `bing` was not registered because DDGS 9.15.0 marks it
+disabled; `mojeek` and `yahoo` returned generic DDGS failures; `brave` returned
+five results. With `brave` and `wt-wt`, the bounded Chinese-current,
+Chinese-evergreen, English-current, and English-evergreen matrix returned five
+results per query in 1.00--1.52 seconds, followed by two successful stability
+samples in 1.20--1.64 seconds. No automatic engine or Provider fallback is
+implemented.
 
 `TavilySearchProvider` remains an optional alternative with the same bounded
 normalization contract. The base systemd service selects DDGS and has no
@@ -106,11 +127,12 @@ pinning is primary authority. Kernel private-range egress filtering is deferred
 until a host-compatible rule can preserve the local resolver; it cannot replace
 application validation.
 
-Production qualification requires an immutable release, actual sandbox/socket
-activation, bounded Chinese and English DDGS quality/stability checks, provider
-outage/rate-limit checks, and final privacy/HTTPS acceptance. The deployment
-region remains a qualification decision; `wt-wt`, `cn-zh`, and `us-en` are the
-only source-supported candidates and are never model-controlled. Tavily
+The isolated transient systemd qualification passed with DynamicUser and the
+prepared sandbox, AF_UNIX-only IPC, no public TCP listener, the explicit Xray
+route, and a real normalized `brave` result. Production qualification still
+requires an immutable release and final privacy/HTTPS acceptance. `wt-wt` is
+the qualified candidate region; `cn-zh` and
+`us-en` remain bounded deployment choices and are never model-controlled. Tavily
 qualification additionally requires a human-owned credential source. SearXNG
 is deferred unless DDGS stability or quality proves insufficient. This source
 pass does not deploy or activate a production Provider.

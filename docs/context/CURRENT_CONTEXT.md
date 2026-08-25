@@ -178,19 +178,25 @@ search 与单 URL readable-text fetch；built-in Hermes Web tools 继续关闭�
 stdio proxy 仅连接 private AF_UNIX socket，并用其一 Turn 一进程生命周期精确执行
 search 2 / fetch 3 / distinct URL 3 / fetch concurrency 2 预算。
 
-独立 `jarvis-web-access.service` 才拥有公网与全局并发 4。默认候选 DDGS 固定
-DuckDuckGo text backend、moderate SafeSearch、deployment-owned region、provider
-concurrency 1，且无需 credential；Tavily adapter 保留为 optional drop-in，并仅在
-Tavily mode 通过 systemd credential 取 key。Direct fetch 对每一跳一次性解析全部
-A/AAAA、拒绝任一 non-global answer、
+独立 `jarvis-web-access.service` 才拥有公网与全局并发 4。默认候选 DDGS 使用
+deployment-owned 的单一 `brave` text backend、`wt-wt` region、moderate
+SafeSearch、provider concurrency 1，并显式使用 Human-approved external Xray
+`socks5://127.0.0.1:10808`。此 exact loopback exception 只存在于
+`DDGSSearchProvider` construction；host proxy env 仍清除，Jarvis 不管理 Xray，也不与
+user unit 建 systemd dependency。Tavily adapter 保留为 optional drop-in，且完全不读取
+DDGS proxy config，仅在 Tavily mode 通过 systemd credential 取 key。Direct fetch
+保持 proxy-free，并对每一跳一次性解析全部 A/AAAA、拒绝任一 non-global answer、
 固定已验证 IP 连接、保留 TLS SNI/Host 并校验 peer；redirect 逐跳重验，HTTPS downgrade
 拒绝。V0.1 仅 identity encoding、2 MiB body、20k text、24k result、五种文本 MIME，
 无 PDF/JS/cookie/auth/download/write。Web content 显式标记 `untrusted_web`，答案要求
 Markdown source links；浏览器 telemetry 只见 `web/search_web|read_web_source`。
-DDGS 不等于 private/offline：公共 query 会发送给 DuckDuckGo，且其稳定性弱于有契约
-API；production region、真实中英文质量/稳定性与 systemd sandbox activation 仍待
-qualification。Safe Exec network、PDI、DB、Memory、Attachment 与 frontend feature
-均未改变。
+DDGS 不等于 private/offline：公共 query 会发送给所选外部搜索引擎，且其稳定性弱于
+有契约 API。2026-08-25 的 bounded qualification 确认 DDGS 9.15.0 中 `bing` disabled，
+`mojeek`/`yahoo` 单次失败，`brave` 通过 `wt-wt` 的中英文 current/evergreen 四项矩阵及
+两次小型稳定性复测；不存在 engine/provider 自动 fallback。transient isolated systemd
+验证也已确认 DynamicUser/sandbox、AF_UNIX-only、无 public TCP listener、显式 Xray 与
+真实规范化 Brave 结果。最终 production release 尚未执行。Safe Exec network、PDI、
+DB、Memory、Attachment 与 frontend feature 均未改变。
 
 Gate E.8.2 在真实 localhost production 中进一步通过 e812 static/Hermes activation、
 authentication/CSRF、deterministic PDI paths、Hermes -> PDI Turn 与 Hermes -> Exec

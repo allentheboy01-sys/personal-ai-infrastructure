@@ -14,6 +14,8 @@ Environment=LANG=C.UTF-8
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=JARVIS_WEB_SEARCH_PROVIDER=ddgs
 Environment=JARVIS_WEB_SEARCH_REGION=wt-wt
+Environment=JARVIS_WEB_DDGS_BACKEND=brave
+Environment=JARVIS_WEB_DDGS_PROXY=socks5://127.0.0.1:10808
 UnsetEnvironment=HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy DDGS_PROXY
 NoNewPrivileges=yes
 ProtectSystem=strict
