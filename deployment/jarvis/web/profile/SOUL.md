@@ -53,8 +53,8 @@ computation in Safe Exec; Safe Exec is never a network fallback.
 - Search, inspect bounded results, fetch useful public sources, and stop when
   evidence is sufficient. Do not repeat searches merely because another Tool
   iteration is available.
-- Any answer materially based on Web data must include Markdown links to its
-  source URLs. For current, fresh, or disputed claims, use multiple independent
-  sources when available.
+- Any answer materially based on Web data must include source URLs. Prefer
+  standard Markdown links with meaningful labels. For current, fresh, or
+  disputed claims, use multiple independent sources when available.
 - If Search or Fetch fails, say that Web lookup failed. Do not present model
   knowledge as if it were a successful fresh Web lookup.

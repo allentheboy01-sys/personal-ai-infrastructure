@@ -188,15 +188,19 @@ DDGS proxy config，仅在 Tavily mode 通过 systemd credential 取 key。Direc
 保持 proxy-free，并对每一跳一次性解析全部 A/AAAA、拒绝任一 non-global answer、
 固定已验证 IP 连接、保留 TLS SNI/Host 并校验 peer；redirect 逐跳重验，HTTPS downgrade
 拒绝。V0.1 仅 identity encoding、2 MiB body、20k text、24k result、五种文本 MIME，
-无 PDF/JS/cookie/auth/download/write。Web content 显式标记 `untrusted_web`，答案要求
-Markdown source links；浏览器 telemetry 只见 `web/search_web|read_web_source`。
+无 PDF/JS/cookie/auth/download/write。Web content 显式标记 `untrusted_web`，答案必须
+包含 source URL，并优先使用有意义标签的标准 Markdown link；frontend 使用标准 GFM
+autolink literal 将 Assistant 正文中已有的裸 HTTP(S) URL 安全呈现为外部链接，同时不
+改写 canonical Message。浏览器 telemetry 只见 `web/search_web|read_web_source`。
 DDGS 不等于 private/offline：公共 query 会发送给所选外部搜索引擎，且其稳定性弱于
 有契约 API。2026-08-25 的 bounded qualification 确认 DDGS 9.15.0 中 `bing` disabled，
 `mojeek`/`yahoo` 单次失败，`brave` 通过 `wt-wt` 的中英文 current/evergreen 四项矩阵及
 两次小型稳定性复测；不存在 engine/provider 自动 fallback。transient isolated systemd
 验证也已确认 DynamicUser/sandbox、AF_UNIX-only、无 public TCP listener、显式 Xray 与
-真实规范化 Brave 结果。最终 production release 尚未执行。Safe Exec network、PDI、
-DB、Memory、Attachment 与 frontend feature 均未改变。
+真实规范化 Brave 结果。首次 production acceptance 因中文 Web 答案含 source URL 但
+裸 URL 未渲染为可点击 DOM link 而回滚至 `a347d46724ece12569deaf848a796fbcc97662f2`；
+当前 citation robustness fix 仅处于 Human Review 前的 dirty working tree，尚未再次
+commit/push/deploy。Safe Exec network、PDI、DB、Memory 与 Attachment 均未改变。
 
 Gate E.8.2 在真实 localhost production 中进一步通过 e812 static/Hermes activation、
 authentication/CSRF、deterministic PDI paths、Hermes -> PDI Turn 与 Hermes -> Exec

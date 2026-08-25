@@ -29,6 +29,40 @@ describe('assistant Markdown', () => {
     expect(screen.getByText('Unsafe').tagName).not.toBe('A')
   })
 
+  it('autolinks bare HTTP and HTTPS source URLs with external-link isolation', () => {
+    render(<AssistantMessage message={{ id: 'assistant-1', role: 'assistant', body: 'HTTPS: https://secure.example/a\n\nHTTP: http://public.example/b' }} />)
+
+    const https = screen.getByRole('link', { name: 'https://secure.example/a' })
+    const http = screen.getByRole('link', { name: 'http://public.example/b' })
+    expect(https).toHaveAttribute('href', 'https://secure.example/a')
+    expect(http).toHaveAttribute('href', 'http://public.example/b')
+    for (const link of [https, http]) {
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    }
+  })
+
+  it('keeps Chinese and English punctuation outside bare source links', () => {
+    render(<AssistantMessage message={{ id: 'assistant-1', role: 'assistant', body: '来源：https://source.example/zh。\n\nSource: https://source.example/en.' }} />)
+
+    expect(screen.getByRole('link', { name: 'https://source.example/zh' })).toHaveAttribute('href', 'https://source.example/zh')
+    expect(screen.getByRole('link', { name: 'https://source.example/en' })).toHaveAttribute('href', 'https://source.example/en')
+  })
+
+  it('autolinks multiple sources without double-linkifying Markdown links', () => {
+    const { container } = render(<AssistantMessage message={{ id: 'assistant-1', role: 'assistant', body: 'A: https://a.example/x\nB: https://b.example/y\n[Example](https://example.com)' }} />)
+
+    expect(screen.getAllByRole('link')).toHaveLength(3)
+    expect(screen.getByRole('link', { name: 'Example' })).toHaveAttribute('href', 'https://example.com')
+    expect(container.querySelectorAll('a a')).toHaveLength(0)
+  })
+
+  it('does not autolink unsafe schemes, email literals, or malformed URL-like text', () => {
+    render(<AssistantMessage message={{ id: 'assistant-1', role: 'assistant', body: 'javascript:alert(1) file:///etc/passwd data:text/html,unsafe ftp://example.com person@example.com malformed://example.com' }} />)
+
+    expect(screen.queryAllByRole('link')).toHaveLength(0)
+  })
+
   it('does not infer structured resources from prose identifiers', () => {
     render(<AssistantMessage message={{ id: 'assistant-1', role: 'assistant', body: 'Reference: pdi:resource:11111111-1111-4111-8111-111111111111' }} />)
 

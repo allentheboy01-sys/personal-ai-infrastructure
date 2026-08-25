@@ -108,9 +108,11 @@ sending unnecessary private context to a third-party search service. Residual
 model prompt-injection risk remains; isolation and policy reduce but do not
 eliminate it.
 
-Web-derived answers must include Markdown source links, with multiple sources
-for fresh or disputed claims when available. The existing frontend safely
-renders HTTP(S) Markdown links, so V0.1 adds no citation database or UI.
+Web-derived answers must include source URLs, preferably standard Markdown
+links with meaningful labels and multiple sources for fresh or disputed claims
+when available. The frontend safely renders both Markdown links and bare
+HTTP(S) URL literals as external links while leaving canonical Message text
+unchanged, so V0.1 adds no citation database or structured citation UI.
 Existing `tool.started`/`tool.completed` events map only to category `web` and
 capabilities `search_web` / `read_web_source`; raw query, URL, page, Provider,
 arguments, result, and credential remain private. No Runtime event type is
