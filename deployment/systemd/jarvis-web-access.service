@@ -12,8 +12,9 @@ SetLoginEnvironment=no
 Environment=PATH=/usr/bin:/bin
 Environment=LANG=C.UTF-8
 Environment=PYTHONDONTWRITEBYTECODE=1
-UnsetEnvironment=HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy
-LoadCredential=tavily-api-key:/etc/jarvis/tavily-api-key
+Environment=JARVIS_WEB_SEARCH_PROVIDER=ddgs
+Environment=JARVIS_WEB_SEARCH_REGION=wt-wt
+UnsetEnvironment=HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy DDGS_PROXY
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

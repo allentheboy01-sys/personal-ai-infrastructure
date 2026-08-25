@@ -1,5 +1,14 @@
 from pathlib import Path
 
+import pytest
+
+from jarvis.web_access.__main__ import (
+    PROXY_ENV_NAMES,
+    _build_search_provider,
+    _sanitize_proxy_environment,
+)
+from jarvis.web_access.providers import DDGSSearchProvider, TavilySearchProvider
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -7,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_web_access_units_use_only_private_unix_ipc_and_hardened_public_egress() -> None:
     socket = (ROOT / "deployment/systemd/jarvis-web-access.socket").read_text()
     service = (ROOT / "deployment/systemd/jarvis-web-access.service").read_text()
+    tavily = (ROOT / "deployment/systemd/jarvis-web-access.service.d/tavily.conf").read_text()
     assert "ListenStream=/run/jarvis-web-access.sock" in socket
     assert "Accept=no" in socket and "SocketMode=0660" in socket and "RemoveOnStop=yes" in socket
     assert "ListenStream=0.0.0.0" not in socket and "ListenDatagram=" not in socket
@@ -18,18 +28,67 @@ def test_web_access_units_use_only_private_unix_ipc_and_hardened_public_egress()
         "PrivateTmp=yes",
         "PrivateDevices=yes",
         "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6",
-        "LoadCredential=tavily-api-key:/etc/jarvis/tavily-api-key",
+        "Environment=JARVIS_WEB_SEARCH_PROVIDER=ddgs",
+        "Environment=JARVIS_WEB_SEARCH_REGION=wt-wt",
         "MemoryMax=192M",
         "TasksMax=32",
         "LimitNOFILE=128",
-        "UnsetEnvironment=HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY",
+        "UnsetEnvironment=HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy DDGS_PROXY",
     ):
         assert required in service
     for forbidden_path in ("/etc/pdi", "/etc/jarvis", "/home", "/srv/projects", "/run/docker.sock", "/var/run/docker.sock"):
         assert forbidden_path in service
     assert "EnvironmentFile=" not in service
+    assert "LoadCredential=" not in service
+    assert "Environment=JARVIS_WEB_SEARCH_PROVIDER=tavily" in tavily
+    assert "LoadCredential=tavily-api-key:/etc/jarvis/tavily-api-key" in tavily
     assert "User=harry" not in service
     assert "PrivateNetwork=yes" not in service
+
+
+def test_web_access_release_pins_ddgs_and_its_immutable_lock() -> None:
+    pyproject = (ROOT / "deployment/jarvis/web/python/pyproject.toml").read_text()
+    lock = (ROOT / "deployment/jarvis/web/requirements-production.lock").read_text()
+    assert '"ddgs==9.15.0"' in pyproject
+    assert "ddgs==9.15.0 \\" in lock
+    for dependency in ("brotli", "fake-useragent", "h2", "hpack", "hyperframe", "lxml", "primp", "socksio"):
+        assert f"{dependency}==" in lock
+
+
+def test_ddgs_is_credential_free_default_and_tavily_fails_closed_without_credential(monkeypatch) -> None:
+    monkeypatch.delenv("JARVIS_WEB_SEARCH_PROVIDER", raising=False)
+    monkeypatch.delenv("JARVIS_WEB_SEARCH_REGION", raising=False)
+    monkeypatch.delenv("CREDENTIALS_DIRECTORY", raising=False)
+    assert isinstance(_build_search_provider(object()), DDGSSearchProvider)  # type: ignore[arg-type]
+    monkeypatch.setenv("JARVIS_WEB_SEARCH_PROVIDER", "tavily")
+    with pytest.raises(RuntimeError, match="search credential unavailable"):
+        _build_search_provider(object())  # type: ignore[arg-type]
+
+
+def test_tavily_mode_reads_only_systemd_credential(monkeypatch, tmp_path) -> None:
+    credential = tmp_path / "tavily-api-key"
+    credential.write_text("tvly-synthetic-test", encoding="utf-8")
+    monkeypatch.setenv("JARVIS_WEB_SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(tmp_path))
+    assert isinstance(_build_search_provider(object()), TavilySearchProvider)  # type: ignore[arg-type]
+
+
+def test_unknown_provider_and_region_fail_closed(monkeypatch) -> None:
+    monkeypatch.setenv("JARVIS_WEB_SEARCH_PROVIDER", "model-selected")
+    with pytest.raises(RuntimeError, match="unsupported search provider"):
+        _build_search_provider(object())  # type: ignore[arg-type]
+    monkeypatch.setenv("JARVIS_WEB_SEARCH_PROVIDER", "ddgs")
+    monkeypatch.setenv("JARVIS_WEB_SEARCH_REGION", "model-controlled")
+    with pytest.raises(ValueError, match="unsupported DDGS region"):
+        _build_search_provider(object())  # type: ignore[arg-type]
+
+
+def test_web_access_process_sanitizes_every_proxy_environment(monkeypatch) -> None:
+    for name in PROXY_ENV_NAMES:
+        monkeypatch.setenv(name, "http://127.0.0.1:9999")
+    _sanitize_proxy_environment()
+    for name in PROXY_ENV_NAMES:
+        assert name not in __import__("os").environ
 
 
 def test_proxy_is_af_unix_only_and_has_no_provider_or_product_credentials() -> None:

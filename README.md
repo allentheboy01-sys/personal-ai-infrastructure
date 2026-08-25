@@ -80,7 +80,8 @@ The release includes:
   release is required before production activation is retried;
   the not-yet-production-qualified Jarvis Web/Search V0.1 candidate keeps Safe
   Exec offline and puts two bounded public-read tools behind a private AF_UNIX
-  proxy plus a separate pinned-egress service;
+  proxy plus a separate pinned-egress service; keyless DDGS is the default
+  search qualification candidate and credentialed Tavily remains optional;
   and
 - a server-first Codex CLI development workflow with production isolation.
 

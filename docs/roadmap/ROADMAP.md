@@ -63,12 +63,15 @@ details live in their dedicated documents.
   HLS, Live Photo pairing, schema, identity, collector, Exec, or Hermes change.
   Jarvis Web/Search Capability V0.1 is an implementation candidate with exactly
   two Jarvis-owned public-read MCP tools, an AF_UNIX-only Turn proxy, and a
-  separate credential-owning Web service. Direct fetch uses all-answer public
+  separate Web service that alone owns public egress and any optional provider
+  credential. Direct fetch uses all-answer public
   DNS validation, pinned numeric connections, TLS hostname preservation, peer
   checks, manual redirect validation, identity-only encoding, and bounded text
   extraction. Safe Exec remains offline and Web data is neither PDI nor Memory.
-  Production remains blocked on a human-supplied Search Provider credential,
-  immutable deployment, and real Chinese/English provider qualification.
+  Keyless DDGS is the default qualification candidate; Tavily remains an
+  optional credentialed adapter. Production remains blocked on immutable
+  deployment plus real Chinese/English DDGS quality/stability, region, sandbox,
+  and privacy qualification—not on a credential for DDGS mode.
 
 ## Future
 
@@ -81,7 +84,8 @@ details live in their dedicated documents.
   consumer Tool is introduced.
 - Jarvis Web authentication and production deployment only through their
   separately reviewed Stage 5 boundaries. Web/Search production activation is
-  separate from Exec and requires provider credential/quality qualification;
+  separate from Exec and requires provider quality/sandbox qualification (and
+  a credential only when a credentialed adapter such as Tavily is selected);
   arbitrary Exec network remains prohibited.
 - **v1.0 — Stable Personal Digital Infrastructure:** stabilize proven provider,
   observation, retrieval, access, and consumer contracts for long-term use.

@@ -172,19 +172,25 @@ release 和独立人工审查的 install gate。
 
 ### Jarvis Web/Search Capability V0.1 implementation candidate
 
-Web/Search V0.1 已实现源码候选，但尚未配置真实 Provider credential、部署或完成
+Web/Search V0.1 已实现源码候选，并新增 keyless DDGS SearchProvider；尚未部署或完成
 production qualification。Hermes 只新增两个 Jarvis-owned MCP tools：bounded public
 search 与单 URL readable-text fetch；built-in Hermes Web tools 继续关闭。Turn-scoped
 stdio proxy 仅连接 private AF_UNIX socket，并用其一 Turn 一进程生命周期精确执行
 search 2 / fetch 3 / distinct URL 3 / fetch concurrency 2 预算。
 
-独立 `jarvis-web-access.service` 才拥有公网、全局并发 4、Tavily adapter 与 systemd
-credential。Direct fetch 对每一跳一次性解析全部 A/AAAA、拒绝任一 non-global answer、
+独立 `jarvis-web-access.service` 才拥有公网与全局并发 4。默认候选 DDGS 固定
+DuckDuckGo text backend、moderate SafeSearch、deployment-owned region、provider
+concurrency 1，且无需 credential；Tavily adapter 保留为 optional drop-in，并仅在
+Tavily mode 通过 systemd credential 取 key。Direct fetch 对每一跳一次性解析全部
+A/AAAA、拒绝任一 non-global answer、
 固定已验证 IP 连接、保留 TLS SNI/Host 并校验 peer；redirect 逐跳重验，HTTPS downgrade
 拒绝。V0.1 仅 identity encoding、2 MiB body、20k text、24k result、五种文本 MIME，
 无 PDF/JS/cookie/auth/download/write。Web content 显式标记 `untrusted_web`，答案要求
 Markdown source links；浏览器 telemetry 只见 `web/search_web|read_web_source`。
-Safe Exec network、PDI、DB、Memory、Attachment 与 frontend feature 均未改变。
+DDGS 不等于 private/offline：公共 query 会发送给 DuckDuckGo，且其稳定性弱于有契约
+API；production region、真实中英文质量/稳定性与 systemd sandbox activation 仍待
+qualification。Safe Exec network、PDI、DB、Memory、Attachment 与 frontend feature
+均未改变。
 
 Gate E.8.2 在真实 localhost production 中进一步通过 e812 static/Hermes activation、
 authentication/CSRF、deterministic PDI paths、Hermes -> PDI Turn 与 Hermes -> Exec

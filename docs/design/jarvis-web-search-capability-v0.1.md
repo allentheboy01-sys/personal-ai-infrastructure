@@ -1,7 +1,7 @@
 # Jarvis Web/Search Capability V0.1
 
-Status: implementation candidate, not production-qualified. No real Search
-Provider credential is configured by this source pass.
+Status: implementation candidate, not production-qualified. DDGS is the
+keyless default candidate; Tavily remains an optional credentialed adapter.
 
 ## Boundary
 
@@ -21,9 +21,10 @@ two searches, three fetches, three distinct fetched URLs, and two concurrent
 fetches. No Turn identifier, time window, or global approximation is added.
 
 The long-lived service owns the global four-operation semaphore, public egress,
-DNS and URL validation, transport, deterministic extraction, and Search
-Provider credential. IPC is private AF_UNIX only; there is no Web capability
-TCP listener. Safe Exec remains network-disabled and PDI remains independent.
+DNS and URL validation, transport, deterministic extraction, and any optional
+Search Provider credential. IPC is private AF_UNIX only; there is no Web
+capability TCP listener. Safe Exec remains network-disabled and PDI remains
+independent.
 
 ## Public Web transport
 
@@ -52,18 +53,31 @@ authentication forwarding.
 
 ## Search Provider
 
-`SearchProvider` is the stable internal interface. The first adapter uses
-Tavily Basic Search through its fixed HTTPS endpoint, Bearer credential, and a
-bounded request (`max_results <= 5`, no answer/raw content/images). Provider
-JSON is normalized into rank, title, validated canonical public URL, snippet,
-optional published time, and retrieval time. Debug payloads never cross the
-adapter. Deterministic tests use a fake Provider; provider quality, Chinese and
-English relevance, rate/quota behavior, and production credential installation
-remain release preconditions.
+`SearchProvider` is the stable internal interface. `DDGSSearchProvider` uses
+exactly `ddgs==9.15.0` for generic DuckDuckGo text search. The deployment owns
+the fixed backend (`duckduckgo`), region candidate, moderate SafeSearch, and a
+five-second provider timeout; the model controls only query and limit. Each
+request creates one DDGS client and runs on one dedicated worker, so synchronous
+provider work does not block the async service and provider concurrency is one.
+Cancellation of the async waiter cannot forcibly stop a running Python thread;
+the concurrency slot therefore remains held until that worker exits.
 
-The only credential reader is `jarvis-web-access.service`, through systemd
-`LoadCredential=` and `$CREDENTIALS_DIRECTORY`. Hermes, Jarvis Web, the MCP
-proxy, browser, PDI, and Safe Exec receive no Search Provider key.
+DDGS output is not trusted. Only title, `href`, and body are mapped; publication
+time is null. Recognized DuckDuckGo `/l/?uddg=` wrappers are narrowly decoded,
+while malformed or unknown tracking forms are dropped. Every resulting URL then
+passes the existing public/canonical SearchProvider result validation. DDGS is
+search-only: source-page reading still uses the pinned direct fetcher. It needs
+no API key, login, cookie, browser, persistent Home, or proxy, but search queries
+are still disclosed to DuckDuckGo. Keyless service does not imply private or
+offline operation, and DDGS reliability is weaker than a contracted API.
+
+`TavilySearchProvider` remains an optional alternative with the same bounded
+normalization contract. The base systemd service selects DDGS and has no
+credential dependency. A reviewed Tavily drop-in selects Tavily and provides
+`tavily-api-key` through systemd `LoadCredential=` and
+`$CREDENTIALS_DIRECTORY`; Tavily mode fails closed without it. Hermes, Jarvis
+Web, the MCP proxy, browser, PDI, and Safe Exec receive no Search Provider key.
+Provider JSON/debug payloads never cross an adapter.
 
 ## Trust, provenance, and telemetry
 
@@ -92,8 +106,11 @@ pinning is primary authority. Kernel private-range egress filtering is deferred
 until a host-compatible rule can preserve the local resolver; it cannot replace
 application validation.
 
-Production qualification requires a human-owned credential source, immutable
-release, actual sandbox/socket activation, bounded Chinese and English Tavily
-smokes, provider outage/quota checks, and final privacy/HTTPS acceptance. This
-implementation pass does not install, configure, call, or deploy a real
-Provider.
+Production qualification requires an immutable release, actual sandbox/socket
+activation, bounded Chinese and English DDGS quality/stability checks, provider
+outage/rate-limit checks, and final privacy/HTTPS acceptance. The deployment
+region remains a qualification decision; `wt-wt`, `cn-zh`, and `us-en` are the
+only source-supported candidates and are never model-controlled. Tavily
+qualification additionally requires a human-owned credential source. SearXNG
+is deferred unless DDGS stability or quality proves insufficient. This source
+pass does not deploy or activate a production Provider.
