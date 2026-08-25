@@ -47,11 +47,14 @@ _CANONICAL_TOOL_DESCRIPTORS = {
     "jarvis_workspace_read_text": ("exec", "read_workspace", "computing"),
     "jarvis_workspace_list": ("exec", "manage_workspace", "computing"),
     "jarvis_workspace_delete": ("exec", "manage_workspace", "computing"),
+    "jarvis_web_search": ("web", "search_web", "searching"),
+    "jarvis_web_fetch": ("web", "read_web_source", "reviewing"),
 }
 _TOOL_DESCRIPTORS = {
     **_CANONICAL_TOOL_DESCRIPTORS,
     **{f"mcp_pdi_{name}": descriptor for name, descriptor in _CANONICAL_TOOL_DESCRIPTORS.items() if name.startswith("pdi_")},
-    **{f"mcp_jarvis_exec_{name}": descriptor for name, descriptor in _CANONICAL_TOOL_DESCRIPTORS.items() if name.startswith("jarvis_")},
+    **{f"mcp_jarvis_exec_{name}": descriptor for name, descriptor in _CANONICAL_TOOL_DESCRIPTORS.items() if name.startswith("jarvis_") and not name.startswith("jarvis_web_")},
+    **{f"mcp_jarvis_web_{name}": descriptor for name, descriptor in _CANONICAL_TOOL_DESCRIPTORS.items() if name.startswith("jarvis_web_")},
 }
 _UNKNOWN_TOOL_DESCRIPTOR = ("other", "use_tool", "thinking")
 

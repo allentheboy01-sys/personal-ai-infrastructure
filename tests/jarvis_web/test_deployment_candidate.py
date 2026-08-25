@@ -17,7 +17,7 @@ def _normalize_fixture(release: Path) -> None:
         if path.is_dir():
             path.chmod(0o555)
         elif path.is_file():
-            path.chmod(0o555 if path.relative_to(release) in {Path("bin/hermes-bridge"), Path("bin/jarvis-exec-proxy")} else 0o444)
+            path.chmod(0o555 if path.relative_to(release) in {Path("bin/hermes-bridge"), Path("bin/jarvis-exec-proxy"), Path("bin/jarvis-web-access-proxy")} else 0o444)
     release.chmod(0o555)
 
 
@@ -179,6 +179,7 @@ def _release_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     (release / "hermes/hermes_bridge.py").write_text("bridge", encoding="utf-8")
     (release / "bin/hermes-bridge").write_text("launcher", encoding="utf-8")
     (release / "bin/jarvis-exec-proxy").write_text("proxy", encoding="utf-8")
+    (release / "bin/jarvis-web-access-proxy").write_text("proxy", encoding="utf-8")
     (release / "profile/jarvis-web/config.yaml").write_text("profile", encoding="utf-8")
     (release / "profile/jarvis-web/SOUL.md").write_text("", encoding="utf-8")
     lock = release / "manifests/requirements-production.lock"
@@ -228,4 +229,5 @@ def test_release_modes_are_readable_but_not_writable(tmp_path: Path) -> None:
     release, _, _ = _release_fixture(tmp_path)
     assert os.access(release / "static/index.html", os.R_OK)
     assert os.access(release / "bin/hermes-bridge", os.R_OK | os.X_OK)
+    assert os.access(release / "bin/jarvis-web-access-proxy", os.R_OK | os.X_OK)
     assert all(path.stat().st_mode & 0o222 == 0 for path in (release, *release.rglob("*")))

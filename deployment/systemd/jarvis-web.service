@@ -1,8 +1,8 @@
 [Unit]
 Description=Jarvis Web V0.1
-After=network-online.target pdi-resource-access.service jarvis-exec.socket
+After=network-online.target pdi-resource-access.service jarvis-exec.socket jarvis-web-access.socket
 Wants=network-online.target
-Requires=pdi-resource-access.service jarvis-exec.socket
+Requires=pdi-resource-access.service jarvis-exec.socket jarvis-web-access.socket
 
 [Service]
 Type=simple

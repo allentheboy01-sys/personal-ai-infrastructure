@@ -1,0 +1,1 @@
+"""Web access capability tests."""

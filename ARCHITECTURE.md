@@ -158,6 +158,14 @@ production deployment may use the same PostgreSQL server as PDI, but it must
 use a separate `jarvis` logical database, credentials, migrations, and version
 table. There are no cross-database foreign keys.
 
+Jarvis public-Web reads are also outside PDI. The frozen V0.1 candidate exposes
+two Jarvis-owned MCP tools through a Turn-scoped AF_UNIX-only proxy and a
+separate credential-owning `jarvis-web-access.service`. That service can read
+only bounded public HTTP(S) text through resolve-once, pinned-address,
+peer-verified connections. Web results are ephemeral untrusted Turn input, not
+PDI ProviderFacts, Observations, Memory, or write authority. Safe Exec keeps
+network disabled.
+
 The Jarvis-owned RuntimeAdapter contract accepts normalized conversation
 context and emits only product-level Turn events. Runtime event history and
 provisional text remain ephemeral. Only a successful completion transaction

@@ -15,7 +15,7 @@ export interface ExecutionTrace {
 
 const phaseLabels: Record<AgentPhase, string> = {
   thinking: 'Thinking',
-  searching: 'Searching personal data',
+  searching: 'Searching',
   reviewing: 'Reviewing result',
   computing: 'Computing',
   composing: 'Composing',
@@ -29,6 +29,8 @@ export const capabilityLabels: Record<RuntimeCapability, string> = {
   write_workspace: 'Write workspace file',
   read_workspace: 'Read workspace file',
   manage_workspace: 'Manage workspace',
+  search_web: 'Search the web',
+  read_web_source: 'Read web source',
   use_tool: 'Use tool',
 }
 

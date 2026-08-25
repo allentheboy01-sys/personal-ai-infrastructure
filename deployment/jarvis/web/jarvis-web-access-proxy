@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+umask 077
+
+readonly PROXY_PYTHON=/opt/jarvis-web/venv-current/bin/python
+
+if [ ! -x "$PROXY_PYTHON" ]; then
+    echo "jarvis-web-access-proxy: runtime unavailable" >&2
+    exit 1
+fi
+
+exec env -i \
+    PATH=/usr/bin:/bin \
+    LANG=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    "$PROXY_PYTHON" -I -m jarvis.web_proxy.main

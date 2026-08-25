@@ -50,7 +50,7 @@ export interface ApiTurn {
 }
 
 export type RuntimeToolCategory = 'pdi' | 'exec' | 'web' | 'action' | 'other'
-export type RuntimeCapability = 'search_personal_resources' | 'read_personal_resource' | 'review_personal_resources' | 'run_python' | 'write_workspace' | 'read_workspace' | 'manage_workspace' | 'use_tool'
+export type RuntimeCapability = 'search_personal_resources' | 'read_personal_resource' | 'review_personal_resources' | 'run_python' | 'write_workspace' | 'read_workspace' | 'manage_workspace' | 'search_web' | 'read_web_source' | 'use_tool'
 
 export interface RuntimeEvent {
   turn_id: string

@@ -22,14 +22,16 @@ def test_server_exposes_exact_contract(tmp_path: Path) -> None:
 def test_web_profile_is_minimal_and_separate() -> None:
     text = (ROOT / "deployment/jarvis/web/profile/config.yaml").read_text()
     assert "toolsets: []" in text
-    assert "  cli:\n    - pdi\n    - jarvis_exec\n" in text
+    assert "  cli:\n    - pdi\n    - jarvis_exec\n    - jarvis_web\n" in text
     assert "memory_enabled: false" in text
     assert "user_profile_enabled: false" in text
     assert text.count("        - pdi_") == 7
     assert all(f"        - {name}" in text for name in EXEC_TOOL_NAMES)
-    assert text.count("        - jarvis_") == len(EXEC_TOOL_NAMES)
-    for forbidden in ("terminal", "code_execution", "browser", "web_search", "delegation"):
+    assert sum(text.count(f"        - {name}\n") for name in EXEC_TOOL_NAMES) == len(EXEC_TOOL_NAMES)
+    for forbidden in ("terminal", "code_execution", "browser", "delegation"):
         assert forbidden not in text
+    assert "        - web_search\n" not in text
+    assert "        - web_extract\n" not in text
 
 
 def test_exec_units_freeze_socket_and_sandbox() -> None:

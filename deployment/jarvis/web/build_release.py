@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[3]
 LOCK = ROOT / "deployment/jarvis/web/requirements-production.lock"
 FRONTEND = ROOT / "apps/jarvis-web"
 PYTHON_ARTIFACT = ROOT / "deployment/jarvis/web/python"
-APPROVED_EXECUTABLES = {Path("bin/hermes-bridge"), Path("bin/jarvis-exec-proxy")}
+APPROVED_EXECUTABLES = {Path("bin/hermes-bridge"), Path("bin/jarvis-exec-proxy"), Path("bin/jarvis-web-access-proxy")}
 
 
 def digest(path: Path) -> str:
@@ -99,6 +99,7 @@ def main() -> int:
         shutil.copy2(ROOT / "src/jarvis/runtime/hermes_bridge.py", staging / "hermes/hermes_bridge.py")
         shutil.copy2(ROOT / "deployment/jarvis/web/hermes-bridge", staging / "bin/hermes-bridge")
         shutil.copy2(ROOT / "deployment/jarvis/web/jarvis-exec-proxy", staging / "bin/jarvis-exec-proxy")
+        shutil.copy2(ROOT / "deployment/jarvis/web/jarvis-web-access-proxy", staging / "bin/jarvis-web-access-proxy")
         shutil.copy2(ROOT / "deployment/jarvis/web/profile/config.yaml", staging / "profile/jarvis-web/config.yaml")
         shutil.copy2(ROOT / "deployment/jarvis/web/profile/SOUL.md", staging / "profile/jarvis-web/SOUL.md")
         shutil.copy2(LOCK, staging / "manifests/requirements-production.lock")

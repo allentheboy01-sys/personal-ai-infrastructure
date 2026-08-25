@@ -22,7 +22,7 @@ describe('process-local execution trace reducer', () => {
 
     expect(trace.status).toBe('completed')
     expect(trace.toolStartedCount).toBe(2)
-    expect(trace.steps.map((step) => step.label)).toEqual(['Started', 'Searching personal data', 'Search personal resources', 'Run Python', 'Completed'])
+    expect(trace.steps.map((step) => step.label)).toEqual(['Started', 'Searching', 'Search personal resources', 'Run Python', 'Completed'])
     expect(trace.steps.find((step) => step.label === 'Search personal resources')?.detail).toBe('Finished · 24 ms')
     expect(trace.steps.at(-1)).toMatchObject({ label: 'Completed', detail: 'Finished', state: 'completed' })
   })
@@ -54,6 +54,25 @@ describe('process-local execution trace reducer', () => {
     expect(JSON.stringify(trace)).not.toContain('private prompt')
     expect(JSON.stringify(trace)).not.toContain('private result')
     expect(trace.steps[0].label).toBe('Use tool')
+  })
+
+  it('renders only safe Web capability labels without query or URL data', () => {
+    let trace = createExecutionTrace('turn-1')
+    trace = reduceExecutionTrace(trace, event(1, 'tool.started', {
+      operation_id: 1,
+      category: 'web',
+      capability: 'search_web',
+      delta: 'private search query',
+    }))
+    trace = reduceExecutionTrace(trace, event(2, 'tool.started', {
+      operation_id: 2,
+      category: 'web',
+      capability: 'read_web_source',
+      error_code: 'https://private.example/path',
+    }))
+    expect(trace.steps.map((step) => step.label)).toEqual(['Search the web', 'Read web source'])
+    expect(JSON.stringify(trace)).not.toContain('private search query')
+    expect(JSON.stringify(trace)).not.toContain('private.example')
   })
 
   it('defensively bounds trace memory without affecting terminal state', () => {

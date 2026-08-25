@@ -15,13 +15,15 @@ agent:
   tool_use_enforcement: true
   system_prompt: >-
     Use PDI MCP tools for personal-world reads and Jarvis Exec tools only for
-    bounded disposable computation and text workspace operations.
+    bounded disposable computation and text workspace operations. Use the
+    Jarvis Web tools only for current public Internet information.
 
 toolsets: []
 platform_toolsets:
   cli:
     - pdi
     - jarvis_exec
+    - jarvis_web
 
 checkpoints:
   enabled: false
@@ -55,5 +57,14 @@ mcp_servers:
         - jarvis_workspace_read_text
         - jarvis_workspace_list
         - jarvis_workspace_delete
+      resources: false
+      prompts: false
+  jarvis_web:
+    enabled: true
+    command: /opt/jarvis-web/current/bin/jarvis-web-access-proxy
+    tools:
+      include:
+        - jarvis_web_search
+        - jarvis_web_fetch
       resources: false
       prompts: false

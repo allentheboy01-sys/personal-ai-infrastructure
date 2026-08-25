@@ -1,0 +1,13 @@
+[Unit]
+Description=Jarvis Web/Search V0.1 private socket
+
+[Socket]
+ListenStream=/run/jarvis-web-access.sock
+Accept=no
+SocketUser=root
+SocketGroup=harry
+SocketMode=0660
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

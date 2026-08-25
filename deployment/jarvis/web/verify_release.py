@@ -12,7 +12,7 @@ from pathlib import Path
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 FORBIDDEN = {"node_modules", ".git", "review", "screenshots", "test-results", "playwright-report"}
-APPROVED_EXECUTABLES = {Path("bin/hermes-bridge"), Path("bin/jarvis-exec-proxy")}
+APPROVED_EXECUTABLES = {Path("bin/hermes-bridge"), Path("bin/jarvis-exec-proxy"), Path("bin/jarvis-web-access-proxy")}
 
 
 def digest(path: Path) -> str:
@@ -70,6 +70,7 @@ def main() -> int:
         root / "hermes/hermes_bridge.py",
         root / "migrations/jarvis-alembic.ini",
         root / "bin/jarvis-exec-proxy",
+        root / "bin/jarvis-web-access-proxy",
         root / "profile/jarvis-web/config.yaml",
         root / "profile/jarvis-web/SOUL.md",
     )):

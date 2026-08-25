@@ -42,6 +42,8 @@ def test_tool_phase_mapping_never_exposes_tool_name() -> None:
     assert _phase_for_tool("pdi_search_resources") == "searching"
     assert _phase_for_tool("pdi_get_resource") == "reviewing"
     assert _phase_for_tool("jarvis_exec_python") == "computing"
+    assert _phase_for_tool("jarvis_web_search") == "searching"
+    assert _phase_for_tool("jarvis_web_fetch") == "reviewing"
     assert _phase_for_tool("terminal") == "thinking"
     assert _phase_for_tool("provider_secret_debug_tool") == "thinking"
 
@@ -60,10 +62,12 @@ def test_exact_tool_mapping_covers_frozen_pdi_and_exec_surfaces() -> None:
         "jarvis_workspace_read_text": ("exec", "read_workspace"),
         "jarvis_workspace_list": ("exec", "manage_workspace"),
         "jarvis_workspace_delete": ("exec", "manage_workspace"),
+        "jarvis_web_search": ("web", "search_web"),
+        "jarvis_web_fetch": ("web", "read_web_source"),
     }
     for name, descriptor in expected.items():
         assert _tool_descriptor(name)[:2] == descriptor
-        server = "pdi" if name.startswith("pdi_") else "jarvis_exec"
+        server = "pdi" if name.startswith("pdi_") else "jarvis_web" if name.startswith("jarvis_web_") else "jarvis_exec"
         assert _tool_descriptor(f"mcp_{server}_{name}")[:2] == descriptor
     assert _tool_descriptor("pdi_search_resources_backup")[:2] == ("other", "use_tool")
 
@@ -90,6 +94,20 @@ def test_tool_telemetry_matches_privately_and_emits_only_sanitized_fields() -> N
     serialized = repr(writer.records)
     assert "raw-private-id" not in serialized
     assert "mcp_pdi" not in serialized
+
+
+def test_web_tool_telemetry_exposes_only_safe_category_and_capability() -> None:
+    writer = RecordingWriter()
+    telemetry = ToolTelemetry(writer, clock=iter((1.0, 1.01)).__next__)  # type: ignore[arg-type]
+    telemetry.start("private-web-id", "mcp_jarvis_web_jarvis_web_search")
+    telemetry.complete("private-web-id")
+    assert writer.records == [
+        {"type": "tool.started", "operation_id": 1, "category": "web", "capability": "search_web"},
+        {"type": "tool.completed", "operation_id": 1, "category": "web", "capability": "search_web", "duration_ms": 10},
+    ]
+    serialized = repr(writer.records)
+    for private in ("private-web-id", "mcp_jarvis_web", "query", "url", "page"):
+        assert private not in serialized
 
 
 def test_tool_telemetry_is_bounded_and_unmatched_completion_is_suppressed() -> None:

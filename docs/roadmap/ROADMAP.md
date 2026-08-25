@@ -61,6 +61,14 @@ details live in their dedicated documents.
   provider-generated thumbnails and ResourceRef-authorized, range-aware
   streaming playback for ordinary video Resources. It adds no transcoding,
   HLS, Live Photo pairing, schema, identity, collector, Exec, or Hermes change.
+  Jarvis Web/Search Capability V0.1 is an implementation candidate with exactly
+  two Jarvis-owned public-read MCP tools, an AF_UNIX-only Turn proxy, and a
+  separate credential-owning Web service. Direct fetch uses all-answer public
+  DNS validation, pinned numeric connections, TLS hostname preservation, peer
+  checks, manual redirect validation, identity-only encoding, and bounded text
+  extraction. Safe Exec remains offline and Web data is neither PDI nor Memory.
+  Production remains blocked on a human-supplied Search Provider credential,
+  immutable deployment, and real Chinese/English provider qualification.
 
 ## Future
 
@@ -72,8 +80,9 @@ details live in their dedicated documents.
 - Explicit permission and write/action boundaries before any write-capable
   consumer Tool is introduced.
 - Jarvis Web authentication and production deployment only through their
-  separately reviewed Stage 5 boundaries. General Internet/Web capability is
-  separate from Exec and must not be added by enabling arbitrary Exec network.
+  separately reviewed Stage 5 boundaries. Web/Search production activation is
+  separate from Exec and requires provider credential/quality qualification;
+  arbitrary Exec network remains prohibited.
 - **v1.0 — Stable Personal Digital Infrastructure:** stabilize proven provider,
   observation, retrieval, access, and consumer contracts for long-term use.
 

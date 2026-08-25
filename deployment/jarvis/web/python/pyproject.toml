@@ -21,6 +21,8 @@ dependencies = [
 [project.scripts]
 jarvis-exec-mcp = "jarvis.exec.server:main"
 jarvis-exec-proxy = "jarvis.exec_proxy.main:main"
+jarvis-web-access = "jarvis.web_access.__main__:main"
+jarvis-web-access-proxy = "jarvis.web_proxy.main:main"
 
 [tool.setuptools.packages.find]
 where = ["../../../../src"]

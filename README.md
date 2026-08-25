@@ -78,6 +78,9 @@ The release includes:
   validated in real localhost production; the `e8125009` artifact is superseded
   by the frozen synchronous-terminal cancellation fix, so a new immutable
   release is required before production activation is retried;
+  the not-yet-production-qualified Jarvis Web/Search V0.1 candidate keeps Safe
+  Exec offline and puts two bounded public-read tools behind a private AF_UNIX
+  proxy plus a separate pinned-egress service;
   and
 - a server-first Codex CLI development workflow with production isolation.
 
@@ -121,6 +124,7 @@ authentication boundary are documented in
 - [Jarvis Web UI V0.1 Stage 5B deployment](docs/deployment/jarvis-web-v0.1-stage5b.md)
 - [Jarvis Exec Sandbox V0.1 freeze](docs/releases/jarvis-web-ui-v0.1-stage5b-e6.md)
 - [Jarvis cancellation synchronization freeze](docs/releases/jarvis-web-ui-v0.1-stage5b-e8-4.md)
+- [Jarvis Web/Search Capability V0.1 design](docs/design/jarvis-web-search-capability-v0.1.md)
 
 ## License
 

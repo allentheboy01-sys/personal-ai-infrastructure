@@ -1,0 +1,48 @@
+[Unit]
+Description=Jarvis Web/Search V0.1 isolated public-Web reader
+After=network-online.target
+Wants=network-online.target
+Requires=jarvis-web-access.socket
+
+[Service]
+Type=exec
+ExecStart=/opt/jarvis-web/venv-current/bin/python -I -m jarvis.web_access
+DynamicUser=yes
+SetLoginEnvironment=no
+Environment=PATH=/usr/bin:/bin
+Environment=LANG=C.UTF-8
+Environment=PYTHONDONTWRITEBYTECODE=1
+UnsetEnvironment=HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy
+LoadCredential=tavily-api-key:/etc/jarvis/tavily-api-key
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProcSubset=pid
+InaccessiblePaths=/etc/pdi /etc/jarvis /home /srv/projects /run/docker.sock /var/run/docker.sock
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+UMask=0077
+KillMode=control-group
+TimeoutStopSec=5s
+MemoryHigh=160M
+MemoryMax=192M
+MemorySwapMax=0
+TasksMax=32
+LimitNOFILE=128
+
+[Install]
+WantedBy=multi-user.target

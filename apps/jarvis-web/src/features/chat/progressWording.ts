@@ -2,7 +2,7 @@ import type { AgentProgress } from '../../models/chat'
 
 const progressPhrases: Record<AgentProgress, readonly string[]> = {
   processing: ['Working on your request', 'Thinking it through'],
-  searching: ['Searching your resources', 'Looking through your information'],
+  searching: ['Searching for relevant information', 'Looking for useful sources'],
   search_complete: ['Search step finished, organizing', 'Finishing the resource review'],
   computing: ['Working through the calculation', 'Analyzing the data'],
   reviewing: ['Checking the details', 'Reviewing the response'],

@@ -54,6 +54,8 @@ class RuntimeCapability(StrEnum):
     WRITE_WORKSPACE = "write_workspace"
     READ_WORKSPACE = "read_workspace"
     MANAGE_WORKSPACE = "manage_workspace"
+    SEARCH_WEB = "search_web"
+    READ_WEB_SOURCE = "read_web_source"
     USE_TOOL = "use_tool"
 
 
