@@ -24,6 +24,11 @@ An Adapter must provide stable PDI-facing behavior even when the Provider API is
 
 A scan emits observations. It does not create Assets, Blobs, Sources, Decisions, or database rows.
 
+A scan may stream `ProviderFact` objects while traversal is in progress. Only
+successful iterator exhaustion proves that the Adapter completed its traversal;
+facts emitted before an iteration failure remain observations from a partial,
+non-authoritative run.
+
 A single synchronization run must represent one Provider identity consistently.
 
 ## Does NOT
@@ -40,6 +45,12 @@ An Adapter does not:
 ## Content Access
 
 Content should be opened only when required. Lightweight metadata such as external identifiers and version tags is preferred before expensive content reads or hashes.
+
+An Adapter may raise the provider-neutral
+`ProviderResourceDisappearedError` when an object was observed but returns an
+explicit resource-absence response during the required content read. Transport,
+authentication, quota, timeout, and server failures are not resource
+disappearance.
 
 ## Related Documents
 

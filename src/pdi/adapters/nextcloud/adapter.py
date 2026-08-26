@@ -7,7 +7,11 @@ from typing import Iterable
 
 import requests
 
-from pdi.adapters.base import Adapter, ProviderFact
+from pdi.adapters.base import (
+    Adapter,
+    ProviderFact,
+    ProviderResourceDisappearedError,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -15,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class NextcloudAdapter(Adapter):
     provider_name = "nextcloud"
+    _CONTENT_READ_ATTEMPTS = 2
 
     def __init__(
         self,
@@ -44,7 +49,7 @@ class NextcloudAdapter(Adapter):
         root_path = self._normalize_traversal_path(path)
         pending_directories = deque([root_path])
         visited_directories: set[str] = set()
-        facts: list[ProviderFact] = []
+        fact_count = 0
 
         logger.info(
             "Scanning Nextcloud recursively path=%s",
@@ -60,40 +65,38 @@ class NextcloudAdapter(Adapter):
             visited_directories.add(current_path)
 
             for fact in self._propfind(current_path):
-                facts.append(fact)
+                fact_count += 1
 
-                if fact.kind != "folder":
-                    continue
+                if fact.kind == "folder":
+                    directory_path = fact.attributes.get("path")
 
-                directory_path = fact.attributes.get("path")
+                    if not isinstance(directory_path, str):
+                        raise ValueError(
+                            "Nextcloud folder does not contain a valid path"
+                        )
 
-                if not isinstance(directory_path, str):
-                    raise ValueError(
-                        "Nextcloud folder does not contain a valid path"
+                    normalized_path = self._normalize_traversal_path(
+                        directory_path
                     )
 
-                normalized_path = self._normalize_traversal_path(
-                    directory_path
-                )
+                    if not normalized_path:
+                        raise ValueError(
+                            "Nextcloud child folder has an empty path"
+                        )
 
-                if not normalized_path:
-                    raise ValueError(
-                        "Nextcloud child folder has an empty path"
-                    )
+                    if normalized_path not in visited_directories:
+                        pending_directories.append(normalized_path)
 
-                if normalized_path not in visited_directories:
-                    pending_directories.append(normalized_path)
+                yield fact
 
         duration = time.perf_counter() - started_at
 
         logger.info(
             "Nextcloud scan finished directories=%d facts=%d duration=%.2fs",
             len(visited_directories),
-            len(facts),
+            fact_count,
             duration,
         )
-
-        return facts
 
     def open(
         self,
@@ -114,23 +117,40 @@ class NextcloudAdapter(Adapter):
 
         url = f"{self.base_url}{href}"
 
-        response = requests.get(
-            url,
-            auth=(self.username, self.password),
-            stream=True,
-            timeout=30,
-        )
+        for attempt in range(self._CONTENT_READ_ATTEMPTS):
+            response = requests.get(
+                url,
+                auth=(self.username, self.password),
+                stream=True,
+                timeout=30,
+            )
 
-        response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except requests.HTTPError:
+                status_code = response.status_code
+                response.close()
 
-        try:
-            for chunk in response.iter_content(
-                chunk_size=1024 * 1024,
-            ):
-                if chunk:
-                    yield chunk
-        finally:
-            response.close()
+                if status_code not in {404, 410}:
+                    raise
+
+                if attempt + 1 < self._CONTENT_READ_ATTEMPTS:
+                    continue
+
+                raise ProviderResourceDisappearedError(
+                    self.provider_name
+                ) from None
+
+            try:
+                for chunk in response.iter_content(
+                    chunk_size=1024 * 1024,
+                ):
+                    if chunk:
+                        yield chunk
+            finally:
+                response.close()
+
+            return
 
     def _propfind(self, path: str) -> list[ProviderFact]:
         """向 Nextcloud WebDAV 发送 PROPFIND 请求。"""

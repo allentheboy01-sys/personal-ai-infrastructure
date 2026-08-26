@@ -37,6 +37,11 @@ Provider metadata/content -> Observation Enrichment -> typed Statements
 - 增量、幂等同步与完整扫描 reconcile；
 - Asset、Blob、AssetSource identity 与 source lifecycle；
 - Provider 选择和 Nextcloud 递归扫描；
+- Nextcloud 递归扫描按 breadth-first traversal 流式交付 ProviderFact，不再等待完整
+  树物化后才处理；仅遍历完整耗尽且所有 required content read 均成功的 run 才具有
+  missing-source reconciliation 权威。已观察后在读取时连续两次返回 404/410 的资源
+  会使 run 非权威并最终失败，但不阻断后续无关事实的 per-fact commit，也不会触发
+  unseen Source 停用；
 - PostgreSQL Repository 与 Alembic migration。
 
 ### Resource Query

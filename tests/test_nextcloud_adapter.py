@@ -1,10 +1,14 @@
 import xml.etree.ElementTree as ET
 from collections import Counter
+import urllib.parse
 
 import pytest
 import requests
 
-from pdi.adapters.base import ProviderFact
+from pdi.adapters.base import (
+    ProviderFact,
+    ProviderResourceDisappearedError,
+)
 from pdi.adapters.nextcloud.adapter import NextcloudAdapter
 
 
@@ -16,17 +20,34 @@ class FakeResponse:
         self,
         text: str,
         *,
+        status_code: int = 200,
+        chunks: tuple[bytes, ...] = (b"content",),
         error: Exception | None = None,
     ) -> None:
         self.text = text
+        self.status_code = status_code
+        self.chunks = chunks
         self.error = error
         self.raise_for_status_called = False
+        self.closed = False
 
     def raise_for_status(self) -> None:
         self.raise_for_status_called = True
 
         if self.error is not None:
             raise self.error
+
+        if self.status_code >= 400:
+            raise requests.HTTPError(
+                f"synthetic HTTP {self.status_code}"
+            )
+
+    def iter_content(self, chunk_size: int):
+        assert chunk_size == 1024 * 1024
+        yield from self.chunks
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def _webdav_response(
@@ -209,6 +230,96 @@ def test_scan_discovers_complete_tree_with_stable_external_ids(
     assert all("creationdate" not in fact.raw for fact in facts)
 
 
+def test_scan_yields_before_requesting_later_directories(
+    monkeypatch,
+) -> None:
+    root_file = ProviderFact(
+        provider="nextcloud",
+        kind="file",
+        external_id="root-file-id",
+        name="root.md",
+        attributes={"path": "root.md"},
+        raw={"href": f"{DAV_ROOT}root.md"},
+    )
+    folder = ProviderFact(
+        provider="nextcloud",
+        kind="folder",
+        external_id="folder-a-id",
+        name="A",
+        attributes={"path": "A/"},
+        raw={"href": f"{DAV_ROOT}A/"},
+    )
+    nested_file = ProviderFact(
+        provider="nextcloud",
+        kind="file",
+        external_id="nested-file-id",
+        name="nested.md",
+        attributes={"path": "A/nested.md"},
+        raw={"href": f"{DAV_ROOT}A/nested.md"},
+    )
+    requested_paths: list[str] = []
+
+    def fake_propfind(path: str) -> list[ProviderFact]:
+        requested_paths.append(path)
+        return [root_file, folder] if path == "" else [nested_file]
+
+    adapter = _adapter()
+    monkeypatch.setattr(adapter, "_propfind", fake_propfind)
+
+    facts = iter(adapter.scan())
+    assert next(facts) is root_file
+    assert requested_paths == [""]
+    assert list(facts) == [folder, nested_file]
+    assert requested_paths == ["", "A"]
+
+
+def test_scan_streams_large_synthetic_tree_breadth_first(
+    monkeypatch,
+) -> None:
+    directory_count = 64
+    folders = [
+        ProviderFact(
+            provider="nextcloud",
+            kind="folder",
+            external_id=f"folder-{index}",
+            name=f"D{index}",
+            attributes={"path": f"D{index}/"},
+            raw={"href": f"{DAV_ROOT}D{index}/"},
+        )
+        for index in range(directory_count)
+    ]
+    requested_paths: list[str] = []
+
+    def fake_propfind(path: str) -> list[ProviderFact]:
+        requested_paths.append(path)
+        if path == "":
+            return folders
+        return [
+            ProviderFact(
+                provider="nextcloud",
+                kind="file",
+                external_id=f"file-{path}",
+                name="item.txt",
+                attributes={"path": f"{path}/item.txt"},
+                raw={"href": f"{DAV_ROOT}{path}/item.txt"},
+            )
+        ]
+
+    adapter = _adapter()
+    monkeypatch.setattr(adapter, "_propfind", fake_propfind)
+
+    facts = iter(adapter.scan())
+    assert next(facts) is folders[0]
+    assert requested_paths == [""]
+
+    remaining = list(facts)
+    assert requested_paths == [""] + [
+        f"D{index}" for index in range(directory_count)
+    ]
+    assert remaining[: directory_count - 1] == folders[1:]
+    assert len(remaining) == (directory_count - 1) + directory_count
+
+
 def test_scan_visits_a_repeated_directory_path_only_once(
     monkeypatch,
 ) -> None:
@@ -326,3 +437,174 @@ def test_scan_propagates_nested_http_failure(
         match="nested directory failed",
     ):
         list(_adapter().scan())
+
+
+def _file_fact(relative_path: str) -> ProviderFact:
+    href = DAV_ROOT + urllib.parse.quote(relative_path, safe="/")
+    xml = _multistatus(
+        _webdav_response(
+            path=urllib.parse.quote(relative_path, safe="/"),
+            external_id="file-id",
+        )
+    )
+    fact = _adapter()._parse_webdav_response(
+        xml,
+        current_path="unrelated",
+    )[0]
+    assert fact.raw["href"] == href
+    return fact
+
+
+def test_open_stable_file_uses_one_attempt(monkeypatch) -> None:
+    response = FakeResponse("", chunks=(b"one", b"two"))
+    calls: list[str] = []
+
+    def fake_get(url: str, **kwargs):
+        calls.append(url)
+        return response
+
+    monkeypatch.setattr(
+        "pdi.adapters.nextcloud.adapter.requests.get",
+        fake_get,
+    )
+    fact = _file_fact("中文/stable file.txt")
+
+    assert list(_adapter().open(fact)) == [b"one", b"two"]
+    assert calls == ["https://nextcloud.example" + fact.raw["href"]]
+    assert response.closed is True
+
+
+def test_open_retries_one_404_then_succeeds(monkeypatch) -> None:
+    responses = [
+        FakeResponse("", status_code=404),
+        FakeResponse("", chunks=(b"recovered",)),
+    ]
+    calls = 0
+
+    def fake_get(url: str, **kwargs):
+        nonlocal calls
+        calls += 1
+        return responses.pop(0)
+
+    monkeypatch.setattr(
+        "pdi.adapters.nextcloud.adapter.requests.get",
+        fake_get,
+    )
+
+    assert list(_adapter().open(_file_fact("transition.txt"))) == [
+        b"recovered"
+    ]
+    assert calls == 2
+
+
+@pytest.mark.parametrize("status_code", [404, 410])
+def test_open_maps_persistent_missing_status_to_typed_error(
+    monkeypatch,
+    status_code: int,
+) -> None:
+    responses = [
+        FakeResponse("", status_code=status_code),
+        FakeResponse("", status_code=status_code),
+    ]
+    calls = 0
+
+    def fake_get(url: str, **kwargs):
+        nonlocal calls
+        calls += 1
+        return responses.pop(0)
+
+    monkeypatch.setattr(
+        "pdi.adapters.nextcloud.adapter.requests.get",
+        fake_get,
+    )
+    private_name = "private-sensitive-name.txt"
+
+    with pytest.raises(ProviderResourceDisappearedError) as raised:
+        list(_adapter().open(_file_fact(private_name)))
+
+    assert calls == 2
+    assert raised.value.provider == "nextcloud"
+    assert private_name not in str(raised.value)
+
+
+@pytest.mark.parametrize("status_code", [401, 403, 408, 429, 500])
+def test_open_preserves_ordinary_http_failures(
+    monkeypatch,
+    status_code: int,
+) -> None:
+    calls = 0
+
+    def fake_get(url: str, **kwargs):
+        nonlocal calls
+        calls += 1
+        return FakeResponse("", status_code=status_code)
+
+    monkeypatch.setattr(
+        "pdi.adapters.nextcloud.adapter.requests.get",
+        fake_get,
+    )
+
+    with pytest.raises(requests.HTTPError):
+        list(_adapter().open(_file_fact("ordinary.txt")))
+
+    assert calls == 1
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        requests.Timeout("synthetic timeout"),
+        requests.ConnectionError("synthetic connection failure"),
+    ],
+)
+def test_open_preserves_transport_failure_without_retry(
+    monkeypatch,
+    failure: requests.RequestException,
+) -> None:
+    calls = 0
+
+    def fake_get(url: str, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise failure
+
+    monkeypatch.setattr(
+        "pdi.adapters.nextcloud.adapter.requests.get",
+        fake_get,
+    )
+
+    with pytest.raises(type(failure), match="synthetic"):
+        list(_adapter().open(_file_fact("timeout.txt")))
+
+    assert calls == 1
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "download/数学建模/资料 包_100%_#+?.zip",
+        "unicode/café.txt",
+        "unicode/cafe\u0301.txt",
+    ],
+)
+def test_raw_href_and_unicode_encoding_are_preserved(
+    monkeypatch,
+    relative_path: str,
+) -> None:
+    fact = _file_fact(relative_path)
+    captured_urls: list[str] = []
+
+    def fake_get(url: str, **kwargs):
+        captured_urls.append(url)
+        return FakeResponse("", chunks=(b"content",))
+
+    monkeypatch.setattr(
+        "pdi.adapters.nextcloud.adapter.requests.get",
+        fake_get,
+    )
+
+    assert fact.attributes["path"] == relative_path
+    assert list(_adapter().open(fact)) == [b"content"]
+    assert captured_urls == [
+        "https://nextcloud.example" + fact.raw["href"]
+    ]

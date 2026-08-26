@@ -1,7 +1,7 @@
 import logging
 import time
 
-from pdi.adapters.base import Adapter
+from pdi.adapters.base import Adapter, ProviderResourceDisappearedError
 from pdi.capability.hash import calculate_sha256
 from pdi.decision import RequirementType
 from pdi.identity import Matcher
@@ -9,6 +9,18 @@ from pdi.repository import Repository
 
 
 logger = logging.getLogger(__name__)
+
+
+class IncompleteProviderSyncError(RuntimeError):
+    """A provider traversal completed but was not authoritative."""
+
+    def __init__(self, provider: str, disappeared_count: int) -> None:
+        self.provider = provider
+        self.disappeared_count = disappeared_count
+        super().__init__(
+            "Provider sync incomplete: "
+            f"provider={provider} disappeared={disappeared_count}"
+        )
 
 
 class SyncEngine:
@@ -30,6 +42,8 @@ class SyncEngine:
         action_count = 0
         hash_count = 0
         missing_count = 0
+        disappeared_count = 0
+        authoritative = True
 
         seen_external_ids: set[str] = set()
         scanned_provider: str | None = None
@@ -87,9 +101,19 @@ class SyncEngine:
                     fact.kind,
                 )
 
-                content_hash = calculate_sha256(
-                    self.adapter.open(fact)
-                )
+                try:
+                    content_hash = calculate_sha256(
+                        self.adapter.open(fact)
+                    )
+                except ProviderResourceDisappearedError:
+                    authoritative = False
+                    disappeared_count += 1
+                    logger.warning(
+                        "Provider resource disappeared during content read "
+                        "provider=%s",
+                        fact.provider,
+                    )
+                    continue
 
                 fact.attributes["content_hash"] = content_hash
                 if fact.kind == "message":
@@ -136,6 +160,17 @@ class SyncEngine:
             adapter_name,
             fact_count,
         )
+
+        if not authoritative:
+            logger.error(
+                "Sync incomplete provider=%s disappeared=%d",
+                adapter_name,
+                disappeared_count,
+            )
+            raise IncompleteProviderSyncError(
+                provider=self.adapter.provider_name,
+                disappeared_count=disappeared_count,
+            )
 
         if scanned_provider is not None:
             active_sources = self.repository.list_active_sources(

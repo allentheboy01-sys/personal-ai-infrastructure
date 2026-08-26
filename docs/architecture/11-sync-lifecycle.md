@@ -75,7 +75,9 @@ A connection failure ends the session. No absence inference or reconciliation ma
 
 ## Phase 2: Scan
 
-The Adapter emits normalized `ProviderFact` objects.
+The Adapter may stream normalized `ProviderFact` objects while traversing the
+Provider. Successful exhaustion of that stream is the traversal-completion
+boundary.
 
 During the scan, the Sync Engine records the Provider external identities observed in the session.
 
@@ -120,6 +122,11 @@ The loop continues until:
 
 A Decision with unresolved Requirements must not be treated as a completed transition.
 
+When an Adapter reports that a previously observed resource disappeared during
+a required content read, that fact receives no Decision. Later unrelated facts
+may still be processed, but the run becomes non-authoritative and must fail
+after traversal. Ordinary provider failures still stop the run immediately.
+
 ## Phase 5: Decision Execution
 
 The Repository executes the Decision transactionally.
@@ -130,9 +137,12 @@ The current session does not guarantee one database transaction across the entir
 
 ## Phase 6: Scan Completion
 
-Reconciliation is allowed only when the Adapter scan completes successfully.
+Reconciliation is allowed only when the Adapter scan completes successfully and
+all required fact reads resolve.
 
-A partial scan, connection failure, iteration error, or aborted session must not be interpreted as Provider deletion.
+A partial scan, connection failure, iteration error, observed-then-disappeared
+resource, or aborted session must not be interpreted as an authoritative
+Provider snapshot.
 
 This rule prevents accidental mass deactivation.
 
@@ -173,6 +183,8 @@ The Repository only provides queries and executes Decisions.
 5. Unresolved Requirements prevent execution for the affected fact.
 6. Repository failure rolls back the affected Decision.
 7. Source absence is inferred only from a successful complete scan.
+8. An observed-then-disappeared resource suppresses reconciliation and makes the
+   formal run fail, even when unrelated facts commit successfully.
 
 ## Observability
 
@@ -206,7 +218,7 @@ Identity V1 lifecycle supports:
 It does not yet define:
 
 - incremental checkpoints;
-- automatic retry policy;
+- general automatic retry policy beyond the bounded resource-disappearance read;
 - resume after interruption;
 - parallel Provider synchronization;
 - cross-session conflict resolution;

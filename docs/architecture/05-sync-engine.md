@@ -26,7 +26,14 @@ The Sync Engine is responsible for:
 
 One synchronization session represents one Provider identity. Facts from multiple Providers must not be mixed in the same run.
 
-Missing-object reconciliation is valid only after a complete successful scan. A failed or partial scan must never deactivate Sources merely because they were not observed.
+Missing-object reconciliation is valid only after a complete successful scan
+whose required per-fact reads all resolved. A failed, partial, or otherwise
+non-authoritative scan must never deactivate Sources merely because they were
+not observed.
+
+Adapters may stream facts. Valid per-fact Decisions may therefore commit before
+the traversal completes, but those commits do not make the provider snapshot
+authoritative.
 
 ## Requirement Loop
 
@@ -64,6 +71,11 @@ missing Sources
 ```
 
 Each missing Source is passed through the defined deactivation path and persisted as inactive. It is not physically deleted.
+
+If an observed resource disappears while satisfying a content requirement, the
+Sync Engine skips the unresolved fact and may continue processing later facts.
+The run remains non-authoritative, performs no missing-source reconciliation,
+and fails after traversal with a sanitized incomplete-sync error.
 
 ## Does NOT
 

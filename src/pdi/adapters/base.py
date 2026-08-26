@@ -3,6 +3,17 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 
+class ProviderResourceDisappearedError(RuntimeError):
+    """An observed provider object disappeared before its content was read."""
+
+    def __init__(self, provider: str) -> None:
+        self.provider = provider
+        super().__init__(
+            "Provider resource disappeared during content read: "
+            f"provider={provider}"
+        )
+
+
 @dataclass
 class ProviderFact:
     provider: str
