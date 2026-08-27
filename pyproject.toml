@@ -5,10 +5,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pdi"
-version = "0.5.0"
+version = "0.6.0"
 description = "Personal Digital Infrastructure"
 readme = "README.md"
 requires-python = ">=3.13"
+license = "MIT"
+keywords = [
+    "personal-data",
+    "self-hosted",
+    "mcp",
+    "data-infrastructure",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+]
 
 dependencies = [
     "alembic>=1.18,<2.0",
@@ -30,13 +44,27 @@ dependencies = [
 pdi = "pdi.cli:main"
 
 [project.optional-dependencies]
-jarvis-web = [
-    "fastapi>=0.141,<0.142",
+test = [
+    "pytest>=9.0,<10.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/allentheboy01-sys/personal-ai-infrastructure"
+Documentation = "https://github.com/allentheboy01-sys/personal-ai-infrastructure/tree/main/docs"
+Repository = "https://github.com/allentheboy01-sys/personal-ai-infrastructure"
+Issues = "https://github.com/allentheboy01-sys/personal-ai-infrastructure/issues"
 
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = [
+    "pdi",
+    "pdi.*",
+    "pdi_mcp",
+    "pdi_mcp.*",
+    "pdi_resource_access",
+    "pdi_resource_access.*",
+]
 
 
 [tool.pytest.ini_options]

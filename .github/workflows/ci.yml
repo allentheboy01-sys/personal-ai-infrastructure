@@ -1,0 +1,124 @@
+name: PDI CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/constraints/python3.13.txt
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  host-safe:
+    name: Host safe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Python 3.13
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install PDI and monorepo test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[test]'
+          python -m pip install -e deployment/jarvis/web/python
+      - name: Validate installed dependencies
+        run: python -m pip check
+      - name: Run host-safe suite
+        run: python -m pytest -q
+      - name: Validate public documentation links
+        run: python scripts/check_markdown_links.py
+      - name: Run portability regression
+        run: python -m pytest -q tests/test_public_deployment.py
+
+  postgresql-integration:
+    name: PostgreSQL 16 integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: pdi_ci_test
+          POSTGRES_USER: pdi_ci
+          POSTGRES_PASSWORD: pdi-ci-synthetic-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pdi_ci -d pdi_ci_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PDI_TEST_DATABASE_URL: >-
+        postgresql+psycopg://pdi_ci:pdi-ci-synthetic-password@127.0.0.1:5432/pdi_ci_test
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Python 3.13
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install PDI test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[test]'
+          python -m pip check
+      - name: Apply Alembic to a fresh database
+        env:
+          DATABASE__URL: ${{ env.PDI_TEST_DATABASE_URL }}
+        run: python -m alembic -c alembic.ini upgrade head
+      - name: Run isolated database integration suite
+        run: python -m pytest -q tests/integration
+
+  package-clean-install:
+    name: Package and clean install
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Python 3.13
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install source and build tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install '.[test]' build
+          python -m pip check
+      - name: Run clean-clone composition regressions
+        run: >-
+          python -m pytest -q
+          tests/test_cli.py
+          tests/test_settings.py
+          tests/test_mcp_bootstrap.py
+          tests/test_public_deployment.py
+      - name: Verify source migration assets
+        run: python -m alembic -c alembic.ini heads
+      - name: Build source and wheel distributions
+        run: python -m build
+      - name: Check distribution boundaries
+        run: python scripts/check_distribution.py dist
+      - name: Install wheel in a fresh environment
+        run: |
+          python -m venv .artifact-venv
+          .artifact-venv/bin/python -m pip install --upgrade pip
+          .artifact-venv/bin/python -m pip install dist/*.whl
+          .artifact-venv/bin/python -m pip check
+      - name: Exercise installed public CLI
+        env:
+          DATABASE__URL: >-
+            postgresql+psycopg://pdi_cli:pdi-cli-synthetic-password@127.0.0.1:5432/pdi_cli_test
+        run: |
+          .artifact-venv/bin/pdi --help
+          .artifact-venv/bin/pdi sync --help
+          timeout 10 .artifact-venv/bin/pdi mcp </dev/null

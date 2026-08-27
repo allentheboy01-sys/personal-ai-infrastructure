@@ -26,6 +26,11 @@ only the information needed to reproduce and assess the issue safely.
 - If a real credential is accidentally published, rotate or revoke it first.
   Consider history rewriting only after containment and a separate review.
 
+CI runs Gitleaks over current content and reachable Git history with redacted
+reporting and narrowly documented synthetic exceptions. Automated detection is
+defense in depth: it does not make a committed credential safe or replace
+immediate rotation and human review.
+
 ## Data and test isolation
 
 - Never run tests against a production PDI database or real Provider account.

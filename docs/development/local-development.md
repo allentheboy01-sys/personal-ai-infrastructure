@@ -18,7 +18,8 @@ git clone <repository-url> pdi
 cd pdi
 python3.13 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e . pytest
+.venv/bin/python -m pip install \
+  -c constraints/python3.13.txt -e '.[test]'
 ```
 
 `<repository-url>` is the HTTPS or SSH clone URL selected by the contributor.
@@ -71,6 +72,8 @@ development is documented in
    history.
 
 Repository-wide contributor and automation rules live in `AGENTS.md`.
+The relationship between direct dependency ranges and the reviewed Python 3.13
+snapshot is documented in `docs/development/dependencies.md`.
 
 ## Production separation
 

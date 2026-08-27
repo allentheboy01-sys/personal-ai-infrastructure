@@ -69,6 +69,10 @@ does not require Tailscale or another particular exposure mechanism.
 ## Development
 
 - [Local development](development/local-development.md)
+- [Dependency reproducibility](development/dependencies.md)
+- [Continuous integration](development/continuous-integration.md)
+- [Public release process](development/release-process.md)
+- [Contribution guide](../CONTRIBUTING.md)
 - [Repository automation and contributor rules](../AGENTS.md)
 - [ADR guidelines](adr/000-adr-guidelines.md)
 
@@ -78,11 +82,13 @@ does not require Tailscale or another particular exposure mechanism.
 - [Contributor-facing current context](context/CURRENT_CONTEXT.md)
 - [PDI v0.4 tagged release](releases/v0.4.md)
 - [PDI v0.5 tagged release](releases/v0.5.md)
-- [PDI v0.6 engineering milestone](releases/v0.6.md)
+- [PDI v0.6.0 public release candidate](releases/v0.6.0.md)
+- [Archived v0.6 engineering milestone evidence](archive/pdi/v0.6-engineering-milestone.md)
 
 The current context is an implementation snapshot for contributors, not the
-public product introduction. Git tags and package metadata currently stop at
-`v0.5.0` / `0.5.0`; `v0.6` is an untagged engineering milestone record.
+public product introduction. The latest tag is `v0.5.0`; package metadata and
+the release note now identify an untagged `v0.6.0` candidate pending a separate
+Release Gate.
 
 ## Reference consumers
 
@@ -103,6 +109,7 @@ Core.
 ## Archive
 
 - [Jarvis historical Stage/Gate index](archive/jarvis/README.md)
+- [PDI v0.6 engineering milestone evidence](archive/pdi/v0.6-engineering-milestone.md)
 
 Archive records preserve engineering history. They are not the current PDI
 architecture, status, or installation guide.

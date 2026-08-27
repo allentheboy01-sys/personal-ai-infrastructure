@@ -17,8 +17,8 @@ repository; it is not required to install, extend, or use PDI.
 
 **Status:** active development / pre-1.0. The architecture and current
 capabilities have real self-hosted validation. A portable manual installation
-path now exists, while packaging, automation, and general-user polish remain
-future work.
+path, automated correctness checks, and reviewed dependency snapshot now exist;
+general-user polish and package publication remain future work.
 
 ## Architecture
 
@@ -120,11 +120,13 @@ PDI is active, pre-1.0 software:
 - the World Model and Provider/consumer separation are implemented rather than
   aspirational; and
 - a manual public self-host path and Provider-independent configuration exist;
-  packaging automation and CI still need dedicated readiness work.
+  automated host-safe, PostgreSQL 16, package, and secret checks cover the
+  public repository boundary.
 
-The latest Git tag is `v0.5.0`, and project package metadata remains `0.5.0`.
-The repository's `v0.6` documents are an engineering milestone record, not a
-tagged public release. Detailed chronology belongs in the
+The latest Git tag remains `v0.5.0`. Current source and package metadata form an
+**untagged `v0.6.0` release candidate**; it is not released until a separately
+reviewed Release Gate creates the matching tag. Detailed chronology belongs in
+the
 [project status and records](docs/README.md#project-status-and-records), not in
 the product introduction.
 
@@ -139,7 +141,8 @@ git clone <repository-url> pdi
 cd pdi
 python3.13 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e .
+.venv/bin/python -m pip install \
+  -c constraints/python3.13.txt -e .
 cp .env.example .env
 # Configure DATABASE__URL and exactly the Provider you want to use.
 .venv/bin/alembic -c alembic.ini upgrade head
@@ -156,6 +159,10 @@ credentials or installing reference systemd units.
 For contributor setup and isolated test rules, see
 [local development](docs/development/local-development.md). Jarvis is not part
 of the installation path.
+
+The tested dependency snapshot is optional for supported-range installs but
+recommended when reproducing the release candidate; its maintenance policy is
+documented in [Dependency reproducibility](docs/development/dependencies.md).
 
 ## Extending PDI with a Provider
 
@@ -183,6 +190,12 @@ Read [SECURITY.md](SECURITY.md) before reporting vulnerabilities or adding
 fixtures, and see the
 [private operations boundary](docs/security/private-operations-boundary.md)
 before publishing deployment material.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the focused contribution flow,
+isolated test requirements, and architecture boundary rules. Continuous
+integration uses no live Provider or production credentials.
 
 ## Repository map
 

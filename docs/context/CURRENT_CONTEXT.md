@@ -60,8 +60,8 @@ deployment choices rather than PDI Core requirements. See
 
 ## Public-readiness status
 
-Phases A-D establish the privacy, product, documentation, and portability
-boundary:
+Phases A-E establish the privacy, product, documentation, portability, and
+release-verification boundary:
 
 - real content-derived discovery fingerprints are removed from current HEAD;
 - private operations are separated from public documentation;
@@ -73,13 +73,17 @@ boundary:
 - the documentation index separates product guidance from contributor context
   and historical records; and
 - a clean checkout can configure one Provider, apply migrations, run a manual
-  sync, and expose the read-only stdio MCP boundary without Jarvis.
+  sync, and expose the read-only stdio MCP boundary without Jarvis; and
+- Python 3.13 CI, isolated PostgreSQL 16 validation, artifact checks,
+  dependency constraints, and current/history secret scanning enforce the
+  public boundary.
 
-The following work remains deliberately deferred:
+The following release actions remain deliberately deferred:
 
-- Phase E: OSS metadata, CI, pinned secret scanning, dependency policy, and
-  public verification.
+- human review of the exact public-readiness candidate commit;
+- creation of Git tag `v0.6.0` and an optional GitHub Release; and
+- any repository rename or package publication.
 
-Git tags and `pyproject.toml` currently stop at `v0.5.0` / `0.5.0`. The `v0.6`
-documents are an engineering milestone record rather than a tagged public
-release. Version-policy changes remain deferred to Phase E.
+The latest Git tag remains `v0.5.0`. `pyproject.toml` and the public release
+candidate note now agree on `0.6.0`, but the candidate is not released until a
+separate Release Gate creates tag `v0.6.0` on the reviewed commit.

@@ -21,17 +21,17 @@ public boundaries and do not define PDI Core.
   observations, structured/Provider/rich retrieval, bounded representations,
   and read-only MCP.
 
-Git tags and package metadata currently stop at `v0.5.0` / `0.5.0`.
+The latest Git tag is `v0.5.0`.
 
-## Current — pre-1.0 public readiness
+## Current — v0.6.0 public release candidate
 
-The untagged **v0.6 engineering milestone** adds operational hardening, typed
+The untagged **v0.6.0 candidate** adds operational hardening, typed
 Resources, bounded Data Status, minimal Person identity, one explicit
 Provider-derived `Resource depicts Person` relation, and the limited/manual
-Gmail Provider. Its release document records validation history; it is not a
-tagged public package release.
+Gmail Provider. Its detailed engineering evidence is archived separately; it
+is not a tagged public release.
 
-Public Readiness Phases A-D establish:
+Public Readiness Phases A-E establish:
 
 - privacy and private-operations boundaries;
 - PDI-first repository identity and Jarvis reference-consumer positioning;
@@ -39,13 +39,16 @@ Public Readiness Phases A-D establish:
   and honest pre-1.0 status; and
 - host-neutral contributor documentation and navigation; and
 - Provider-independent configuration, stable public commands, and a portable
-  manual self-host reference with PostgreSQL and generic systemd assets.
+  manual self-host reference with PostgreSQL and generic systemd assets; and
+- contribution/security guidance, reviewed Python 3.13 constraints, automated
+  host-safe and PostgreSQL 16 checks, package validation, and secret scanning.
 
-## Next public-readiness work
+## Next release work
 
-- **Phase E — OSS hygiene and verification:** align version/package metadata,
-  add reviewed CI and secret scanning, and formalize dependency and public
-  verification policy.
+- Human-review the exact candidate commit.
+- If approved, create tag `v0.6.0` through a separate Release Gate.
+- Evaluate the repository rename and any PyPI publication separately; neither
+  is required to validate the source/self-host release.
 
 ## Future product work
 

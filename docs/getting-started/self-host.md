@@ -29,7 +29,8 @@ sudo install -d -o pdi -g pdi -m 0755 /opt/pdi
 sudo -u pdi git clone <repository-url> /opt/pdi
 sudo -u pdi python3.13 -m venv /opt/pdi/.venv
 sudo -u pdi /opt/pdi/.venv/bin/python -m pip install --upgrade pip
-sudo -u pdi /opt/pdi/.venv/bin/python -m pip install -e /opt/pdi
+sudo -u pdi /opt/pdi/.venv/bin/python -m pip install \
+  -c /opt/pdi/constraints/python3.13.txt -e /opt/pdi
 /opt/pdi/.venv/bin/python -m pip check
 ```
 
@@ -81,6 +82,10 @@ sudo -u pdi sh -c '
 
 This reads the protected configuration inside the process; it does not place
 the database password in command arguments.
+
+Migrations are intentionally a source-install capability in this release. The
+built wheel exposes the runtime CLI but does not include the repository-level
+Alembic tree.
 
 ## 5. Run one Provider sync
 

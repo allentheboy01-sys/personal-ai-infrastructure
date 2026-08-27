@@ -1,0 +1,13 @@
+include alembic.ini
+include .env.example
+include constraints/python3.13.txt
+recursive-include migrations *.py
+include deployment/pdi.env.example
+recursive-include deployment/examples/postgres *
+recursive-include deployment/mcp *
+recursive-include deployment/resource-access *
+recursive-include deployment/systemd pdi-*.service pdi-*.timer
+recursive-include docs *.md
+include LICENSE
+include SECURITY.md
+include CONTRIBUTING.md

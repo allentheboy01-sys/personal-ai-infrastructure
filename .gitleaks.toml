@@ -1,0 +1,10 @@
+title = "PDI secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic Tavily credential used only to test systemd credential loading"
+condition = "AND"
+paths = ['''^tests/jarvis_web_access/test_deployment\.py$''']
+regexes = ['''tvly-synthetic-test''']
