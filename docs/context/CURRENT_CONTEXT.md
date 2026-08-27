@@ -78,12 +78,10 @@ release-verification boundary:
   dependency constraints, and current/history secret scanning enforce the
   public boundary.
 
-The following release actions remain deliberately deferred:
+Release authority remains deliberately separate from source chronology:
 
-- human review of the exact public-readiness candidate commit;
-- creation of Git tag `v0.6.0` and an optional GitHub Release; and
-- any repository rename or package publication.
-
-The latest Git tag remains `v0.5.0`. `pyproject.toml` and the public release
-candidate note now agree on `0.6.0`, but the candidate is not released until a
-separate Release Gate creates tag `v0.6.0` on the reviewed commit.
+- `pyproject.toml` and the public release note agree on `0.6.0`;
+- a commit is the public `v0.6.0` release only when that exact commit carries
+  the annotated tag `v0.6.0`;
+- a GitHub Release may publish the matching note without changing source; and
+- package publication remains a separately reviewed decision.

@@ -21,15 +21,12 @@ public boundaries and do not define PDI Core.
   observations, structured/Provider/rich retrieval, bounded representations,
   and read-only MCP.
 
-The latest Git tag is `v0.5.0`.
+## Current — v0.6.0 public release line
 
-## Current — v0.6.0 public release candidate
-
-The untagged **v0.6.0 candidate** adds operational hardening, typed
+**v0.6.0** adds operational hardening, typed
 Resources, bounded Data Status, minimal Person identity, one explicit
 Provider-derived `Resource depicts Person` relation, and the limited/manual
-Gmail Provider. Its detailed engineering evidence is archived separately; it
-is not a tagged public release.
+Gmail Provider. Its detailed engineering evidence is archived separately.
 
 Public Readiness Phases A-E establish:
 
@@ -43,12 +40,12 @@ Public Readiness Phases A-E establish:
 - contribution/security guidance, reviewed Python 3.13 constraints, automated
   host-safe and PostgreSQL 16 checks, package validation, and secret scanning.
 
-## Next release work
+## Release policy
 
-- Human-review the exact candidate commit.
-- If approved, create tag `v0.6.0` through a separate Release Gate.
-- Evaluate the repository rename and any PyPI publication separately; neither
-  is required to validate the source/self-host release.
+- Package metadata, the public release note, and the annotated Git tag must
+  agree. Only the exact commit carrying `v0.6.0` is the public release.
+- Evaluate any PyPI publication separately; it is not required for the
+  source/self-host release.
 
 ## Future product work
 

@@ -5,7 +5,7 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_public_package_metadata_and_release_candidate_agree() -> None:
+def test_public_package_metadata_and_release_authority_agree() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
     project = pyproject["project"]
 
@@ -21,10 +21,15 @@ def test_public_package_metadata_and_release_candidate_agree() -> None:
         "Repository",
         "Issues",
     }
+    assert all(
+        "allentheboy01-sys/personal-digital-infrastructure" in url
+        for url in project["urls"].values()
+    )
 
     release = (ROOT / "docs/releases/v0.6.0.md").read_text()
-    assert "untagged candidate" in release
-    assert "tag `v0.6.0`" in release
+    assert "Release authority" in release
+    assert "annotated Git tag `v0.6.0`" in release
+    assert "without that tag" in release
     assert "already released" not in release
 
 

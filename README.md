@@ -123,10 +123,10 @@ PDI is active, pre-1.0 software:
   automated host-safe, PostgreSQL 16, package, and secret checks cover the
   public repository boundary.
 
-The latest Git tag remains `v0.5.0`. Current source and package metadata form an
-**untagged `v0.6.0` release candidate**; it is not released until a separately
-reviewed Release Gate creates the matching tag. Detailed chronology belongs in
-the
+Package metadata declares `0.6.0`. PDI uses exact-tag release authority: a
+commit is the `v0.6.0` public release only when that exact commit carries the
+annotated tag `v0.6.0`; otherwise it remains unreleased. Detailed chronology
+belongs in the
 [project status and records](docs/README.md#project-status-and-records), not in
 the product introduction.
 
@@ -161,7 +161,7 @@ For contributor setup and isolated test rules, see
 of the installation path.
 
 The tested dependency snapshot is optional for supported-range installs but
-recommended when reproducing the release candidate; its maintenance policy is
+recommended when reproducing the tested release line; its maintenance policy is
 documented in [Dependency reproducibility](docs/development/dependencies.md).
 
 ## Extending PDI with a Provider

@@ -82,13 +82,13 @@ does not require Tailscale or another particular exposure mechanism.
 - [Contributor-facing current context](context/CURRENT_CONTEXT.md)
 - [PDI v0.4 tagged release](releases/v0.4.md)
 - [PDI v0.5 tagged release](releases/v0.5.md)
-- [PDI v0.6.0 public release candidate](releases/v0.6.0.md)
+- [PDI v0.6.0](releases/v0.6.0.md)
 - [Archived v0.6 engineering milestone evidence](archive/pdi/v0.6-engineering-milestone.md)
 
 The current context is an implementation snapshot for contributors, not the
-public product introduction. The latest tag is `v0.5.0`; package metadata and
-the release note now identify an untagged `v0.6.0` candidate pending a separate
-Release Gate.
+public product introduction. Package metadata and the release note identify
+`v0.6.0`; the exact annotated Git tag on a source commit determines whether
+that commit is the public release.
 
 ## Reference consumers
 

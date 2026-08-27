@@ -9,8 +9,7 @@ PDI uses two complementary dependency authorities:
 The constraints file is not an alternative project manifest. Add or remove a
 direct dependency in `pyproject.toml`, then deliberately refresh and review the
 constraint snapshot. Public self-host installs may use the supported ranges;
-using the constraints reproduces the versions tested for the release
-candidate.
+using the constraints reproduces the versions tested for the release line.
 
 ## Install the reviewed set
 

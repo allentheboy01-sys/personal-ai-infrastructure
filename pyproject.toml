@@ -49,10 +49,10 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/allentheboy01-sys/personal-ai-infrastructure"
-Documentation = "https://github.com/allentheboy01-sys/personal-ai-infrastructure/tree/main/docs"
-Repository = "https://github.com/allentheboy01-sys/personal-ai-infrastructure"
-Issues = "https://github.com/allentheboy01-sys/personal-ai-infrastructure/issues"
+Homepage = "https://github.com/allentheboy01-sys/personal-digital-infrastructure"
+Documentation = "https://github.com/allentheboy01-sys/personal-digital-infrastructure/tree/main/docs"
+Repository = "https://github.com/allentheboy01-sys/personal-digital-infrastructure"
+Issues = "https://github.com/allentheboy01-sys/personal-digital-infrastructure/issues"
 
 
 [tool.setuptools.packages.find]
