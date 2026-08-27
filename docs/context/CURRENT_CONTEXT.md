@@ -1,8 +1,9 @@
 # PDI Current Public Context
 
-This file records the public implementation boundary. Private host state,
-production counts, credentials, incident details, and deployment chronology do
-not belong here.
+This is a contributor-facing implementation snapshot, not the public product
+introduction or an installation guide. Start with `README.md`. Private host
+state, production counts, credentials, incident details, and deployment
+chronology do not belong here.
 
 ## Product position
 
@@ -17,8 +18,8 @@ Providers -> Adapters -> PDI Core -> Public services / MCP -> Consumers
 ```
 
 Jarvis is the first substantial reference consumer retained in the monorepo.
-It is optional and replaceable. PDI has no dependency on Jarvis or DeepSeek
-Harness, and no DeepSeek Harness integration is claimed by the current source.
+It is optional and replaceable. PDI has no dependency on Jarvis or another
+consumer runtime, and no additional runtime integration is currently claimed.
 
 ## Implemented PDI capabilities
 
@@ -58,20 +59,23 @@ See `docs/deployment/README.md`.
 
 ## Public-readiness status
 
-Phase A+B establishes the privacy and product boundary:
+Phases A-C establish the privacy, product, and public-documentation boundary:
 
 - real content-derived discovery fingerprints are removed from current HEAD;
 - private operations are separated from public documentation;
 - contributor guidance is host-neutral;
 - PDI is the primary documentation identity; and
-- Jarvis is positioned as a reference consumer.
+- Jarvis is positioned as a reference consumer;
+- the README explains the product category, current Provider support, consumer
+  interfaces, and pre-1.0 maturity; and
+- the documentation index separates product guidance from contributor context
+  and historical records.
 
 The following work remains deliberately deferred:
 
-- Phase C: full public README and documentation rewrite;
 - Phase D: configuration and deployment portability; and
 - Phase E: OSS metadata, CI, pinned secret scanning, and public verification.
 
-The README currently names milestone `v0.6` while `pyproject.toml` remains
-`0.5.0`. Public version alignment is a Phase C/E decision, not part of this
-boundary-only change.
+Git tags and `pyproject.toml` currently stop at `v0.5.0` / `0.5.0`. The `v0.6`
+documents are an engineering milestone record rather than a tagged public
+release. Version-policy changes remain deferred to Phase E.

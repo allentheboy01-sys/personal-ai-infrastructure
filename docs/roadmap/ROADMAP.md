@@ -1,97 +1,62 @@
 # PDI Roadmap
 
-The roadmap records delivery order. Architecture and current implementation
-details live in their dedicated documents.
+The roadmap records product delivery order. Architecture and current contracts
+live in their dedicated documents; operational validation chronology belongs in
+release or archived reference records.
 
-## Completed
+PDI is the product. Consumer runtimes are optional integrations over stable
+public boundaries and do not define PDI Core.
 
-- **v0.1 — Write Pipeline MVP:** provider-independent identity decisions and
+## Completed milestones
+
+- **v0.1 — Write Pipeline MVP:** Provider-independent identity decisions and
   persistence.
 - **v0.2 — Multi-provider Sync MVP:** incremental, idempotent Nextcloud and
   Immich synchronization.
-- **v0.3 — Read Pipeline MVP:** stable query services and immutable Asset Read
-  Models.
-- **v0.4 — Jarvis Tool Execution MVP:** first consumer execution boundary.
-- **v0.5 — Personal Retrieval Runtime:** deployed Resource projection,
-  Observation enrichment, structured/provider/rich retrieval, bounded streamed
-  representations, read-only MCP, and the validated reference AI runtime.
+- **v0.3 — Read Pipeline MVP:** stable query services and immutable Resource
+  read models.
+- **v0.4 — Jarvis Tool Execution MVP:** the first validated reference-consumer
+  integration over PDI; Jarvis remains optional.
+- **v0.5 — Personal Retrieval Runtime:** Resource projection, deterministic
+  observations, structured/Provider/rich retrieval, bounded representations,
+  and read-only MCP.
 
-## Current
+Git tags and package metadata currently stop at `v0.5.0` / `0.5.0`.
 
-- **v0.6 — Operational hardening:** Immich Geo Enrichment V0.1 production
-  enrichment, idempotency, service installation, and daily 05:30 timer are
-  complete and frozen. Data Status & Freshness V0.1 is production active with
-  a historical PipelineRun ledger, ten tracked formal pipelines, derived
-  freshness signals, and the eighth read-only MCP Tool. Server-first Codex
-  migration is complete. Minimal Person Identity V0.1 is also production active
-  for the standard Immich enumerable People inventory, without names or face
-  data. Resource-Person Relation V0.1 is production active through one dedicated
-  provider-owned `depicts` table, with 10,460 active Immich-derived mappings,
-  no generic graph, MCP exposure, or scheduling. Typed Resource V0.1 is
-  production active on the existing `assets.id` identity with bounded
-  `file|message` types. Gmail Provider V0.1 is functionally frozen for one
-  account with 283 production Message Resources, RAW RFC 2822 Blobs, four
-  deterministic predicates, and two manually invoked tracked pipelines. It
-  adds no scheduler, timer, systemd service, or MCP Tool; unattended operation
-  remains blocked on the OAuth lifecycle. Jarvis Web UI V0.1 Stage 1 is frozen
-  as a frontend-only static React product shell with synthetic data and no
-  production service. Stage 2 state/FastAPI contracts and the Stage 3 isolated
-  HermesRuntimeAdapter are frozen after human architecture/runtime review.
-  Stage 4 deterministic read-only PDI views, Provider status projection, and
-  bounded Resource Access proxy are frozen after human integration review and
-  real-browser validation. Stage 5B Gate E.6 freezes the real-host-validated
-  Jarvis Exec Sandbox V0.1: five bounded execution/workspace MCP tools run in a
-  per-connection DynamicUser sandbox with no network, product secrets, private
-  home, Docker, persistent workspace, or authoritative state. Gate E.8.4 freezes
-  cancellation as synchronous-terminal using the exact Turn consumer task,
-  explicitly rejecting arbitrary polling as synchronization authority. The
-  `e8125009` artifact is superseded; a new immutable release and versioned venv
-  must be built before the separately reviewed production activation retry.
-  Person Label Retrieval V0.1 has a source-frozen contract: it
-  preserves Provider-declared current labels on PersonSource and adds an exact,
-  relation-backed primary to the existing rich retrieval Tool without adding a
-  Tool, canonical Person name, or language inference. Production activation is
-  a separately validated additive migration plus the existing explicit Person
-  scan; the migration itself performs no label backfill or identity rewrite.
-  Jarvis Person Query Interpretation V0.1 is an implementation candidate that
-  adds bounded current Person-label discovery to the existing aggregate Tool
-  and concise Hermes grounding/stop guidance, without a new Tool, schema,
-  persistent alias store, family ontology, Runtime protocol, or frontend change.
-  Immich Video Presentation V0.1 is an implementation candidate that adds
-  provider-generated thumbnails and ResourceRef-authorized, range-aware
-  streaming playback for ordinary video Resources. It adds no transcoding,
-  HLS, Live Photo pairing, schema, identity, collector, Exec, or Hermes change.
-  Jarvis Web/Search Capability V0.1 is an implementation candidate with exactly
-  two Jarvis-owned public-read MCP tools, an AF_UNIX-only Turn proxy, and a
-  separate Web service that alone owns public egress and any optional provider
-  credential. Direct fetch uses all-answer public
-  DNS validation, pinned numeric connections, TLS hostname preservation, peer
-  checks, manual redirect validation, identity-only encoding, and bounded text
-  extraction. Safe Exec remains offline and Web data is neither PDI nor Memory.
-  Keyless DDGS is the default qualification candidate and uses one
-  deployment-selected backend only; `brave` with `wt-wt` passed bounded
-  Chinese/English quality and stability qualification through the Human-
-  approved external loopback Xray endpoint as provider-scoped egress;
-  Tavily remains an optional credentialed adapter and never inherits that
-  route. Direct fetch remains proxy-free, and isolated sandbox/AF_UNIX
-  qualification has passed. Production remains blocked on immutable deployment
-  and final privacy acceptance—not on a credential for DDGS mode.
+## Current — pre-1.0 public readiness
 
-## Future
+The untagged **v0.6 engineering milestone** adds operational hardening, typed
+Resources, bounded Data Status, minimal Person identity, one explicit
+Provider-derived `Resource depicts Person` relation, and the limited/manual
+Gmail Provider. Its release document records validation history; it is not a
+tagged public package release.
 
-- Consumer-facing relationship retrieval and broader cross-resource reasoning,
-  only after a separate architecture review.
-- Provider-derived Live Photo Resource relations and presentation grouping,
-  only after a separate world-model and lifecycle design review.
-- User-controlled memory derived from PDI rather than owned by an AI runtime.
-- Explicit permission and write/action boundaries before any write-capable
-  consumer Tool is introduced.
-- Jarvis Web authentication and production deployment only through their
-  separately reviewed Stage 5 boundaries. Web/Search production activation is
-  separate from Exec and requires provider quality/sandbox qualification (and
-  a credential only when a credentialed adapter such as Tavily is selected);
-  arbitrary Exec network remains prohibited.
-- **v1.0 — Stable Personal Digital Infrastructure:** stabilize proven provider,
-  observation, retrieval, access, and consumer contracts for long-term use.
+Public Readiness Phases A-C establish:
+
+- privacy and private-operations boundaries;
+- PDI-first repository identity and Jarvis reference-consumer positioning;
+- a public product README, Provider maturity matrix, consumer-interface map,
+  and honest pre-1.0 status; and
+- host-neutral contributor documentation and navigation.
+
+## Next public-readiness work
+
+- **Phase D — Portability:** make Provider configuration, commands, and
+  deployment examples usable outside the original installation.
+- **Phase E — OSS hygiene and verification:** align version/package metadata,
+  add reviewed CI and secret scanning, and validate a clean public install path.
+
+## Future product work
+
+- Stabilize proven Provider, observation, retrieval, access, and consumer
+  contracts toward **v1.0 — Stable Personal Digital Infrastructure**.
+- Evaluate additional Provider and consumer integrations independently, without
+  making PDI Core depend on one AI runtime.
+- Consider broader relationship retrieval, Provider-derived media relations,
+  and user-controlled memory only after separate architecture review.
+- Define explicit permission and write/action boundaries before introducing any
+  write-capable consumer Tool.
+- Review whether the optional Jarvis reference implementation should move to a
+  separate repository once the public PDI package boundary is stable.
 
 Future milestones are directional and subject to architecture review.

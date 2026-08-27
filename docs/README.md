@@ -1,16 +1,18 @@
 # PDI Documentation
 
-PDI is the product in this repository. Jarvis is an optional reference
-consumer. Documentation is organized so understanding PDI does not require
-reading Jarvis Stage/Gate history or one author's server operations.
+Start with the [repository README](../README.md). It explains the product,
+current Provider support, consumer boundaries, maturity, and development entry
+point. PDI is the product; Jarvis documentation is secondary reference-consumer
+material.
 
 ## Getting started
 
-- [Repository README](../README.md)
-- [Local development](development/local-development.md)
-- [Current public context](context/CURRENT_CONTEXT.md)
+- [Product overview and development quick start](../README.md)
+- [Local development and test isolation](development/local-development.md)
+- [Deployment boundary and current reference assets](deployment/README.md)
 
-The final end-user Quick Start is deferred to Public Readiness Phase C/D.
+General self-host installation is not yet portable. Public Readiness Phase D
+owns that work; current deployment assets must not be installed unchanged.
 
 ## Architecture
 
@@ -29,18 +31,25 @@ The final end-user Quick Start is deferred to Public Readiness Phase C/D.
 
 ## Providers
 
-- [Gmail Provider V0.1](design/pdi-gmail-provider-v0.1.md)
+- [Nextcloud Adapter](../src/pdi/adapters/nextcloud/adapter.py)
+- [Immich Adapter](../src/pdi/adapters/immich/adapter.py)
 - [Immich discovery notes](discovery/immich.md)
-- Provider-independent contracts are defined by the architecture documents,
-  not by any one Provider implementation.
+- [Gmail Provider V0.1](design/pdi-gmail-provider-v0.1.md)
+- [Gmail Adapter](../src/pdi/adapters/gmail/adapter.py)
+
+Provider-independent contracts come from the architecture, not from any one
+Provider API.
 
 ## Consumer interfaces / MCP
 
 - [Personal retrieval read boundary](design/personal-retrieval-read-v0.1.md)
 - [PDI Query V0.2](design/pdi-query-v0.2.md)
 - [Data Status V0.1](design/pdi-data-status-v0.1.md)
-- `src/pdi_mcp` composes the read-only consumer surface.
-- `src/pdi_resource_access` exposes bounded Resource representations.
+- [Read-only MCP composition](../src/pdi_mcp/)
+- [Bounded Resource Access process](../src/pdi_resource_access/)
+
+Consumers use these public boundaries and do not access PDI persistence or
+Provider credentials directly.
 
 ## Security and privacy
 
@@ -52,19 +61,31 @@ The final end-user Quick Start is deferred to Public Readiness Phase C/D.
 
 - [Deployment boundary and reference assets](deployment/README.md)
 
-Current deployment files are derived from one installation and are not yet a
-portable installer. Parameterization belongs to Public Readiness Phase D.
+Network topology and service-management choices are deployment-specific; PDI
+does not require Tailscale or another particular exposure mechanism.
 
 ## Development
 
 - [Local development](development/local-development.md)
-- [Repository rules](../AGENTS.md)
+- [Repository automation and contributor rules](../AGENTS.md)
 - [ADR guidelines](adr/000-adr-guidelines.md)
+
+## Project status and records
+
+- [Roadmap](roadmap/ROADMAP.md)
+- [Contributor-facing current context](context/CURRENT_CONTEXT.md)
+- [PDI v0.4 tagged release](releases/v0.4.md)
+- [PDI v0.5 tagged release](releases/v0.5.md)
+- [PDI v0.6 engineering milestone](releases/v0.6.md)
+
+The current context is an implementation snapshot for contributors, not the
+public product introduction. Git tags and package metadata currently stop at
+`v0.5.0` / `0.5.0`; `v0.6` is an untagged engineering milestone record.
 
 ## Reference consumers
 
 Jarvis validates that an AI runtime can consume PDI without owning PDI state.
-It is optional and replaceable.
+It is optional, replaceable, and not the canonical PDI UI.
 
 - [Jarvis runtime integration](design/jarvis-runtime-integration-v0.1.md)
 - [Jarvis Resource presentation](design/jarvis-web-resource-result-presentation-v0.1.1.md)
@@ -77,16 +98,9 @@ Current PDI designs live in `design/`; architecture decisions live in `adr/`.
 Jarvis-specific designs are reference-consumer records and do not define PDI
 Core.
 
-## Release notes
-
-- [PDI v0.4](releases/v0.4.md)
-- [PDI v0.5](releases/v0.5.md)
-- [PDI v0.6](releases/v0.6.md)
-- [Roadmap](roadmap/ROADMAP.md)
-
 ## Archive
 
 - [Jarvis historical Stage/Gate index](archive/jarvis/README.md)
 
 Archive records preserve engineering history. They are not the current PDI
-architecture or installation guide.
+architecture, status, or installation guide.

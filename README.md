@@ -1,85 +1,200 @@
 # PDI — Personal Digital Infrastructure
 
-PDI is a provider-independent infrastructure layer for a person's digital
-life. It turns records held by changing services into durable, queryable
-Resources and evidence that remain under the individual's control.
+> Own your digital world independently of your AI model, agent, interface, and
+> storage provider.
 
-PDI is the product. Jarvis is an optional reference consumer that demonstrates
-how a replaceable AI runtime can use PDI through stable boundaries; it is not
-PDI Core, a required UI, or the only supported consumer.
+Personal data normally lives inside changing applications. PDI normalizes data
+from those Providers into a durable Personal Digital World with stable
+identity, provenance, deterministic observations, retrieval, and controlled
+content access.
 
-## Why PDI
+AI runtimes and other software consume PDI through public boundaries instead
+of owning the user's digital world. PDI remains useful when a storage Provider,
+model, agent, or user interface is replaced.
 
-AI products, models, and storage providers change faster than a person's
-digital life. PDI keeps identity, observations, retrieval, and controlled
-content access outside any one AI product so future interfaces can use the
-same durable World Model without owning it.
+PDI is the product. Jarvis is an optional reference consumer included in this
+repository; it is not required to install, extend, or use PDI.
+
+**Status:** active development / pre-1.0. The architecture and current
+capabilities have been validated on a real self-hosted deployment, but the
+general-purpose installation experience is not yet portable or polished.
 
 ## Architecture
 
 ```text
-Providers
-   |
-Adapters
-   |
-PDI Core / Personal Digital World
-   |
-Query / Retrieval / Resource Access / MCP
-   |
-Optional consumers and AI runtimes
+                Optional consumers
+       Jarvis / MCP clients / future runtimes
+                         |
+        Query / Retrieval / Resource Access / MCP
+                         |
+                      PDI Core
+       Resource / Source / Blob / Observation
+                         |
+                      Adapters
+                    ProviderFacts
+                         |
+        Nextcloud / Immich / Gmail / future Providers
 ```
 
-The current implementation has four explicit paths:
+Provider-specific behavior terminates at an Adapter. Consumers depend on
+stable public boundaries. PDI Core has no dependency on Jarvis, an LLM, or any
+other consumer runtime.
 
-- **Write:** Nextcloud, Immich, and Gmail Adapters produce ProviderFacts for the
-  incremental, idempotent Sync Engine.
-- **Observation:** deterministic enrichment publishes typed, evidenced
-  statements without changing Resource identity.
-- **Read and retrieval:** structured queries, aggregation, Provider-semantic
-  retrieval, and rich statement-aware retrieval return immutable models.
-- **Resource access:** bounded streaming representations expose eligible
-  Provider content without leaking credentials or persistence internals.
+## What PDI is — and is not
 
-Consumers use application services, MCP, or Resource Access. They do not own
-PDI persistence and must not access Provider credentials or PDI ORM/database
-internals directly.
+| PDI is | PDI is not |
+| --- | --- |
+| Personal digital infrastructure | An AI agent, LLM, or chatbot |
+| A Provider normalization layer | A replacement for a NAS or cloud drive |
+| Stable identity and provenance for a personal digital world | An AI Memory or RAG wrapper |
+| Deterministic observation and evidence infrastructure | An automation or task framework |
+| A consumer-independent retrieval and access layer | A UI owned by one AI runtime |
 
-## Current status
+A NAS or cloud drive stores files. PDI models identity, provenance,
+observations, and retrieval across Providers, including systems that are not
+plain filesystems.
 
-The repository currently identifies its operational-hardening milestone as
-`v0.6`. PDI includes Provider synchronization, PostgreSQL/Alembic persistence,
-deterministic observations, query and retrieval services, bounded Resource
-Access, and a read-only MCP surface. Nextcloud, Immich, and a bounded Gmail
-Provider are implemented at different maturity levels.
+RAG is a technique for selecting model context. AI Memory commonly stores
+information selected or generated for one runtime. PDI is the durable user-data
+layer beneath those choices: it can serve different retrieval strategies and
+consumers without becoming their memory store.
 
-Jarvis runtime and Web code remain in this monorepo temporarily as a reference
-consumer. Their implementation and historical validation records do not define
-PDI's public contract. A later repository-boundary review may split Jarvis
-without changing PDI Core.
+## Current Provider support
 
-The README milestone and Python package version are not yet aligned; version
-policy and release metadata are explicitly deferred to Public Readiness Phase
-C/E.
+Maturity labels describe repository evidence, not a general availability SLA.
 
-## Development
+| Provider | Sync and identity | Observations / special semantics | Consumer access | Maturity |
+| --- | --- | --- | --- | --- |
+| **Nextcloud** | Recursive WebDAV inventory, stable Provider identity, streaming traversal, mutable-resource safety | File metadata, text, PDF, DOCX, and ODT extraction | Query, structured/rich retrieval over stored metadata and observations | **Validated (self-hosted)** |
+| **Immich** | Paginated asset inventory and original-content hashing | Provider metadata, OCR, geo labels, file metadata, bounded Person identity and `depicts` relations | Provider-semantic retrieval plus bounded image/video representations | **Validated (self-hosted)** |
+| **Gmail** | Read-only, single-account full-message inventory with RAW RFC 2822 Blob content | Deterministic Subject, From, To, and internal-date observations | Query and observation boundaries; no Gmail Resource Access or semantic retrieval | **Limited / manual pilot** |
 
-The current contributor baseline uses Python 3.13 and an isolated environment:
+Gmail is explicitly selected, has no scheduler, and is not ready for unattended
+operation while its OAuth lifecycle remains a controlled-pilot constraint.
+Provider-specific limitations are documented in the
+[design records](docs/README.md#providers).
+
+## Consumer interfaces
+
+PDI exposes application boundaries rather than persistence internals:
+
+| Boundary | Purpose |
+| --- | --- |
+| **Query** | Deterministic listing, search, filters, detail, and aggregation |
+| **Retrieval** | Provider-semantic retrieval and statement-aware rich retrieval |
+| **Observation** | Typed, evidenced statements attached to Resources |
+| **Resource Access** | Approved, bounded representations without Provider credentials or filesystem paths |
+| **MCP** | A read-only consumer surface composed from the public services |
+
+Public Resource references use `pdi:resource:<uuid>`. Consumers do not receive
+SQLAlchemy objects, sessions, engines, concrete repositories, database
+authority, or Provider credentials.
+
+Jarvis validates one replaceable-consumer pattern. Future integrations can use
+the same boundaries; no additional agent-runtime integration is currently
+claimed as supported.
+
+## Core concepts
+
+| Concept | Meaning |
+| --- | --- |
+| **Resource** | A durable, independently addressable object in the Personal Digital World |
+| **Source** | Provider-specific provenance and lifecycle for a Resource |
+| **Blob** | Content identity and metadata associated with a Resource |
+| **ProviderFact** | An Adapter's normalized observation of one Provider object; not itself World Model state |
+| **Observation** | A deterministic, typed statement with generator and evidence metadata |
+| **Relation** | A narrowly defined Provider-derived link; the current model includes `Resource depicts Person`, not a generic graph |
+| **ResourceRef** | The public opaque reference form, `pdi:resource:<uuid>` |
+
+See the [architecture](ARCHITECTURE.md) for lifecycle, identity, evidence, and
+trust-boundary details.
+
+## Project maturity
+
+PDI is active, pre-1.0 software:
+
+- core write, observation, read/retrieval, and Resource Access boundaries have
+  real self-hosted validation;
+- multiple Providers and a read-only MCP consumer boundary exist;
+- the World Model and Provider/consumer separation are implemented rather than
+  aspirational; and
+- public installation, configuration portability, packaging, and CI still need
+  dedicated readiness work.
+
+The latest Git tag is `v0.5.0`, and project package metadata remains `0.5.0`.
+The repository's `v0.6` documents are an engineering milestone record, not a
+tagged public release. Detailed chronology belongs in the
+[project status and records](docs/README.md#project-status-and-records), not in
+the product introduction.
+
+## Development quick start
+
+This sets up the host-safe development suite; it is not an end-user deployment
+guide.
 
 ```bash
+git clone <repository-url> pdi
+cd pdi
 python3.13 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e . pytest
 .venv/bin/python -m pytest -q
 ```
 
-This is not yet the final public Quick Start. See the
-[local development guide](docs/development/local-development.md) for test and
-production-isolation rules.
+Replace `<repository-url>` with the HTTPS or SSH clone URL you intend to use.
+Database integration tests require a separate, explicitly configured test
+database. See [local development](docs/development/local-development.md).
+
+General self-host installation is being made portable in Public Readiness
+Phase D. The existing [deployment assets](docs/deployment/README.md) are
+reference examples derived from one installation and must not be installed
+unchanged on another host.
+
+## Extending PDI with a Provider
+
+A Provider integration implements an Adapter that translates external objects
+into `ProviderFact` values and opens content only when the Sync Engine requests
+it. API-specific identifiers and metadata remain behind that boundary; adding
+a Provider does not require changing the World Model merely because its API is
+different.
+
+Start with:
+
+- [Provider](docs/architecture/02-provider.md)
+- [Provider Adapter](docs/architecture/03-provider-adapter.md)
+- [ProviderFact](docs/architecture/04-provider-fact.md)
+- [Sync Engine](docs/architecture/05-sync-engine.md)
+
+## Security and privacy
+
+PDI is self-hostable, but it does not prescribe one network-exposure product or
+topology. Provider credentials stay at Adapter or controlled access boundaries.
+Consumers must not bypass PDI services to access databases, ORM objects, or
+credentials. Tests must never use production data.
+
+Read [SECURITY.md](SECURITY.md) before reporting vulnerabilities or adding
+fixtures, and see the
+[private operations boundary](docs/security/private-operations-boundary.md)
+before publishing deployment material.
+
+## Repository map
+
+```text
+src/pdi/                  PDI Core, application services, and Adapters
+src/pdi_mcp/              read-only MCP consumer boundary
+src/pdi_resource_access/  bounded Resource Access process boundary
+apps/jarvis-web/           optional reference-consumer frontend
+src/jarvis/                optional reference-consumer runtime/backend
+docs/                      architecture, design, and reference documentation
+deployment/                installation-derived reference deployment assets
+tests/                     host-safe and explicitly gated integration tests
+```
 
 ## Documentation
 
-Start with the [documentation index](docs/README.md), then read the
-[architecture](ARCHITECTURE.md). Security reports and private-data handling are
-covered by [SECURITY.md](SECURITY.md).
+The [documentation index](docs/README.md) separates getting started,
+architecture, Providers, consumer interfaces, security, deployment,
+development, reference consumers, and historical records.
 
 ## License
 
