@@ -56,14 +56,14 @@ def test_web_package_import_does_not_eagerly_load_legacy_pdi_facade() -> None:
 def test_systemd_unit_freezes_single_local_worker_and_hardening() -> None:
     unit = (ROOT / "deployment/systemd/jarvis-web.service").read_text(encoding="utf-8")
     required = (
-        "User=harry", "Group=harry", "--host 127.0.0.1", "--port 8765", "--workers 1",
+        "User=jarvis", "Group=jarvis", "--host 127.0.0.1", "--port 8765", "--workers 1",
         "--no-access-log", "--no-proxy-headers", "KillMode=mixed", "UMask=0077",
         "PrivateTmp=yes", "ProtectSystem=strict", "ProtectHome=read-only",
         "RuntimeDirectory=jarvis-web-hermes-sessions jarvis-web-hermes-logs",
         "RuntimeDirectoryMode=0700",
         "BindPaths=/run/jarvis-web-hermes-sessions:/opt/jarvis-web/current/profile/jarvis-web/sessions",
         "BindPaths=/run/jarvis-web-hermes-logs:/opt/jarvis-web/current/profile/jarvis-web/logs",
-        "-/run/docker.sock", "-/home/harry/.ssh", "-/home/harry/.codex", "-/home/harry/projects",
+        "-/run/docker.sock", "-/home", "-/srv/projects",
     )
     assert all(value in unit for value in required)
     assert [line for line in unit.splitlines() if line.startswith("BindPaths=")] == [
@@ -75,18 +75,18 @@ def test_systemd_unit_freezes_single_local_worker_and_hardening() -> None:
     assert "ProtectHome=no" not in unit
     assert "ReadWritePaths=" not in unit
     assert "StateDirectory=" not in unit
-    assert "BindPaths=/run/jarvis-web-hermes-sessions:/home/harry/.hermes\n" not in unit
+    assert "BindPaths=/run/jarvis-web-hermes-sessions:/home/" not in unit
 
 
 def test_hermes_launcher_has_a_sanitized_secret_boundary() -> None:
     launcher = (ROOT / "deployment/jarvis/web/hermes-bridge").read_text(encoding="utf-8")
     assert "exec env -i" in launcher
     assert "DEEPSEEK_API_KEY" in launcher
-    assert "HERMES_HOME=/home/harry/.hermes/profiles/pdi-server" not in launcher  # assigned via quoted variable
+    assert "HERMES_HOME=/home/" not in launcher
     assert "JARVIS_DATABASE_URL" not in launcher
     assert "DATABASE__URL" not in launcher
     assert "pdi.env" not in launcher
-    assert "/home/harry/.local/bin/jarvis" not in launcher
+    assert "/home/" not in launcher
 
 
 def test_web_profile_has_complete_read_only_hermes_home_scaffold() -> None:

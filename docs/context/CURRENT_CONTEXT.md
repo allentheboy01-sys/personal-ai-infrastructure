@@ -52,14 +52,16 @@ Development uses Python 3.13, a repository-local virtual environment, and the
 host-safe test suite. Database integration tests require an explicit isolated
 test database and must never use production data.
 
-The repository includes deployment assets derived from one validated
-self-hosted installation. They remain reference material pending Public
-Readiness Phase D parameterization and must not be treated as portable defaults.
-See `docs/deployment/README.md`.
+The repository includes a portable manual self-host path with independent
+Provider configuration, stable `pdi sync` / `pdi mcp` commands, a loopback-only
+PostgreSQL 16 reference, and generic systemd examples. These are reference
+deployment choices rather than PDI Core requirements. See
+`docs/getting-started/self-host.md` and `docs/deployment/README.md`.
 
 ## Public-readiness status
 
-Phases A-C establish the privacy, product, and public-documentation boundary:
+Phases A-D establish the privacy, product, documentation, and portability
+boundary:
 
 - real content-derived discovery fingerprints are removed from current HEAD;
 - private operations are separated from public documentation;
@@ -69,12 +71,14 @@ Phases A-C establish the privacy, product, and public-documentation boundary:
 - the README explains the product category, current Provider support, consumer
   interfaces, and pre-1.0 maturity; and
 - the documentation index separates product guidance from contributor context
-  and historical records.
+  and historical records; and
+- a clean checkout can configure one Provider, apply migrations, run a manual
+  sync, and expose the read-only stdio MCP boundary without Jarvis.
 
 The following work remains deliberately deferred:
 
-- Phase D: configuration and deployment portability; and
-- Phase E: OSS metadata, CI, pinned secret scanning, and public verification.
+- Phase E: OSS metadata, CI, pinned secret scanning, dependency policy, and
+  public verification.
 
 Git tags and `pyproject.toml` currently stop at `v0.5.0` / `0.5.0`. The `v0.6`
 documents are an engineering milestone record rather than a tagged public

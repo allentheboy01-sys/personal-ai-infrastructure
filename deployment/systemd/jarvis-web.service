@@ -6,8 +6,8 @@ Requires=pdi-resource-access.service jarvis-exec.socket jarvis-web-access.socket
 
 [Service]
 Type=simple
-User=harry
-Group=harry
+User=jarvis
+Group=jarvis
 WorkingDirectory=/opt/jarvis-web/current
 EnvironmentFile=/etc/jarvis/web.env
 ExecStart=/opt/jarvis-web/venv-current/bin/uvicorn --factory jarvis.web.production:create_production_app --host 127.0.0.1 --port 8765 --workers 1 --no-access-log --no-proxy-headers
@@ -44,7 +44,7 @@ RestrictSUIDSGID=yes
 CapabilityBoundingSet=
 AmbientCapabilities=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-InaccessiblePaths=-/run/docker.sock -/home/harry/.ssh -/home/harry/.codex -/home/harry/projects
+InaccessiblePaths=-/run/docker.sock -/home -/srv/projects
 
 [Install]
 WantedBy=multi-user.target

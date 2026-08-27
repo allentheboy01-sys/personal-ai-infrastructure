@@ -1,0 +1,50 @@
+#!/bin/sh
+set -eu
+umask 077
+
+readonly PDI_ENV="${PDI_ENV:-/etc/pdi/pdi.env}"
+readonly PDI_ROOT="${PDI_ROOT:-/opt/pdi}"
+readonly PDI_CLI="$PDI_ROOT/.venv/bin/pdi"
+
+if [ ! -r "$PDI_ENV" ]; then
+    echo "pdi-mcp: protected configuration is unavailable" >&2
+    exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+. "$PDI_ENV"
+set +a
+
+if [ -z "${DATABASE__URL:-}" ]; then
+    echo "pdi-mcp: database configuration is missing" >&2
+    exit 1
+fi
+
+if { [ -n "${IMMICH__URL:-}" ] && [ -z "${IMMICH__API_KEY:-}" ]; } || \
+   { [ -z "${IMMICH__URL:-}" ] && [ -n "${IMMICH__API_KEY:-}" ]; }; then
+    echo "pdi-mcp: optional Immich configuration is incomplete" >&2
+    exit 1
+fi
+
+if [ ! -x "$PDI_CLI" ]; then
+    echo "pdi-mcp: PDI command is unavailable" >&2
+    exit 1
+fi
+
+cd "$PDI_ROOT"
+set -- env -i \
+    HOME="${HOME:-/var/lib/pdi}" \
+    USER="${USER:-pdi}" \
+    LOGNAME="${LOGNAME:-pdi}" \
+    PATH=/usr/local/bin:/usr/bin:/bin \
+    LANG="${LANG:-C.UTF-8}" \
+    DATABASE__URL="$DATABASE__URL"
+
+if [ -n "${IMMICH__URL:-}" ]; then
+    set -- "$@" \
+        IMMICH__URL="$IMMICH__URL" \
+        IMMICH__API_KEY="$IMMICH__API_KEY"
+fi
+
+exec "$@" "$PDI_CLI" mcp

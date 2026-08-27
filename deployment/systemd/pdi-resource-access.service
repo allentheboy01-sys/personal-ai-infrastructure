@@ -5,9 +5,10 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=harry
-WorkingDirectory=/srv/projects/PDI
-ExecStart=/srv/projects/PDI/deployment/resource-access/pdi-resource-access
+User=pdi
+Group=pdi
+WorkingDirectory=/opt/pdi
+ExecStart=/opt/pdi/deployment/resource-access/pdi-resource-access
 Restart=on-failure
 RestartSec=2s
 RuntimeDirectory=pdi

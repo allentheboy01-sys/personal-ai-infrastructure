@@ -31,20 +31,21 @@ Provider-derived `Resource depicts Person` relation, and the limited/manual
 Gmail Provider. Its release document records validation history; it is not a
 tagged public package release.
 
-Public Readiness Phases A-C establish:
+Public Readiness Phases A-D establish:
 
 - privacy and private-operations boundaries;
 - PDI-first repository identity and Jarvis reference-consumer positioning;
 - a public product README, Provider maturity matrix, consumer-interface map,
   and honest pre-1.0 status; and
-- host-neutral contributor documentation and navigation.
+- host-neutral contributor documentation and navigation; and
+- Provider-independent configuration, stable public commands, and a portable
+  manual self-host reference with PostgreSQL and generic systemd assets.
 
 ## Next public-readiness work
 
-- **Phase D — Portability:** make Provider configuration, commands, and
-  deployment examples usable outside the original installation.
 - **Phase E — OSS hygiene and verification:** align version/package metadata,
-  add reviewed CI and secret scanning, and validate a clean public install path.
+  add reviewed CI and secret scanning, and formalize dependency and public
+  verification policy.
 
 ## Future product work
 

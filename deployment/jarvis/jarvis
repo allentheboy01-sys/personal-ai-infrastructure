@@ -2,8 +2,9 @@
 set -eu
 umask 077
 
-readonly JARVIS_ENV=/etc/pdi/jarvis.env
-readonly HERMES=/home/harry/.hermes/hermes-agent/venv/bin/hermes
+readonly JARVIS_ENV="${JARVIS_ENV:-/etc/jarvis/model.env}"
+readonly HERMES="${HERMES:-/opt/hermes/venv/bin/hermes}"
+readonly HERMES_PROFILE="${HERMES_PROFILE:-pdi}"
 
 if [ ! -r "$JARVIS_ENV" ]; then
     echo "jarvis: cannot read $JARVIS_ENV" >&2
@@ -26,12 +27,12 @@ if [ ! -x "$HERMES" ]; then
 fi
 
 exec env -i \
-    HOME="${HOME:-/home/harry}" \
-    USER="${USER:-harry}" \
-    LOGNAME="${LOGNAME:-harry}" \
+    HOME="${HOME:-/var/lib/jarvis}" \
+    USER="${USER:-jarvis}" \
+    LOGNAME="${LOGNAME:-jarvis}" \
     SHELL="${SHELL:-/bin/bash}" \
-    PATH=/home/harry/.local/bin:/usr/local/bin:/usr/bin:/bin \
+    PATH=/usr/local/bin:/usr/bin:/bin \
     TERM="${TERM:-xterm-256color}" \
     LANG="${LANG:-C.UTF-8}" \
     DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
-    "$HERMES" --profile pdi-server "$@"
+    "$HERMES" --profile "$HERMES_PROFILE" "$@"

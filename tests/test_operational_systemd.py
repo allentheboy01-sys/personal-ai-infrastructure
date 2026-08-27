@@ -37,7 +37,7 @@ def test_formal_services_delegate_lock_to_operational_runner() -> None:
         assert "/usr/bin/flock" not in service
         assert str(LOCK_PATH) not in service
         assert (
-            "ExecStart=/srv/projects/PDI/.venv/bin/python "
+            "ExecStart=/opt/pdi/.venv/bin/python "
             f"-m pdi.operational --pipeline-key {pipeline_key} "
             f"--lock-timeout {timeout}"
         ) in service

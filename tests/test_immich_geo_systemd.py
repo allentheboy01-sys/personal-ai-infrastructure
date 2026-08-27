@@ -11,11 +11,12 @@ def test_immich_geo_service_uses_frozen_runtime_contract() -> None:
     ).read_text()
 
     assert "Type=oneshot" in service
-    assert "User=harry" in service
-    assert "WorkingDirectory=/srv/projects/PDI" in service
+    assert "User=pdi" in service
+    assert "Group=pdi" in service
+    assert "WorkingDirectory=/opt/pdi" in service
     assert "EnvironmentFile=/etc/pdi/pdi.env" in service
     assert (
-        "ExecStart=/srv/projects/PDI/.venv/bin/python -m pdi.operational "
+        "ExecStart=/opt/pdi/.venv/bin/python -m pdi.operational "
         "--pipeline-key enrichment.immich_geo --lock-timeout 3600"
     ) in service
     assert "TimeoutStartSec=90m" in service

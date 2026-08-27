@@ -26,6 +26,9 @@ dependencies = [
     "uvicorn>=0.35,<1.0",
 ]
 
+[project.scripts]
+pdi = "pdi.cli:main"
+
 [project.optional-dependencies]
 jarvis-web = [
     "fastapi>=0.141,<0.142",

@@ -35,7 +35,7 @@ memory:
 mcp_servers:
   pdi:
     enabled: true
-    command: /home/harry/.hermes/profiles/pdi-server/bin/pdi-mcp
+    command: /opt/pdi/deployment/mcp/pdi-mcp
     tools:
       include:
         - pdi_list_recent_resources

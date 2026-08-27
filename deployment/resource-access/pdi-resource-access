@@ -3,7 +3,8 @@ set -eu
 umask 077
 
 readonly PDI_ENV=/etc/pdi/pdi.env
-readonly PDI_PYTHON=/srv/projects/PDI/.venv/bin/python
+readonly PDI_ROOT="${PDI_ROOT:-/opt/pdi}"
+readonly PDI_PYTHON="$PDI_ROOT/.venv/bin/python"
 readonly PDI_SOCKET=/run/pdi/resource-access.sock
 
 if [ ! -r "$PDI_ENV" ]; then
@@ -28,11 +29,11 @@ if [ ! -x "$PDI_PYTHON" ]; then
     exit 1
 fi
 
-cd /srv/projects/PDI
+cd "$PDI_ROOT"
 exec env -i \
-    HOME="${HOME:-/home/harry}" \
-    USER="${USER:-harry}" \
-    LOGNAME="${LOGNAME:-harry}" \
+    HOME="${HOME:-/var/lib/pdi}" \
+    USER="${USER:-pdi}" \
+    LOGNAME="${LOGNAME:-pdi}" \
     PATH=/usr/local/bin:/usr/bin:/bin \
     LANG="${LANG:-C.UTF-8}" \
     DATABASE__URL="$DATABASE__URL" \

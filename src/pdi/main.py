@@ -6,7 +6,7 @@ from pdi.adapters.base import Adapter
 from pdi.adapters.gmail import GmailAdapter
 from pdi.adapters.immich import ImmichAdapter
 from pdi.adapters.nextcloud.adapter import NextcloudAdapter
-from pdi.config import Settings
+from pdi.config import PDIConfigurationError, Settings, load_settings
 from pdi.database import create_postgres_engine
 from pdi.engine import SyncEngine
 from pdi.identity import Matcher
@@ -28,7 +28,8 @@ def _parse_args(
         choices=("nextcloud", "immich", "gmail"),
         help=(
             "Synchronize only one provider. "
-            "Without this option, all configured providers are synchronized."
+            "Without this option, configured Nextcloud and Immich providers "
+            "are synchronized; Gmail remains explicit-only."
         ),
     )
     return parser.parse_args(argv)
@@ -41,20 +42,28 @@ def _build_adapters(
     adapters: list[Adapter] = []
 
     if selected_provider in {None, "nextcloud"}:
-        adapters.append(
-            NextcloudAdapter(
-                base_url=settings.nextcloud.url,
-                username=settings.nextcloud.user,
-                password=settings.nextcloud.password,
+        if settings.nextcloud is None:
+            if selected_provider == "nextcloud":
+                raise PDIConfigurationError(
+                    "Nextcloud configuration is required for: "
+                    "pdi sync --provider nextcloud"
+                )
+            logger.info("Nextcloud is not configured; skipping provider")
+        else:
+            adapters.append(
+                NextcloudAdapter(
+                    base_url=settings.nextcloud.url,
+                    username=settings.nextcloud.user,
+                    password=settings.nextcloud.password,
+                )
             )
-        )
 
     if selected_provider in {None, "immich"}:
         if settings.immich is None:
             if selected_provider == "immich":
-                raise RuntimeError(
-                    "--provider immich requires IMMICH__URL "
-                    "and IMMICH__API_KEY"
+                raise PDIConfigurationError(
+                    "Immich configuration is required for: "
+                    "pdi sync --provider immich"
                 )
 
             logger.info(
@@ -75,6 +84,12 @@ def _build_adapters(
             GmailAdapter(token_file=settings.gmail.token_file)
         )
 
+    if not adapters:
+        raise PDIConfigurationError(
+            "No eligible Provider is configured; configure Nextcloud or "
+            "Immich, or select Gmail explicitly"
+        )
+
     return adapters
 
 
@@ -82,7 +97,7 @@ def main(
     argv: Sequence[str] | None = None,
 ) -> None:
     args = _parse_args(argv)
-    settings = Settings()
+    settings = load_settings(args.provider)
 
     configure_logging(
         settings.logging.level,

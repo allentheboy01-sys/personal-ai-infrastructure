@@ -7,12 +7,14 @@ material.
 
 ## Getting started
 
-- [Product overview and development quick start](../README.md)
+- [Product overview and self-host quick start](../README.md)
+- [Manual self-host installation](getting-started/self-host.md)
+- [Clean-clone portability acceptance](getting-started/clean-clone-acceptance.md)
 - [Local development and test isolation](development/local-development.md)
-- [Deployment boundary and current reference assets](deployment/README.md)
+- [Deployment boundary and portable reference assets](deployment/README.md)
 
-General self-host installation is not yet portable. Public Readiness Phase D
-owns that work; current deployment assets must not be installed unchanged.
+The self-host guide requires PostgreSQL and one Provider, but not Jarvis,
+Docker, Tailscale, or multiple Provider accounts.
 
 ## Architecture
 

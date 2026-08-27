@@ -2,8 +2,8 @@
 set -eu
 umask 077
 
-readonly MODEL_ENV=/etc/pdi/jarvis.env
-readonly HERMES_PYTHON=/home/harry/.hermes/hermes-agent/venv/bin/python
+readonly MODEL_ENV=/etc/jarvis/model.env
+readonly HERMES_PYTHON="${HERMES_PYTHON:-/opt/hermes/venv/bin/python}"
 readonly RESOLVED_SELF="$(readlink -f "$0")"
 readonly RELEASE_ROOT="$(dirname "$(dirname "$RESOLVED_SELF")")"
 readonly HERMES_PROFILE="$RELEASE_ROOT/profile/jarvis-web"
@@ -26,10 +26,10 @@ if [ ! -x "$HERMES_PYTHON" ] || [ ! -r "$HERMES_PROFILE/config.yaml" ] || [ ! -r
 fi
 
 exec env -i \
-    HOME=/home/harry \
-    USER=harry \
-    LOGNAME=harry \
-    PATH=/home/harry/.local/bin:/usr/local/bin:/usr/bin:/bin \
+    HOME=/var/lib/jarvis \
+    USER=jarvis \
+    LOGNAME=jarvis \
+    PATH=/usr/local/bin:/usr/bin:/bin \
     LANG=C.UTF-8 \
     HERMES_HOME="$HERMES_PROFILE" \
     DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \

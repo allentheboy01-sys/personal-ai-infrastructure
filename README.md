@@ -16,8 +16,9 @@ PDI is the product. Jarvis is an optional reference consumer included in this
 repository; it is not required to install, extend, or use PDI.
 
 **Status:** active development / pre-1.0. The architecture and current
-capabilities have been validated on a real self-hosted deployment, but the
-general-purpose installation experience is not yet portable or polished.
+capabilities have real self-hosted validation. A portable manual installation
+path now exists, while packaging, automation, and general-user polish remain
+future work.
 
 ## Architecture
 
@@ -118,8 +119,8 @@ PDI is active, pre-1.0 software:
 - multiple Providers and a read-only MCP consumer boundary exist;
 - the World Model and Provider/consumer separation are implemented rather than
   aspirational; and
-- public installation, configuration portability, packaging, and CI still need
-  dedicated readiness work.
+- a manual public self-host path and Provider-independent configuration exist;
+  packaging automation and CI still need dedicated readiness work.
 
 The latest Git tag is `v0.5.0`, and project package metadata remains `0.5.0`.
 The repository's `v0.6` documents are an engineering milestone record, not a
@@ -127,28 +128,34 @@ tagged public release. Detailed chronology belongs in the
 [project status and records](docs/README.md#project-status-and-records), not in
 the product introduction.
 
-## Development quick start
+## Self-host quick start
 
-This sets up the host-safe development suite; it is not an end-user deployment
-guide.
+PDI requires Python 3.13, PostgreSQL 16, and one Provider. Nextcloud is the
+primary example; Immich works independently, and Gmail remains an explicit
+manual pilot.
 
 ```bash
 git clone <repository-url> pdi
 cd pdi
 python3.13 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e . pytest
-.venv/bin/python -m pytest -q
+.venv/bin/python -m pip install -e .
+cp .env.example .env
+# Configure DATABASE__URL and exactly the Provider you want to use.
+.venv/bin/alembic -c alembic.ini upgrade head
+.venv/bin/pdi sync --provider nextcloud
+.venv/bin/pdi mcp
 ```
 
 Replace `<repository-url>` with the HTTPS or SSH clone URL you intend to use.
-Database integration tests require a separate, explicitly configured test
-database. See [local development](docs/development/local-development.md).
+The repository includes an optional loopback-only PostgreSQL 16 Compose
+reference; Docker is not required when PostgreSQL already exists. Follow the
+[complete self-host guide](docs/getting-started/self-host.md) before using real
+credentials or installing reference systemd units.
 
-General self-host installation is being made portable in Public Readiness
-Phase D. The existing [deployment assets](docs/deployment/README.md) are
-reference examples derived from one installation and must not be installed
-unchanged on another host.
+For contributor setup and isolated test rules, see
+[local development](docs/development/local-development.md). Jarvis is not part
+of the installation path.
 
 ## Extending PDI with a Provider
 
@@ -186,7 +193,7 @@ src/pdi_resource_access/  bounded Resource Access process boundary
 apps/jarvis-web/           optional reference-consumer frontend
 src/jarvis/                optional reference-consumer runtime/backend
 docs/                      architecture, design, and reference documentation
-deployment/                installation-derived reference deployment assets
+deployment/                portable reference deployment assets
 tests/                     host-safe and explicitly gated integration tests
 ```
 

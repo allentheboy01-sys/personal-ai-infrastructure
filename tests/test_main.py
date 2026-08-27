@@ -9,16 +9,21 @@ from pdi.adapters.nextcloud.adapter import NextcloudAdapter
 
 def _settings(
     *,
+    nextcloud_configured: bool = True,
     immich_configured: bool = True,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         database=SimpleNamespace(
             url="postgresql+psycopg://user:password@db/pdi",
         ),
-        nextcloud=SimpleNamespace(
-            url="https://nextcloud.example",
-            user="nextcloud-user",
-            password="nextcloud-password",
+        nextcloud=(
+            SimpleNamespace(
+                url="https://nextcloud.example",
+                user="nextcloud-user",
+                password="nextcloud-password",
+            )
+            if nextcloud_configured
+            else None
         ),
         immich=(
             SimpleNamespace(
@@ -68,8 +73,8 @@ def _configure_composition_fakes(
 
     monkeypatch.setattr(
         pdi_main,
-        "Settings",
-        lambda: settings,
+        "load_settings",
+        lambda selected_provider=None: settings,
     )
     monkeypatch.setattr(
         pdi_main,
@@ -202,8 +207,8 @@ def test_main_rejects_invalid_provider_before_loading_settings(
 ) -> None:
     monkeypatch.setattr(
         pdi_main,
-        "Settings",
-        lambda: pytest.fail(
+        "load_settings",
+        lambda selected_provider=None: pytest.fail(
             "Settings must not load for an invalid provider"
         ),
     )
@@ -225,11 +230,63 @@ def test_main_fails_clearly_when_selected_immich_is_not_configured(
 
     with pytest.raises(
         RuntimeError,
-        match=(
-            "--provider immich requires IMMICH__URL "
-            "and IMMICH__API_KEY"
-        ),
+        match="Immich configuration is required.*pdi sync --provider immich",
     ):
         pdi_main.main(["--provider", "immich"])
 
     assert sync_calls == []
+
+
+def test_main_fails_clearly_when_selected_nextcloud_is_not_configured(
+    monkeypatch,
+) -> None:
+    sync_calls, _, _ = _configure_composition_fakes(
+        monkeypatch,
+        _settings(nextcloud_configured=False),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "Nextcloud configuration is required.*"
+            "pdi sync --provider nextcloud"
+        ),
+    ):
+        pdi_main.main(["--provider", "nextcloud"])
+
+    assert sync_calls == []
+
+
+def test_main_fails_when_no_implicit_provider_is_configured(
+    monkeypatch,
+) -> None:
+    sync_calls, _, _ = _configure_composition_fakes(
+        monkeypatch,
+        _settings(
+            nextcloud_configured=False,
+            immich_configured=False,
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="No eligible Provider"):
+        pdi_main.main([])
+
+    assert sync_calls == []
+
+
+def test_main_implicit_sync_never_constructs_gmail(monkeypatch) -> None:
+    sync_calls, _, _ = _configure_composition_fakes(
+        monkeypatch,
+        _settings(),
+    )
+    monkeypatch.setattr(
+        pdi_main,
+        "GmailAdapter",
+        lambda **kwargs: pytest.fail(
+            "Gmail must remain explicit-only"
+        ),
+    )
+
+    pdi_main.main([])
+
+    assert len(sync_calls) == 2

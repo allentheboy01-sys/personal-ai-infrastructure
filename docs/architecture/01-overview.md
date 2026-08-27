@@ -30,6 +30,18 @@ Provider
 
 PDI Core does not replace Providers. Nextcloud, Immich, email, Git, Home Assistant, and other systems continue to manage their own domain-specific data and behavior.
 
+## Application Composition
+
+PostgreSQL configuration is required by application operations that persist or
+query the World Model. Provider configuration is optional globally and becomes
+required only when that Provider capability is selected. The implicit sync path
+includes configured production-safe Providers and fails when none are eligible;
+the bounded Gmail pilot remains explicit-only.
+
+These are application-composition rules, not World Model concepts. Provider
+credentials remain at the Adapter boundary, and adding or omitting one Provider
+does not change Resource, Source, Blob, or Observation semantics.
+
 ## Ingestion Architecture
 
 ```text

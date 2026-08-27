@@ -22,7 +22,7 @@ def _settings(tmp_path: Path, **updates) -> production.ProductionSettings:
         "allowed_origin": "https://jarvis.test",
         "static_dir": static,
         "hermes_bridge_command": "/release/bin/hermes-bridge",
-        "pdi_mcp_command": "/srv/projects/PDI/deployment/jarvis/pdi-mcp",
+        "pdi_mcp_command": "/opt/pdi/deployment/mcp/pdi-mcp",
         "resource_access_socket": "/run/pdi/resource-access.sock",
     }
     return production.ProductionSettings(**(values | updates))

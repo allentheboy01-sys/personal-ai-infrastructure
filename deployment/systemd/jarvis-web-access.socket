@@ -5,7 +5,7 @@ Description=Jarvis Web/Search V0.1 private socket
 ListenStream=/run/jarvis-web-access.sock
 Accept=no
 SocketUser=root
-SocketGroup=harry
+SocketGroup=jarvis
 SocketMode=0660
 RemoveOnStop=yes
 

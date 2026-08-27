@@ -5,10 +5,11 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-User=harry
-WorkingDirectory=/srv/projects/PDI
+User=pdi
+Group=pdi
+WorkingDirectory=/opt/pdi
 EnvironmentFile=/etc/pdi/pdi.env
-ExecStart=/srv/projects/PDI/.venv/bin/python -m pdi.operational --pipeline-key enrichment.immich_metadata --lock-timeout 3600
+ExecStart=/opt/pdi/.venv/bin/python -m pdi.operational --pipeline-key enrichment.immich_metadata --lock-timeout 3600
 TimeoutStartSec=2h
 UMask=0077
 StandardOutput=journal

@@ -1,39 +1,6 @@
 #!/bin/sh
 set -eu
 
-readonly PDI_ENV=/etc/pdi/pdi.env
-readonly PDI_PYTHON=/srv/projects/PDI/.venv/bin/python
-
-if [ ! -r "$PDI_ENV" ]; then
-    echo "pdi-mcp: cannot read $PDI_ENV" >&2
-    exit 1
-fi
-
-set -a
-# shellcheck disable=SC1091
-. "$PDI_ENV"
-set +a
-
-if [ -z "${DATABASE__URL:-}" ] || \
-   [ -z "${IMMICH__URL:-}" ] || \
-   [ -z "${IMMICH__API_KEY:-}" ]; then
-    echo "pdi-mcp: database or Immich configuration is missing" >&2
-    exit 1
-fi
-
-if [ ! -x "$PDI_PYTHON" ]; then
-    echo "pdi-mcp: PDI Python is not available" >&2
-    exit 1
-fi
-
-cd /srv/projects/PDI
-exec env -i \
-    HOME="${HOME:-/home/harry}" \
-    USER="${USER:-harry}" \
-    LOGNAME="${LOGNAME:-harry}" \
-    PATH=/usr/local/bin:/usr/bin:/bin \
-    LANG="${LANG:-C.UTF-8}" \
-    DATABASE__URL="$DATABASE__URL" \
-    IMMICH__URL="$IMMICH__URL" \
-    IMMICH__API_KEY="$IMMICH__API_KEY" \
-    "$PDI_PYTHON" -m pdi_mcp
+# Compatibility entrypoint for the optional Jarvis reference consumer.
+readonly PDI_ROOT="${PDI_ROOT:-/opt/pdi}"
+exec "$PDI_ROOT/deployment/mcp/pdi-mcp" "$@"
