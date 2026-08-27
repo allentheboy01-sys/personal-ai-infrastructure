@@ -140,45 +140,26 @@ subset. The current Jarvis Web UI V0.1 runtime-integration baseline exposes
 seven read-only Tools: recent, search, Resource detail, aggregation,
 Observations, Provider-semantic retrieval, and rich retrieval.
 
-## Runtime and deployment
+## Consumer and deployment boundary
 
-The formal runtime host is `pdi-server`. Production state is rooted in
-`/srv/projects/PDI`, `/etc/pdi`, systemd units, and the production PostgreSQL
-service. Jarvis/Hermes is an SSH-on-demand reference runtime with isolated LLM
-and PDI MCP credentials; it is not a daemon and is not required by PDI.
+PDI Core does not require a particular hostname, filesystem layout, service
+manager, private-network product, model provider, or AI runtime. Deployments
+must keep development/test data separate from production data, protect Provider
+credentials, and expose only the public PDI service boundaries they need.
 
-Host-based development uses a separate user checkout under
-`/home/harry/projects/personal-ai-infrastructure`. The production checkout is
-never a development worktree or test target.
+The repository includes deployment assets derived from one validated
+self-hosted installation. Until Public Readiness Phase D parameterizes them,
+they are reference material rather than portable defaults.
 
-Jarvis Web is a separate consumer boundary. Its FastAPI product layer owns
-Conversation, user-visible Message, Turn, and opaque MessageResourceRef state
-in independent SQLAlchemy metadata and an independent Alembic tree. A future
-production deployment may use the same PostgreSQL server as PDI, but it must
-use a separate `jarvis` logical database, credentials, migrations, and version
-table. There are no cross-database foreign keys.
+Jarvis is a separate consumer boundary. Its application state, migrations,
+runtime adapters, Web access, and execution sandbox are not PDI Core. It must
+consume PDI through public application services, MCP, or Resource Access and
+must not reach into PDI persistence. Hermes is one replaceable Jarvis runtime
+implementation; neither Jarvis nor Hermes is required to install or use PDI.
 
-Jarvis public-Web reads are also outside PDI. The frozen V0.1 candidate exposes
-two Jarvis-owned MCP tools through a Turn-scoped AF_UNIX-only proxy and a
-separate credential-owning `jarvis-web-access.service`. That service can read
-only bounded public HTTP(S) text through resolve-once, pinned-address,
-peer-verified connections. Web results are ephemeral untrusted Turn input, not
-PDI ProviderFacts, Observations, Memory, or write authority. Safe Exec keeps
-network disabled.
-
-The Jarvis-owned RuntimeAdapter contract accepts normalized conversation
-context and emits only product-level Turn events. Runtime event history and
-provisional text remain ephemeral. Only a successful completion transaction
-creates the canonical assistant Message. Hermes is a replaceable implementation
-and is never imported by the contract or Web environment. Stage 3 provides a
-one-process-per-Turn HermesRuntimeAdapter and a private structured bridge run by
-the separate Hermes Python environment. Every Turn reconstructs history from
-canonical Jarvis Messages; Hermes sessions and execution artifacts are
-non-authoritative. Bridge commands and sanitized environments are supplied only
-at application composition, never by browser/API input. MockRuntimeAdapter
-remains the deterministic test/development implementation. Resource and
-Provider views remain frontend synthetic data; real deterministic PDI access
-remains Stage 4.
+Potential future consumers, including other MCP-capable agents, must follow the
+same one-way dependency rule. PDI does not currently depend on or claim an
+integration with DeepSeek Harness.
 
 Formal batch execution is scheduler-independent: `pdi.operational` is the sole
 owner of `/run/lock/pdi-sync.lock`, records independently committed PipelineRun

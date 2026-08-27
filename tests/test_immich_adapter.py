@@ -111,7 +111,8 @@ def test_scan_paginates_and_maps_provider_facts(
         "originalMimeType": "image/jpeg",
         "fileModifiedAt": "2026-07-19T01:02:03.456Z",
         "updatedAt": "2026-07-20T01:02:03.000Z",
-        "checksum": "js0B4cvgxvZPg1MYAQygR6r8vQc=",
+        # Standard SHA-1 of empty synthetic test content, Base64 encoded.
+        "checksum": "2jmj7l5rSw0yVb/vlWAYkK/YBwk=",
         "width": 4032,
         "height": 3024,
         "duration": "0:00:00.00000",
@@ -245,7 +246,7 @@ def test_scan_paginates_and_maps_provider_facts(
         "content_hash": None,
     }
     assert fact.raw == {
-        "checksum": "js0B4cvgxvZPg1MYAQygR6r8vQc=",
+        "checksum": "2jmj7l5rSw0yVb/vlWAYkK/YBwk=",
         "checksum_algorithm": "sha1",
         "checksum_encoding": "base64",
         "width": 4032,

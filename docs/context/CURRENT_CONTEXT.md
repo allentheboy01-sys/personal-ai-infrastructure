@@ -1,436 +1,77 @@
-# PDI 当前开发上下文
+# PDI Current Public Context
 
-**当前版本：** `v0.5.0`
+This file records the public implementation boundary. Private host state,
+production counts, credentials, incident details, and deployment chronology do
+not belong here.
 
-**冻结日期：** 2026-08-22
+## Product position
 
-**文档性质：** 当前真实实现状态，不是版本历史或永久架构规范。
+PDI is provider-independent Personal Digital Infrastructure. It owns durable
+Resource identity, deterministic observations, query/retrieval contracts, and
+controlled Resource access independently of any Provider or AI runtime.
 
-## 1. 项目定位
-
-PDI 是个人数字生活的稳定基础设施；Provider、LLM 与 AI Interface 都是可替换边缘。
-Jarvis 是第一个经过服务器验证的 AI Interface，不定义 PDI Core。
-
-当前依赖方向：
+The dependency direction is:
 
 ```text
-Provider -> Adapter -> Write Pipeline -> PostgreSQL
-                                      <- Query / Retrieval <- PDI MCP <- Consumer
-                                      <- Resource Access
-
-Provider metadata/content -> Observation Enrichment -> typed Statements
+Providers -> Adapters -> PDI Core -> Public services / MCP -> Consumers
 ```
 
-必须保持：
-
-- PDI 不依赖 Jarvis、Hermes、DeepSeek 或 Codex；
-- Consumer 只能使用公开 Application Service、MCP 或受控 Resource Access；
-- ORM、Session、Engine、Repository 与 Provider credential 不越过公开边界；
-- Observation 增强 Resource 的可理解性，但不改变 Resource identity；
-- Write、Observation、Read/Retrieval 与 Resource Access 职责分离。
-
-## 2. 已实现能力
-
-### Write 与 Provider
-
-- Nextcloud 与 Immich 真实 Adapter；
-- 增量、幂等同步与完整扫描 reconcile；
-- Asset、Blob、AssetSource identity 与 source lifecycle；
-- Provider 选择和 Nextcloud 递归扫描；
-- Nextcloud 递归扫描按 breadth-first traversal 流式交付 ProviderFact，不再等待完整
-  树物化后才处理；仅遍历完整耗尽且所有 required content read 均成功的 run 才具有
-  missing-source reconciliation 权威。已观察后在读取时连续两次返回 404/410 的资源
-  会使 run 非权威并最终失败，但不阻断后续无关事实的 per-fact commit，也不会触发
-  unseen Source 停用；
-- PostgreSQL Repository 与 Alembic migration。
-
-### Resource Query
-
-- 稳定 `pdi:resource:<uuid>` reference；
-- recent、search、aggregate、detail 与 cursor page；
-- Provider、MIME、Resource type 与时间范围过滤；
-- captured time 与 file-modified time 语义；
-- immutable Read Model 与 Session 内映射。
-
-### Observation
-
-- typed Statement、predicate registry、cardinality、Evidence、generator identity；
-- current/superseded lifecycle、input fingerprint 与幂等 publish；
-- Immich metadata、OCR 与 Provider geo label extractor；
-- file modified metadata；
-- Nextcloud plain text、PDF、DOCX 与 ODT extraction；
-- Observation PostgreSQL Repository 与 MCP detail exposure。
-
-### Retrieval 与 Resource Access
-
-- Provider-semantic retrieval；
-- rich retrieval：primary text 加 typed statement filters；
-- captured/file-modified temporal statement matching；
-- bounded streamed Resource representation；
-- 独立 resource-access process、UDS/HTTP 边界与并发/大小限制。
-
-### PDI MCP
-
-当前正式 PDI MCP 提供八个 read-only Tool：
-
-1. `pdi_list_recent_resources`
-2. `pdi_search_resources`
-3. `pdi_aggregate_resources`
-4. `pdi_retrieve_resources`
-5. `pdi_rich_retrieve_resources`
-6. `pdi_get_resource`
-7. `pdi_get_resource_observations`
-8. `pdi_get_data_status`
-
-Data Status V0.1 使用独立 `pipeline_runs` ledger、十项 static registry、
-`DataStatusService` 与 formal `pdi.operational` runner。runner 是
-`/run/lock/pdi-sync.lock` 的唯一 owner；裸 sync/enrichment CLI 不加锁、不写
-ledger。Status 只派生 `last_success_at`、`success_age_seconds` 与 dependency
-validation，不持久化 fresh/stale，也不返回 ResourceEnrichment coverage count。
-通用 PDI MCP public surface 为八个 read-only Tools；正式 Hermes PDI
-allowlist 独立冻结为其中七项（不含 Data Status），二者不可混同。
-
-### Gmail Provider production freeze
-
-Gmail Provider V0.1 已于 2026-08-19 完成功能与 production data-plane freeze。
-V0.1 仅支持一个配置的 Gmail account；Provider identity
-`(gmail, message.id)` 只在该单账号边界内成立，多账号 namespace 明确 deferred。
-
-完整 `users.messages.list(includeSpamTrash=true)` 同步创建 283 个
-`resource_type=message` Resources、283 个 active Gmail AssetSources，并实现
-283/283 `message/rfc822` RAW RFC 2822 Blob coverage。四个 deterministic
-predicates `gmail.subject`、`gmail.from`、`gmail.to`、`gmail.internal_date`
-共产生 1,132 条 current observations。第二轮正式 sync actions=0；第二轮
-enrichment processed=0、skipped=283、writes=0。duplicate Message Resources=0，
-Gmail API writes=0。
-
-`provider.gmail.sync` 与依赖它的 `enrichment.gmail_metadata` 复用现有 formal
-runner、shared lock、PipelineRun、DataStatusService 与 `pdi_get_data_status`；
-registry 共十项，MCP 仍为八个 read-only Tools。没有 Gmail systemd unit、timer
-或 scheduler。OAuth application 仍处于 Testing：bounded/manual execution 已支持，
-long-lived unattended operation 尚未 ready。
-
-### Jarvis Web Stage 4
-
-Jarvis Web Stage 4 已实现待人工审查的 deterministic read-only PDI
-integration：Backend 通过一个 persistent、serialized MCP stdio client 消费八项
-公开 Tool，并投影非持久化 ResourceView 与 ProviderView。Provider 状态由一次
-generic DataStatus snapshot 与一次 Provider aggregation 批量派生。Browser 只能
-通过 allowlisted Jarvis proxy 访问现有 Resource Access UDS 的 Immich image
-thumbnail/preview；Nextcloud document preview 与 Gmail body 均保持 unavailable。
-
-Jarvis 不导入 PDI database/repository/ORM 或 pdi_mcp composition，不获得 PDI DB
-credential，不直连 Provider。Agent-linked Resource refs 因 Hermes callback 尚无
-稳定的 opaque-ref-only structured boundary 而继续 deferred；没有 prose 或 generic
-JSON scan。本阶段未创建 production Jarvis DB/role/service，未修改 systemd 或
-Tailscale。
-
-### Jarvis Web Stage 5B.0 production candidate
-
-Stage 5B.0 已实现待人工审查的 production-only composition 与 immutable release
-tooling：Web 只能组合 HermesRuntimeAdapter、persistent stdio MCPPDIClient、
-Resource Access UDS、TailscaleServeAuth 和独立 Jarvis State；没有 HTTP/browser
-可选 mock/review/runtime 路径。默认 Vite production build 已关闭 query-driven
-synthetic review mode，review fixtures 只保留在专用 review build/test composition。
-
-Stage 5B.0 production candidate 已 FROZEN；其精确 SHA 是包含本记录的 commit，
-并由最终 release `BUILD_INFO` 机械记录。Production deployment 仍未执行。
-
-候选 release 由 clean Git SHA 构建，包含 application wheel、static dist、private
-Hermes bridge/launcher、Jarvis migration、hash-locked CPython 3.13 production
-dependencies、BUILD_INFO 与 SHA256SUMS。systemd 候选固定为 harry、单 worker、
-127.0.0.1:8765、PrivateTmp 和 control-group cleanup；不自动 migration。
-
-本阶段仍未部署。PostgreSQL loopback trust → SCRAM、Jarvis DB/roles、/etc/jarvis、
-/opt release、systemd、Tailscale Serve/real identity、Mac/iPhone E2E 与 off-host
-backup/restore continuity 都是分离的 Stage 5B 人工批准 host gates。
-
-Stage 5B Gate A–D 已在 production 完成：host-loopback general/replication HBA
-均使用 SCRAM，PDI database 的 PUBLIC CONNECT 已移除；独立 Jarvis release/venv、
-两项无 PDI 权限的 SCRAM roles、独立 database、四表 migration 与 root-only
-`/etc/jarvis` authority 已安装。Gate E 首次启动因 frozen systemd sandbox 与 Hermes
-0.10.0 的运行状态写入不兼容而完整回滚；持久 service、稳定链接与 8765 listener
-当前均不存在，Jarvis production domain rows 为零。
-
-Gate E.1 将该兼容性修正冻结为 systemd-only boundary：保留
-`ProtectHome=read-only`，仅用两个 0700 `RuntimeDirectory` bind mounts 替代正式
-profile 的 `sessions/` 与 `logs/`。Hermes config、venv、其余 profile 和整个 home
-仍不可写；PrivateTmp 继续单独承担 Agent 临时 workspace。实际 transient systemd
-sandbox 已验证 AIAgent init、general-tool Turn、process cleanup、runtime-state removal，
-以及删除 Hermes state 后仅凭 normalized Jarvis history 的后续 Turn。已安装的
-application release `6afab42096469699c918f9130739e8324db6ee47` 不变；部署配置
-identity 由 Gate E.1 correction commit 独立记录。
-
-Gate E.6 已在真实 host security validation PASS 后冻结 Jarvis Exec Sandbox V0.1。
-Web-only Hermes profile 保留七项 PDI read tools，并通过 sanitized fixed AF_UNIX
-proxy 增加精确五项 Jarvis Exec MCP tools。每个连接激活一个无 network、无 product
-authority 的 `DynamicUser` systemd instance；其唯一有用 writable surface 是 private
-16 MiB tmpfs 下的 0700 disposable workspace。真实 host 已拒绝 direct Python quota
-bypass、path escape、secret/private-home/Docker/network access、descendant escape 与
-cross-connection state reuse，并验证完整 Hermes -> Exec MCP Turn。
-
-Hermes terminal、file 与 built-in `code_execution` 继续禁用。Exec state
-non-authoritative：不创建 Jarvis table、PDI Resource、persistent Artifact 或 cross-Turn
-workspace。Internet/Web access 是独立 future capability，不得通过开放 Exec network
-实现。Production Exec/Web services 仍未安装；下一步需要新 immutable application
-release 和独立人工审查的 install gate。
-
-### Jarvis Web/Search Capability V0.1 implementation candidate
-
-Web/Search V0.1 已实现源码候选，并新增 keyless DDGS SearchProvider；尚未部署或完成
-production qualification。Hermes 只新增两个 Jarvis-owned MCP tools：bounded public
-search 与单 URL readable-text fetch；built-in Hermes Web tools 继续关闭。Turn-scoped
-stdio proxy 仅连接 private AF_UNIX socket，并用其一 Turn 一进程生命周期精确执行
-search 2 / fetch 3 / distinct URL 3 / fetch concurrency 2 预算。
-
-独立 `jarvis-web-access.service` 才拥有公网与全局并发 4。默认候选 DDGS 使用
-deployment-owned 的单一 `brave` text backend、`wt-wt` region、moderate
-SafeSearch、provider concurrency 1，并显式使用 Human-approved external Xray
-`socks5://127.0.0.1:10808`。此 exact loopback exception 只存在于
-`DDGSSearchProvider` construction；host proxy env 仍清除，Jarvis 不管理 Xray，也不与
-user unit 建 systemd dependency。Tavily adapter 保留为 optional drop-in，且完全不读取
-DDGS proxy config，仅在 Tavily mode 通过 systemd credential 取 key。Direct fetch
-保持 proxy-free，并对每一跳一次性解析全部 A/AAAA、拒绝任一 non-global answer、
-固定已验证 IP 连接、保留 TLS SNI/Host 并校验 peer；redirect 逐跳重验，HTTPS downgrade
-拒绝。V0.1 仅 identity encoding、2 MiB body、20k text、24k result、五种文本 MIME，
-无 PDF/JS/cookie/auth/download/write。Web content 显式标记 `untrusted_web`，答案必须
-包含 source URL，并优先使用有意义标签的标准 Markdown link；frontend 使用标准 GFM
-autolink literal 将 Assistant 正文中已有的裸 HTTP(S) URL 安全呈现为外部链接，同时不
-改写 canonical Message。浏览器 telemetry 只见 `web/search_web|read_web_source`。
-DDGS 不等于 private/offline：公共 query 会发送给所选外部搜索引擎，且其稳定性弱于
-有契约 API。2026-08-25 的 bounded qualification 确认 DDGS 9.15.0 中 `bing` disabled，
-`mojeek`/`yahoo` 单次失败，`brave` 通过 `wt-wt` 的中英文 current/evergreen 四项矩阵及
-两次小型稳定性复测；不存在 engine/provider 自动 fallback。transient isolated systemd
-验证也已确认 DynamicUser/sandbox、AF_UNIX-only、无 public TCP listener、显式 Xray 与
-真实规范化 Brave 结果。首次 production acceptance 因中文 Web 答案含 source URL 但
-裸 URL 未渲染为可点击 DOM link 而回滚至 `a347d46724ece12569deaf848a796fbcc97662f2`；
-当前 citation robustness fix 仅处于 Human Review 前的 dirty working tree，尚未再次
-commit/push/deploy。Safe Exec network、PDI、DB、Memory 与 Attachment 均未改变。
-
-Gate E.8.2 在真实 localhost production 中进一步通过 e812 static/Hermes activation、
-authentication/CSRF、deterministic PDI paths、Hermes -> PDI Turn 与 Hermes -> Exec
-Turn，但同步 cancellation response 在 Runtime 最终正确 cancelled 之前因 200 ms polling
-window 提前返回 `running`，因此完整回滚。Gate E.8.4 将 cancellation contract 冻结为
-`SYNCHRONOUS_TERMINAL`：exact-Turn consumer 必须先消费 terminal、写入 Jarvis DB、
-publish registry terminal，HTTP cancel 才返回；request cancellation 不能取消该 consumer。
-同步依据是受 `asyncio.shield` 保护的 exact consumer task，不再使用 arbitrary polling。
-因此 e812 已被 supersede；再次安装前必须从本 correction commit 构建新的 immutable
-release 与 SHA-versioned venv。
-
-4cf candidate 的真实 localhost restart 验证随后暴露最后一个 lifecycle blocker：
-`KillMode=control-group` 同时向 Web main 与 Hermes child 发送 SIGTERM，child 先产生
-`turn.failed / bridge_nonzero_exit`，旧 coordinator 将 `running` 写为 `failed`，使新进程
-startup reconciliation 因 row 已 terminal 而更新 0 行。Lifecycle correction
-让 FastAPI lifespan 先调用 exact `TurnCoordinator.shutdown()`，将仍由本进程拥有的
-`running` Turns 固定为 `interrupted`、停止 matching consumer 并执行 exact Runtime
-process cleanup。所有 owned Turns 的 consumer/Runtime cleanup 并发共享单一 8 秒
-coordinator deadline，不因 Turn 数量倍增；Web unit 使用 `KillMode=mixed` 只改变初始
-SIGTERM 次序，main exit 或 20 秒 `TimeoutStopSec` 后仍由 systemd 对整个 cgroup 执行
-final SIGKILL。Crash/host-loss 仍由 startup reconciliation 处理；Runtime event contract、
-DB schema、Exec sandbox 与 PDI 均不改变。
-
-### Jarvis Web V0.1.1 usability closure Phase 1 candidate
-
-2026-08-22 已完成人工审查并冻结 Web usability closure Phase 1。Production
-Recent 改为读取 canonical Jarvis Conversations；New conversation 只重置 frontend
-selection/SSE/messages/URL，首次提交时才创建新 Conversation，随后按 opaque ID 精确
-加载、切换与 reload 恢复，不存在第二套 browser-local conversation store。Assistant
-消息使用禁用 raw HTML 的 safe Markdown renderer；结构化 `Message.resources` 仍是
-唯一 ResourceRef authority，不解析 prose 中的 `pdi:resource:*` 字符串。
-
-Immich image grid 继续请求 `thumbnail`，Resource Detail 对 capability-approved image
-请求 `preview` 并提供 desktop/mobile lightbox；失败时使用占位而不是 broken image。
-Video、Nextcloud preview、upload 与 live Work Panel 继续 deferred，review execution
-fixture 不进入 production UI。本 correction 不改变 backend API、DB schema、Runtime
-event、PDI、Exec、auth、systemd 或 Tailscale boundary；完整验证通过后才可由独立人工
-freeze/commit/release gate 发布。
-
-### Server Runtime
-
-- 正式主机：`pdi-server`；
-- 正式 production checkout：`/srv/projects/PDI`；
-- production PostgreSQL、Provider sync、enrichment timers 与 resource-access
-  service 均在主机运行；
-- Immich Geo Enrichment V0.1 已完成 production full enrichment、full
-  idempotency、正式 unit 安装与每日 05:30 Asia/Shanghai timer 验证；
-- 当前 Geo predicates 为 `geo.country`、`geo.admin1`、`geo.locality`；
-- Jarvis/Hermes reference runtime 通过 SSH on-demand 启动；
-- Hermes 仅启用七个冻结的 PDI MCP read Tool，Memory 与 write capability 关闭；
-- DeepSeek 是当前远程 inference Provider，PDI 不依赖它。
-
-### Data Status production freeze
-
-Data Status & Freshness V0.1 已于 2026-08-18 在 production 启用。Alembic head
-为 `4d8a2c6e9f10`，八个正式 batch service 均通过 `pdi.operational` 进入唯一
-shared flock owner。历史没有回填；初次 freeze 按 dependency 顺序执行当时八个 pipeline，随后
-额外执行一次 Immich Geo no-op 验证，共形成九条真实 `completed` PipelineRun，零
-`running`、零 `failed`。
-
-当前 production StatusSnapshot 返回十个 registry pipeline；三个 Provider pipeline 的
-dependency validation 为 `null`，七个 enrichment pipeline 可按各自最新 upstream
-success 派生 validation。初次 freeze 时六个 enrichment pipeline 均为 `true`。本地正式
-stdio MCP 已验证八个 read-only Tool。Jarvis Web UI V0.1 的当前正式
-Hermes/PDI read allowlist 已单独冻结为七项：recent、search、Resource detail、
-aggregation、Observations、Provider-semantic retrieval 与 rich retrieval；本阶段
-不增删 Tool。
-
-### Person Identity production freeze
-
-Person Identity V0.1 已在 production 启用。它只同步 Immich standard
-`/api/people` enumerable inventory；Provider total 仅是诊断信号，不定义同步完整性。
-首次完整同步创建 417 个 `Person` 与 417 个 active `PersonSource`，第二次完整同步
-创建、恢复和 inactive 均为零，全部 417 个 mapping 保持不变。
-
-Person 只包含 UUID identity 与 `created_at`；PersonSource 使用
-`(provider, external_id)` composite primary key，并只用 nullable `inactive_at` 表达
-enumerable membership lifecycle。display name、metadata、face/vector、cross-provider
-matching、public reference、MCP 与 operational schedule 均未引入。Person
-Identity 本身仍不保存 Relation；Resource-Person Relation 由后续独立专用表承载。
-
-Person Label Retrieval V0.1 的 source contract 已冻结。它保持
-`Person` schema 不变，只在 `PersonSource` 增加 nullable Provider-derived
-`display_name`，并通过现有 `ResourcePersonRelation` 为 Rich Retrieval 增加 exact
-`person_label` primary。label 使用 NFC 与 outer-trim normalization；inactive source
-不参与当前 retrieval，rename 原位替换且不保留 label history。它不推断 `我妈`、
-`母亲` 与 `妈妈` 等价，不新增 MCP Tool、Relation model 或 Jarvis/PDI 直连。
-
-Production activation 必须单独验证 additive migration、既有 Person/Relation identity
-不变量、正常 `python -m pdi.person_identity` label backfill，以及 relation-backed
-exact Rich Retrieval；migration 本身不执行 label backfill 或 identity rewrite。
-
-Jarvis Person Query Interpretation V0.1 当前为 implementation candidate。现有
-`pdi_aggregate_resources` 增加 `group_by=person_label` 的 bounded current-state
-projection，只从 active non-null `PersonSource.display_name` 发现当前 Provider label；
-它不读取 OCR、title、path 或 semantic results，且不新增 MCP Tool。Hermes Web profile
-对 exact label 直接使用 relation-backed `person_label` Rich Retrieval；colloquial
-表达先对 bounded current labels grounding，ambiguous 时询问，正确 non-empty Person
-结果后停止 speculative fallback。对 exact grounded Person 加显式 MIME filter 的成功
-查询，空结果同样是该 typed intent 的 authoritative completion：不得因空结果移除 MIME
-约束或追加 unfiltered Person、alias、semantic、metadata、OCR 或 observation fallback；
-只有实际 Tool failure 才沿用错误恢复。照片/图片与视频分别映射现有 image/video MIME
-category；不增加 family ontology、alias store、Memory、DB migration、Runtime 或
-frontend contract。
-
-### Resource-Person Relation production freeze
-
-Resource-Person Relation V0.1 已在 production 启用，只表达 Provider-derived
-`Resource depicts Person`。专用 `resource_person_relations` 表仅包含
-`resource_id`、`person_id`、`provider`、`inactive_at`，并以三者 identity columns
-作为 composite primary key；没有 Relation UUID、predicate、confidence、face、
-bounding box、embedding 或 generic graph。
-
-Immich 显式同步只查询 active enumerable PersonSources，并通过 metadata search
-的 `personIds` 完整分页获取资产；normal sync 不调用 Faces API。production 当前有
-10,460 条 active relations，覆盖 5,267 个 Resources 与 417 个 Persons。完整只读
-审计另发现 84 个 Person V0.1 inventory 外 Provider identities、114 个 pairs；它们
-不创建隐藏 Person/PersonSource，也不持久化 relation。
-
-首次同步创建 10,460 行；立即第二次同步全部 unchanged，created、reactivated、
-inactivated 均为零，mapping digest 不变。MCP 仍为八个 read-only Tools，且没有
-Relation/Person query、systemd、timer 或 PipelineRun registry entry。
-
-### Typed Resource production freeze
-
-Typed Resource V0.1 已在 production 启用。`assets.id` 继续作为 canonical PDI
-Resource identity，公开 reference 仍为 `pdi:resource:<uuid>`；物理 `assets`、
-`Asset` 与 `AssetSource` 名称不变。`assets.resource_type` 是必填 Core
-discriminator，V0.1 仅允许 `file` 与 `message`。
-
-迁移 `3b1e6f8a4c20` 将当时既有 15,325 个 production Resources 全部确定性标记为
-`file`；迁移验证时 `message=0`、NULL=0，最终 schema 没有 server default。Blob 与
-AssetSource schema 不变，Message 仍必须拥有 Blob。File 保留原有 global
-content-hash dedup；不同 Provider Message identity 即使 raw content hash 相同也
-不得自动合并。
-
-Observation、Resource-Person Relation 与 `pdi:resource` reference 均未改变。
-现有 Immich retrieval、Rich Retrieval 与 Resource Access 继续显式 file-only。
-Gmail 已在上述独立 freeze 中实现，但没有 Gmail Resource Access、专用 MCP Tool
-或 schedule。上线前暴露的旧 PDI PostgreSQL credential 已确认失效，Compose/container
-配置已协调，live reference 为零。
-
-## 3. 开发工作流
-
-主机独立 development checkout 是 PDI 的主要 Codex 开发环境：
-
-```text
-/home/harry/projects/personal-ai-infrastructure  # development
-/srv/projects/PDI                               # production only
-```
-
-Codex CLI 可以在开发 checkout 中读取 `AGENTS.md`、本文件与 release 文档。
-生产 checkout 只接受从 `origin/main` 的 clean fast-forward promotion，不用于日常开发或
-pytest。完整操作见 `docs/development/codex-cli-on-pdi-server.md`。
-
-主机 Codex CLI 已使用独立常驻 Xray user service，通过仅监听
-`127.0.0.1:10808` 的本机代理访问 ChatGPT 与 GitHub。ChatGPT 登录已完成，Xray
-service、user lingering 与 Git HTTPS proxy 均已验证，不依赖 Mac 在线。
-
-## 4. Chat 与 Memory 边界
-
-- Codex chat transcript 是运行 Codex 的 host-local session state；
-- 新主机上的 chat 可用 `codex resume` 恢复，但现有 Mac-only chat 不视为已迁移；
-- Codex local memory 与 ChatGPT web memory 分离；主机 local memory 当前已启用；
-- 必须长期保留的架构、命令、测试与安全规则写进 Git 中的 `AGENTS.md` 和文档；
-- 不复制整个 `~/.codex`，也不提交 `auth.json`、sessions 或 memories。
-
-## 5. 验证状态
-
-2026-08-22 当前 host-safe 与 Gate E.6 validation：
-
-```text
-host-safe/default: 561 passed, 98 skipped
-isolated PostgreSQL 16 suite: 99 passed, 2 skipped
-Jarvis isolated PostgreSQL migration: included and passed
-```
-
-skip 均来自显式 database、live Provider 或 integration gate；isolated suite 使用
-一次性 PostgreSQL 16 测试容器；Jarvis migration 使用独立的
-`jarvis_stage3_migration_test`，本轮没有让 pytest 连接 production `pdi` 或 production
-Jarvis database。
-Codex 默认 command sandbox 会阻塞 MCP SDK `Client.call_tool` worker path；相同
-standalone/minimal pytest 在 host-native execution 正常通过，因此正式回归使用
-host-native execution 完成。Stage 4 完整 Playwright suite 在一次性隔离 browser
-runtime 中为 11 passed、9 个 device-matrix expected skips、0 failures，production
-boundary suite 为 2 passed；真实只读浏览器
-smoke 验证 Resources、Resource Detail、Immich image proxy 与三个 Provider views，未
-保存真实内容截图。
-
-## 6. 当前限制
-
-### Immich Video Presentation V0.1 implementation candidate
-
-普通 Immich `video/*` Resource 现在具有独立 `video` presentation kind。其 card
-thumbnail/preview 继续通过 ResourceRef-authorized、bounded image representation
-访问 Immich generated thumbnail；detail playback 使用独立的 ResourceRef-authorized
-video stream，端到端保留受验证的单段 `Range`、`206`、`Content-Range`、
-`Accept-Ranges`、`Content-Type` 与 `Content-Length`，且不聚合完整媒体 body。
-
-Browser 不接收 Immich URL、asset ID 或 credential；Jarvis 不转码、不使用 Safe Exec，
-也不实现 HLS。`image/*`、generic file、final ResourceRef snapshot 与 max-8 collector
-语义保持不变。Live Photo pairing、`livePhotoVideoId` ingestion、Resource-to-Resource
-relation、identity merge 与 presentation grouping 明确 deferred。
-
-- 没有通用 Jarvis/PDI long-term memory；
-- 没有 write Tool、任务系统或 proactive agent loop；
-- Jarvis Web UI V0.1 Stage 1 的视觉与 Beacon / Guide identity 保持冻结；Stage 2
-  已通过 human architecture review 并冻结 FastAPI product skeleton、独立 Jarvis
-  state/migration、MockRuntimeAdapter、SSE 与 persistent Chat API boundary；Stage 3
-  已通过 human runtime review 并冻结 isolated HermesRuntimeAdapter，使用每 Turn
-  独立 subprocess 与 private JSONL bridge，Hermes session 不具权威性；Stage 4
-  deterministic read-only PDI Web views、Provider status projection 与 Resource
-  Access proxy 已通过 human integration review 和真实浏览器验证并冻结；仍没有
-  production Jarvis database 或 production Web service；
-- Codex CLI 是开发工具，不进入 production data path；
-- production integration validation 必须使用隔离数据库，不能复用 production secret。
-
-## 7. 下一阶段
-
-Server-first Codex migration、Geo、Data Status V0.1、Person Identity V0.1 与
-Resource-Person Relation V0.1、Typed Resource V0.1 与单账号 Gmail Provider V0.1
-production freeze 已完成。Jarvis Web UI V0.1 Stage 1 static frontend 与
-Beacon / Guide identity 也已通过 human visual/brand review 并冻结；Stage 2 skeleton
-  也已通过 human architecture review 并冻结；Stage 3 HermesRuntimeAdapter 已通过
-  human runtime review 并冻结；Stage 4 deterministic PDI integration 已通过真实浏览器
-  validation 并冻结；production deployment 保持 Stage 5 deferred。
-任何关系推理、Memory、写操作或 Web backend/deployment 都必须遵守各自已批准或后续
-单独冻结的 trust boundary 与架构。
+Jarvis is the first substantial reference consumer retained in the monorepo.
+It is optional and replaceable. PDI has no dependency on Jarvis or DeepSeek
+Harness, and no DeepSeek Harness integration is claimed by the current source.
+
+## Implemented PDI capabilities
+
+- Provider Adapters for Nextcloud, Immich, and bounded Gmail ingestion.
+- Incremental, idempotent synchronization into PostgreSQL through the PDI
+  identity, requirement, decision, and repository boundaries.
+- Streaming Nextcloud traversal with non-authoritative handling for Resources
+  that disappear between observation and content read.
+- Typed deterministic Observation extraction and evidenced statements.
+- Query, aggregation, Provider-semantic retrieval, and rich retrieval services.
+- Stable `pdi:resource:<uuid>` references and bounded Resource Access.
+- A read-only MCP consumer boundary and formal PipelineRun status projection.
+- Typed Resources, minimal Person identity, and a dedicated Provider-derived
+  Resource/Person relation without introducing a generic graph.
+
+## Consumer boundary
+
+Consumers use public application services, MCP, or bounded Resource Access.
+They do not import PDI repositories, ORM models, sessions, engines, database
+modules, or Provider credentials.
+
+Jarvis validates this replaceable-consumer model. Its runtime, Web application,
+database, deployment assets, and public-Web capability are not part of PDI Core.
+Historical Jarvis Stage/Gate records are reference material rather than the
+primary PDI roadmap.
+
+## Development and deployment
+
+Development uses Python 3.13, a repository-local virtual environment, and the
+host-safe test suite. Database integration tests require an explicit isolated
+test database and must never use production data.
+
+The repository includes deployment assets derived from one validated
+self-hosted installation. They remain reference material pending Public
+Readiness Phase D parameterization and must not be treated as portable defaults.
+See `docs/deployment/README.md`.
+
+## Public-readiness status
+
+Phase A+B establishes the privacy and product boundary:
+
+- real content-derived discovery fingerprints are removed from current HEAD;
+- private operations are separated from public documentation;
+- contributor guidance is host-neutral;
+- PDI is the primary documentation identity; and
+- Jarvis is positioned as a reference consumer.
+
+The following work remains deliberately deferred:
+
+- Phase C: full public README and documentation rewrite;
+- Phase D: configuration and deployment portability; and
+- Phase E: OSS metadata, CI, pinned secret scanning, and public verification.
+
+The README currently names milestone `v0.6` while `pyproject.toml` remains
+`0.5.0`. Public version alignment is a Phase C/E decision, not part of this
+boundary-only change.

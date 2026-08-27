@@ -1,68 +1,92 @@
 # PDI Documentation
 
-This directory contains PDI's current architecture, implementation context,
-deployment procedures, development workflow, frozen designs, release notes,
-roadmap, and decision records.
+PDI is the product in this repository. Jarvis is an optional reference
+consumer. Documentation is organized so understanding PDI does not require
+reading Jarvis Stage/Gate history or one author's server operations.
 
-## Structure
+## Getting started
 
-```text
-docs/
-├── architecture/   Architecture specifications and invariants
-├── context/        Current implementation state
-├── deployment/     Validated production/runtime procedures
-├── development/    Contributor and Codex workflows
-├── design/         Frozen capability designs and validation records
-├── releases/       Release notes
-├── roadmap/        Delivery order
-└── adr/            Architecture Decision Records
-```
+- [Repository README](../README.md)
+- [Local development](development/local-development.md)
+- [Current public context](context/CURRENT_CONTEXT.md)
+
+The final end-user Quick Start is deferred to Public Readiness Phase C/D.
 
 ## Architecture
 
-Start with the current system map in [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
-The original Core specifications remain in `architecture/`:
+- [Current system architecture](../ARCHITECTURE.md)
+- [Architecture overview](architecture/01-overview.md)
+- [Provider](architecture/02-provider.md)
+- [Provider Adapter](architecture/03-provider-adapter.md)
+- [ProviderFact](architecture/04-provider-fact.md)
+- [Sync Engine](architecture/05-sync-engine.md)
+- [Identity](architecture/06-identity.md)
+- [Decision](architecture/07-decision.md)
+- [Repository](architecture/08-repository.md)
+- [World Model](architecture/09-world-model.md)
+- [Capability](architecture/10-capability.md)
+- [Sync lifecycle](architecture/11-sync-lifecycle.md)
 
-1. [Architecture Overview](architecture/01-overview.md)
-2. [Provider](architecture/02-provider.md)
-3. [Provider Adapter](architecture/03-provider-adapter.md)
-4. [Provider Fact](architecture/04-provider-fact.md)
-5. [Sync Engine](architecture/05-sync-engine.md)
-6. [Identity](architecture/06-identity.md)
-7. [Decision](architecture/07-decision.md)
-8. [Repository](architecture/08-repository.md)
-9. [World Model](architecture/09-world-model.md)
-10. [Capability](architecture/10-capability.md)
-11. [Sync Lifecycle](architecture/11-sync-lifecycle.md)
+## Providers
 
-## Current context
+- [Gmail Provider V0.1](design/pdi-gmail-provider-v0.1.md)
+- [Immich discovery notes](discovery/immich.md)
+- Provider-independent contracts are defined by the architecture documents,
+  not by any one Provider implementation.
 
-[`context/CURRENT_CONTEXT.md`](context/CURRENT_CONTEXT.md) records the current
-implementation, completed capabilities, validation state, boundaries, and next
-work. It may change frequently and is not a permanent architecture history.
+## Consumer interfaces / MCP
 
-## Development and deployment
+- [Personal retrieval read boundary](design/personal-retrieval-read-v0.1.md)
+- [PDI Query V0.2](design/pdi-query-v0.2.md)
+- [Data Status V0.1](design/pdi-data-status-v0.1.md)
+- `src/pdi_mcp` composes the read-only consumer surface.
+- `src/pdi_resource_access` exposes bounded Resource representations.
 
-- [Codex CLI on pdi-server](development/codex-cli-on-pdi-server.md)
-- [PDI server runtime](deployment/server-runtime-v0.1.md)
-- [Jarvis runtime](deployment/jarvis-runtime-server-v0.1.md)
+## Security and privacy
 
-## Releases
+- [Security policy](../SECURITY.md)
+- [Private operations boundary](security/private-operations-boundary.md)
+- [Database migration and test isolation](database-migrations.md)
 
-- [v0.5.0 — Personal Retrieval Runtime](releases/v0.5.md)
-- [v0.4.0 — Jarvis Tool Execution MVP](releases/v0.4.md)
+## Deployment
 
-## Decisions
+- [Deployment boundary and reference assets](deployment/README.md)
 
-The `adr/` directory contains Architecture Decision Records. Add an ADR when a
-significant design choice and its consequences must remain understandable after
-the implementation changes.
+Current deployment files are derived from one installation and are not yet a
+portable installer. Parameterization belongs to Public Readiness Phase D.
 
-## Documentation rules
+## Development
 
-1. Architecture documents describe current valid design, not historical discussion.
-2. Context documents describe the present implementation state.
-3. Release notes and Git history record delivered history.
-4. Code must implement the architecture specification.
-5. A new abstraction must reduce total complexity.
-6. Significant contract changes update their documentation in the same change.
+- [Local development](development/local-development.md)
+- [Repository rules](../AGENTS.md)
+- [ADR guidelines](adr/000-adr-guidelines.md)
+
+## Reference consumers
+
+Jarvis validates that an AI runtime can consume PDI without owning PDI state.
+It is optional and replaceable.
+
+- [Jarvis runtime integration](design/jarvis-runtime-integration-v0.1.md)
+- [Jarvis Resource presentation](design/jarvis-web-resource-result-presentation-v0.1.1.md)
+- [Jarvis Web/Search boundary](design/jarvis-web-search-capability-v0.1.md)
+- [Jarvis historical index](archive/jarvis/README.md)
+
+## Design records
+
+Current PDI designs live in `design/`; architecture decisions live in `adr/`.
+Jarvis-specific designs are reference-consumer records and do not define PDI
+Core.
+
+## Release notes
+
+- [PDI v0.4](releases/v0.4.md)
+- [PDI v0.5](releases/v0.5.md)
+- [PDI v0.6](releases/v0.6.md)
+- [Roadmap](roadmap/ROADMAP.md)
+
+## Archive
+
+- [Jarvis historical Stage/Gate index](archive/jarvis/README.md)
+
+Archive records preserve engineering history. They are not the current PDI
+architecture or installation guide.

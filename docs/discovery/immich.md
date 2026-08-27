@@ -87,28 +87,31 @@ This mapping is provisional and must be validated against more asset types.
 
 ## Checksum Verification
 
-Immich returned the following Base64 checksum for the tested JPEG:
+In a private validation, Immich returned a Base64-encoded checksum for an
+original JPEG. The real content-derived values are intentionally not retained
+in the public repository. The following labels describe the compared values;
+they are explanatory placeholders, not evidence from a real asset:
 
 ```text
-js0B4cvgxvZPg1MYAQygR6r8vQc=
+<SYNTHETIC-EXAMPLE-BASE64-SHA1>
 ```
 
 Decoding it into hexadecimal produced:
 
 ```text
-8ecd01e1cbe0c6f64f835318010ca047aafcbd07
+<SYNTHETIC-EXAMPLE-SHA1>
 ```
 
 Downloading the original file and calculating SHA-1 locally produced the same value:
 
 ```text
-8ecd01e1cbe0c6f64f835318010ca047aafcbd07
+<SYNTHETIC-EXAMPLE-SHA1>
 ```
 
 The original file's locally calculated SHA-256 was:
 
 ```text
-ddffae31d0aee52e561868254087b98dbd5ee2a499bf68949bb8a333eb8f6556
+<SYNTHETIC-EXAMPLE-SHA256>
 ```
 
 Therefore, for the tested asset:
