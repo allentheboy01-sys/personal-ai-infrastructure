@@ -124,6 +124,8 @@ def create_server(
         The caller must choose exactly one primary; PDI performs no automatic
         cross-strategy fallback. Ordinary top-N requests should leave
         continuable=false and never page merely because more matches exist.
+        Explicit continuation is bound to scan_limit and a fail-closed
+        revalidated selection digest.
         provider_semantic currently requires explicit provider=immich.
         pdi_observed_at, file_modified_at, and captured_at are distinct time
         bases and are never substituted for one another.

@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid5
@@ -6,6 +7,7 @@ from uuid import UUID, uuid5
 import pytest
 
 from pdi.query import ResourcePage, ResourceSourceSummary, ResourceSummary
+from pdi.query.cursor import decode_cursor
 from pdi.resource_query import (
     InvalidResourceQueryContinuationError,
     InvalidResourceQueryFiltersError,
@@ -257,7 +259,6 @@ def test_benchmark_a_metadata_routing_relevance_and_compact_bounds() -> None:
     assert serialized_result_bytes(result) == expected[
         "serialized_bytes"
     ]
-    assert serialized_result_bytes(result) <= 8192
     assert len(query.search_calls) == expected["application_call_count"]
     assert int(result.continuation is not None) == expected[
         "agent_pagination_required"
@@ -315,6 +316,111 @@ def test_provider_semantic_is_explicit_once_and_never_falls_back() -> None:
             ),
             sort=ResourceQuerySort("captured_at", "desc"),
         )
+
+
+@pytest.mark.parametrize(
+    ("provider_count", "filtered_count", "expected_status"),
+    [
+        (100, 5, "bounded_partial"),
+        (100, 20, "complete"),
+        (7, 7, "complete"),
+    ],
+)
+def test_provider_semantic_filtered_completeness_is_conservative(
+    provider_count,
+    filtered_count,
+    expected_status,
+) -> None:
+    resources = tuple(
+        _resource(
+            f"semantic-{index:03}.jpg",
+            path=f"/photos/semantic-{index:03}.jpg",
+            provider="immich",
+            mime_type="image/jpeg",
+            observed_at=(
+                NOW - timedelta(hours=index + 1)
+                if index < filtered_count
+                else NOW - timedelta(days=10, hours=index)
+            ),
+        )
+        for index in range(provider_count)
+    )
+    rich = FakeRichService(resources)
+    result = ResourceQueryService(
+        FakeQueryService(),
+        rich,
+        clock=lambda: NOW,
+    ).query_resources(
+        primary=ProviderSemanticPrimary(
+            "provider_semantic",
+            "summit",
+            "immich",
+        ),
+        filters=ResourceQueryFilters(
+            observed_from=NOW - timedelta(days=2),
+        ),
+        limit=10,
+    )
+
+    assert result.selection_status == expected_status
+    assert result.bound_reason == (
+        "scan_limit" if expected_status == "bounded_partial" else None
+    )
+    assert len(rich.select_calls) == 1
+    assert [item.resource_ref for item in result.resources] == [
+        resource.resource_ref
+        for resource in resources[:min(filtered_count, 10)]
+    ]
+
+
+def test_provider_semantic_completeness_accounts_for_current_page_offset() -> None:
+    resources = tuple(
+        _resource(
+            f"semantic-{index:03}.jpg",
+            path=f"/photos/semantic-{index:03}.jpg",
+            provider="immich",
+            mime_type="image/jpeg",
+            observed_at=(
+                NOW - timedelta(hours=index + 1)
+                if index < 15
+                else NOW - timedelta(days=10, hours=index)
+            ),
+        )
+        for index in range(100)
+    )
+    rich = FakeRichService(resources)
+    service = ResourceQueryService(
+        FakeQueryService(),
+        rich,
+        clock=lambda: NOW,
+    )
+    primary = ProviderSemanticPrimary(
+        "provider_semantic",
+        "summit",
+        "immich",
+    )
+    filters = ResourceQueryFilters(
+        observed_from=NOW - timedelta(days=2),
+    )
+    first = service.query_resources(
+        primary=primary,
+        filters=filters,
+        limit=10,
+        continuable=True,
+    )
+    second = service.query_resources(
+        primary=primary,
+        filters=filters,
+        limit=10,
+        continuable=True,
+        continuation=first.continuation,
+    )
+
+    assert first.selection_status == "complete"
+    assert first.continuation is not None
+    assert second.selection_status == "bounded_partial"
+    assert second.bound_reason == "scan_limit"
+    assert len(second.resources) == 5
 
 
 def test_rich_primary_is_capped_by_the_public_snapshot() -> None:
@@ -542,14 +648,204 @@ def test_top_n_has_no_continuation_but_explicit_traversal_does() -> None:
 
     assert ordinary.continuation is None
     assert first.continuation is not None
+    cursor_payload = decode_cursor(first.continuation)
+    assert cursor_payload["scan_limit"] == 500
+    assert len(cursor_payload["selection_digest"]) == 64
+    assert "selection" not in cursor_payload
     assert second.continuation is None
     assert {item.resource_ref for item in first.resources}.isdisjoint(
         {item.resource_ref for item in second.resources}
     )
+    assert [
+        item.resource_ref
+        for item in (*first.resources, *second.resources)
+    ] == [resource.resource_ref for resource in resources]
 
     with pytest.raises(InvalidResourceQueryContinuationError):
         service.query_resources(
             primary=PathTreePrimary("path_tree", "/different"),
+            continuable=True,
+            continuation=first.continuation,
+        )
+
+    tampered = first.continuation[:-1] + (
+        "A" if first.continuation[-1] != "A" else "B"
+    )
+    with pytest.raises(InvalidResourceQueryContinuationError):
+        service.query_resources(
+            primary=PathTreePrimary("path_tree", "/tree"),
+            continuable=True,
+            continuation=tampered,
+        )
+
+
+def test_continuation_rejects_changed_scan_limit_before_requery() -> None:
+    resources = tuple(
+        _resource(f"file-{index}.md", path=f"/tree/file-{index:02}.md")
+        for index in range(20)
+    )
+    query = FakeQueryService(listed=resources)
+    service = ResourceQueryService(query, FakeRichService(), clock=lambda: NOW)
+    first = service.query_resources(
+        primary=PathTreePrimary("path_tree", "/tree"),
+        limit=5,
+        scan_limit=20,
+        continuable=True,
+    )
+
+    with pytest.raises(InvalidResourceQueryContinuationError):
+        service.query_resources(
+            primary=PathTreePrimary("path_tree", "/tree"),
+            limit=5,
+            scan_limit=19,
+            continuable=True,
+            continuation=first.continuation,
+        )
+    assert len(query.list_calls) == 1
+
+
+def test_continuation_rejects_changed_provider_semantic_order() -> None:
+    resources = tuple(
+        _resource(
+            f"photo-{index}.jpg",
+            path=f"/photos/photo-{index}.jpg",
+            provider="immich",
+            mime_type="image/jpeg",
+        )
+        for index in range(3)
+    )
+    rich = FakeRichService(resources)
+    service = ResourceQueryService(FakeQueryService(), rich, clock=lambda: NOW)
+    primary = ProviderSemanticPrimary(
+        "provider_semantic",
+        "summit",
+        "immich",
+    )
+    first = service.query_resources(
+        primary=primary,
+        limit=1,
+        continuable=True,
+    )
+    rich.resources = (resources[1], resources[0], resources[2])
+
+    with pytest.raises(InvalidResourceQueryContinuationError):
+        service.query_resources(
+            primary=primary,
+            limit=1,
+            continuable=True,
+            continuation=first.continuation,
+        )
+    assert len(rich.select_calls) == 2
+
+
+def test_continuation_rejects_changed_path_ordering_input() -> None:
+    first_resource = _resource("a.md", path="/tree/a.md")
+    second_resource = _resource("b.md", path="/tree/b.md")
+    query = FakeQueryService(listed=(first_resource, second_resource))
+    service = ResourceQueryService(query, FakeRichService(), clock=lambda: NOW)
+    first = service.query_resources(
+        primary=PathTreePrimary("path_tree", "/tree"),
+        limit=1,
+        continuable=True,
+    )
+    changed_first = replace(
+        first_resource,
+        sources=(replace(
+            first_resource.sources[0],
+            location="/tree/z.md",
+        ),),
+    )
+    query.listed = (changed_first, second_resource)
+
+    with pytest.raises(InvalidResourceQueryContinuationError):
+        service.query_resources(
+            primary=PathTreePrimary("path_tree", "/tree"),
+            limit=1,
+            continuable=True,
+            continuation=first.continuation,
+        )
+
+
+def test_continuation_rejects_changed_time_ordering_signal() -> None:
+    first_resource = _resource("first.jpg", path="/photos/first.jpg")
+    second_resource = _resource("second.jpg", path="/photos/second.jpg")
+    signals = {
+        first_resource.resource_ref: _signal(
+            first_resource,
+            captured_at=NOW - timedelta(hours=1),
+            predicates={"media.captured_at"},
+        ),
+        second_resource.resource_ref: _signal(
+            second_resource,
+            captured_at=NOW - timedelta(hours=2),
+            predicates={"media.captured_at"},
+        ),
+    }
+    rich = FakeRichService(signals=signals)
+    service = ResourceQueryService(
+        FakeQueryService(listed=(first_resource, second_resource)),
+        rich,
+        clock=lambda: NOW,
+    )
+    first = service.query_resources(
+        primary=RecentPrimary("recent"),
+        sort=ResourceQuerySort("captured_at", "desc"),
+        limit=1,
+        continuable=True,
+    )
+    rich.signals = {
+        first_resource.resource_ref: _signal(
+            first_resource,
+            captured_at=NOW - timedelta(hours=3),
+            predicates={"media.captured_at"},
+        ),
+        second_resource.resource_ref: signals[
+            second_resource.resource_ref
+        ],
+    }
+
+    with pytest.raises(InvalidResourceQueryContinuationError):
+        service.query_resources(
+            primary=RecentPrimary("recent"),
+            sort=ResourceQuerySort("captured_at", "desc"),
+            limit=1,
+            continuable=True,
+            continuation=first.continuation,
+        )
+
+
+@pytest.mark.parametrize(
+    "primary",
+    [
+        ObservationTextPrimary(
+            "observation_text",
+            "equation",
+            "document.text_excerpt",
+        ),
+        PersonLabelPrimary("person_label", "Alice", "immich"),
+    ],
+)
+def test_continuation_rejects_changed_observation_or_person_selection(
+    primary,
+) -> None:
+    resources = tuple(
+        _resource(f"item-{index}.md", path=f"/docs/item-{index}.md")
+        for index in range(3)
+    )
+    replacement = _resource("replacement.md", path="/docs/replacement.md")
+    rich = FakeRichService(resources)
+    service = ResourceQueryService(FakeQueryService(), rich, clock=lambda: NOW)
+    first = service.query_resources(
+        primary=primary,
+        limit=1,
+        continuable=True,
+    )
+    rich.resources = (resources[0], replacement, resources[2])
+
+    with pytest.raises(InvalidResourceQueryContinuationError):
+        service.query_resources(
+            primary=primary,
+            limit=1,
             continuable=True,
             continuation=first.continuation,
         )
@@ -576,7 +872,7 @@ def test_internal_pages_share_snapshot_and_scan_limit_is_partial() -> None:
     assert {call["observed_to"] for call in query.search_calls} == {NOW}
 
 
-def test_timeout_is_sanitized_bounded_partial() -> None:
+def test_cooperative_budget_observation_is_sanitized_bounded_partial() -> None:
     resources = tuple(
         _resource(f"math-{index}.md", path=f"/docs/math-{index}.md")
         for index in range(101)

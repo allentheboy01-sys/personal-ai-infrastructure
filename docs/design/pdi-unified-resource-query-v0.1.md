@@ -106,10 +106,21 @@ truthfully.
 - maximum result limit: 50;
 - default candidate scan limit: 500;
 - maximum candidate scan limit: 2,000;
-- timeout budget: 30 seconds, checked fail-closed at bounded service stages;
+- cooperative query budget: 30 seconds, checked between bounded service
+  stages and repository pages;
 - canonical structured result: at most 64 KiB;
-- model-facing compact projection target: at most 8 KiB for ordinary top-N
-  use.
+
+The cooperative budget is not a hard preemptive deadline. The application
+service reports `bounded_partial` with `bound_reason="timeout"` when it
+observes that the budget has expired. It does not interrupt one blocking
+dependency operation. Immich semantic retrieval has its own request timeout;
+the current Query/PostgreSQL boundary does not establish an end-to-end hard
+30-second deadline. No unsafe background-thread cancellation is used.
+
+The 64 KiB canonical structured bound is the only byte cap in this public
+application contract. The previously discussed 8 KiB model-facing projection
+is not enforced here and is deferred to the future B2.3 consumer-integration
+projection.
 
 The serializer removes whole trailing Resource records to enforce 64 KiB; it
 never cuts a record or emits malformed JSON.
@@ -120,21 +131,51 @@ requested top N. `bounded_partial` means a scan, timeout, or serialized-byte
 bound prevented the requested selection from being fully determined. The
 optional `bound_reason` is one of the fixed values above.
 
+For relevance-preserving `provider_semantic`, a capped Provider result is
+complete only when the Provider returned fewer than the candidate cap or the
+filtered ordered candidates are sufficient to fill the requested current
+page. If the cap was reached and filters leave fewer than `offset + limit`, the
+result is `bounded_partial` with `bound_reason="scan_limit"` because lower
+ranked Provider hits might still qualify.
+
 ## Snapshot and continuation
 
 Repository-backed internal pages use one query fingerprint and one explicit
-PDI-observed watermark for the public call. The watermark excludes Resources
-first observed after that snapshot from later internal pages. Provider semantic
-retrieval makes one Provider call and filters its returned ranked candidate set
-deterministically.
+PDI-observed watermark for the public call. The watermark freezes new-Resource
+membership with respect to the existing query semantics: Resources first
+observed after it are excluded from later internal pages. This is not an MVCC
+snapshot. Mutable Provider/source/Observation facts may change between public
+calls. Provider semantic retrieval makes one Provider call per public query
+call and filters its returned ranked candidate set deterministically.
 
 Normal top-N calls use `continuable=false` and always return
 `continuation=null`, even when lower-ranked matches exist. Agents should not
 page ordinary search requests. An opaque continuation is returned only when
 the caller explicitly requests continuable traversal and another buffered
 position exists. It is versioned by the shared cursor envelope and bound to the
-query fingerprint, snapshot, and position. Changing any primary, filter, or
-sort invalidates it.
+query fingerprint, observed watermark, scan limit, ordered-selection digest,
+and position. The digest is computed before slicing over bounded internal keys
+that cover membership, ranking, safe path, ordering time signals, and compact
+projection inputs. A continuation recomputes that bounded selection and fails
+closed with `invalid_resource_query_continuation` if it changed. It never stores
+the raw candidate array in the cursor. Changing any primary, filter, sort, scan
+limit, or mutable selection input invalidates continuation.
+
+Thus continuation correctness is provided by the observed watermark, query
+identity, and selection-digest revalidation rather than by claiming an MVCC
+snapshot. A changed selection returns an error instead of a page that might
+duplicate or skip Resources. Changing only the page `limit` does not change the
+underlying selection identity.
+
+## Unsafe path availability
+
+Logical Provider paths remain fail-closed. If metadata search returns a
+candidate whose match can only be explained by a location that cannot be
+safely projected, that unprojectable candidate currently fails the whole query
+with `resource_query_projection_error`. It is never exposed or silently treated
+as a safe `relative_path`. This is a nonblocking availability debt; candidate
+skipping is not part of V0.1 because it would need explicit completeness and
+diagnostic semantics.
 
 ## Stable errors
 

@@ -46,9 +46,8 @@ DEFAULT_RESOURCE_QUERY_LIMIT = 10
 MAX_RESOURCE_QUERY_LIMIT = 50
 DEFAULT_RESOURCE_SCAN_LIMIT = 500
 MAX_RESOURCE_SCAN_LIMIT = 2000
-RESOURCE_QUERY_TIMEOUT_SECONDS = 30.0
+RESOURCE_QUERY_COOPERATIVE_BUDGET_SECONDS = 30.0
 STRUCTURED_RESULT_MAX_BYTES = 64 * 1024
-MODEL_PROJECTION_TARGET_BYTES = 8 * 1024
 
 _PAGE_LIMIT = 100
 _PROVIDER_SEMANTIC_CANDIDATE_LIMIT = 100
@@ -137,9 +136,10 @@ class ResourceQueryService:
 
         identity = self._identity(primary, filters, sort)
         fingerprint = query_fingerprint(identity)
-        offset, snapshot = self._continuation_state(
+        offset, snapshot, expected_selection_digest = self._continuation_state(
             continuation,
             fingerprint=fingerprint,
+            scan_limit=scan_limit,
         )
         if snapshot is None:
             snapshot = self._utc(self._clock(), "clock")
@@ -180,11 +180,25 @@ class ResourceQueryService:
             primary=primary,
             sort=sort,
         )
+        selection_digest = self._selection_digest(
+            selection,
+            candidates=candidates,
+            filters=execution_filters,
+        )
+        if (
+            expected_selection_digest is not None
+            and selection_digest != expected_selection_digest
+        ):
+            raise InvalidResourceQueryContinuationError(
+                "continuation selection changed"
+            )
 
         partial_reason = self._partial_reason(
             selection,
             primary=primary,
             sort=sort,
+            selected_count=len(candidates),
+            required_count=offset + limit,
         )
         page = candidates[offset:offset + limit]
         resources = tuple(
@@ -200,6 +214,8 @@ class ResourceQueryService:
             continuable=continuable,
             fingerprint=fingerprint,
             snapshot=snapshot,
+            scan_limit=scan_limit,
+            selection_digest=selection_digest,
             next_offset=offset + len(resources),
             buffered_more=offset + len(resources) < len(candidates),
             source_has_more=(
@@ -225,6 +241,8 @@ class ResourceQueryService:
             continuable=continuable,
             fingerprint=fingerprint,
             snapshot=snapshot,
+            scan_limit=scan_limit,
+            selection_digest=selection_digest,
             offset=offset,
         )
 
@@ -650,19 +668,82 @@ class ResourceQueryService:
             relative_path=candidate.relative_path,
         )
 
+    def _selection_digest(
+        self,
+        selection: _Selection,
+        *,
+        candidates: tuple[_Candidate, ...],
+        filters: ResourceQueryFilters,
+    ) -> str:
+        """Bind a continuation to one complete bounded ordered selection."""
+
+        selection_keys = []
+        for position, candidate in enumerate(candidates, start=1):
+            sources = self._eligible_sources(candidate.resource, filters)
+            source_keys = {
+                (
+                    self._bounded_text(
+                        source.provider,
+                        _MAX_PROVIDER_BYTES,
+                    ),
+                    source.mime_type.lower() if source.mime_type else None,
+                )
+                for source in sources
+            }
+            selection_keys.append({
+                "position": position,
+                "resource_ref": candidate.resource.resource_ref,
+                "source_rank": candidate.source_rank,
+                "match_basis": candidate.match_basis,
+                "relative_path": candidate.relative_path,
+                "pdi_first_observed_at": (
+                    candidate.resource.pdi_first_observed_at.isoformat()
+                ),
+                "captured_at": self._iso_or_none(candidate.captured_at),
+                "file_modified_at": self._iso_or_none(
+                    candidate.file_modified_at
+                ),
+                "title": self._bounded_text(
+                    candidate.resource.display_name,
+                    _MAX_TITLE_BYTES,
+                ),
+                "resource_type": candidate.resource.resource_type,
+                "sources": [
+                    {"provider": provider, "mime_type": mime_type}
+                    for provider, mime_type in sorted(
+                        source_keys,
+                        key=lambda value: (value[0], value[1] or ""),
+                    )
+                ],
+            })
+        return query_fingerprint({
+            "version": 1,
+            "scanned_count": selection.scanned_count,
+            "source_has_more": selection.source_has_more,
+            "timed_out": selection.timed_out,
+            "selection": selection_keys,
+        })
+
     def _partial_reason(
         self,
         selection: _Selection,
         *,
         primary: ResourceQueryPrimary,
         sort: ResourceQuerySort,
+        selected_count: int,
+        required_count: int,
     ) -> str | None:
         if selection.timed_out:
             return "timeout"
         if not selection.source_has_more:
             return None
         if isinstance(primary, ProviderSemanticPrimary):
-            return None if sort.basis == "relevance" else "scan_limit"
+            if (
+                sort.basis == "relevance"
+                and selected_count >= required_count
+            ):
+                return None
+            return "scan_limit"
         return "scan_limit"
 
     def _enforce_serialized_bound(
@@ -672,6 +753,8 @@ class ResourceQueryService:
         continuable: bool,
         fingerprint: str,
         snapshot: datetime,
+        scan_limit: int,
+        selection_digest: str,
         offset: int,
     ) -> ResourceQueryResult:
         bounded = result
@@ -686,6 +769,8 @@ class ResourceQueryService:
                 continuable=continuable,
                 fingerprint=fingerprint,
                 snapshot=snapshot,
+                scan_limit=scan_limit,
+                selection_digest=selection_digest,
                 next_offset=offset + len(resources),
                 buffered_more=True,
                 source_has_more=False,
@@ -839,9 +924,10 @@ class ResourceQueryService:
         continuation: str | None,
         *,
         fingerprint: str,
-    ) -> tuple[int, datetime | None]:
+        scan_limit: int,
+    ) -> tuple[int, datetime | None, str | None]:
         if continuation is None:
-            return 0, None
+            return 0, None, None
         try:
             payload = decode_cursor(continuation)
         except InvalidQueryError as error:
@@ -853,6 +939,31 @@ class ResourceQueryService:
         if payload.get("fingerprint") != fingerprint:
             raise InvalidResourceQueryContinuationError(
                 "continuation does not match the query"
+            )
+        cursor_scan_limit = payload.get("scan_limit")
+        if (
+            isinstance(cursor_scan_limit, bool)
+            or not isinstance(cursor_scan_limit, int)
+            or not 1 <= cursor_scan_limit <= MAX_RESOURCE_SCAN_LIMIT
+        ):
+            raise InvalidResourceQueryContinuationError(
+                "continuation is malformed"
+            )
+        if cursor_scan_limit != scan_limit:
+            raise InvalidResourceQueryContinuationError(
+                "continuation does not match scan_limit"
+            )
+        selection_digest = payload.get("selection_digest")
+        if (
+            not isinstance(selection_digest, str)
+            or len(selection_digest) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in selection_digest
+            )
+        ):
+            raise InvalidResourceQueryContinuationError(
+                "continuation is malformed"
             )
         position = payload.get("position")
         if not isinstance(position, dict):
@@ -882,7 +993,7 @@ class ResourceQueryService:
             raise InvalidResourceQueryContinuationError(
                 "continuation is malformed"
             ) from error
-        return offset, snapshot
+        return offset, snapshot, selection_digest
 
     @staticmethod
     def _next_continuation(
@@ -890,6 +1001,8 @@ class ResourceQueryService:
         continuable: bool,
         fingerprint: str,
         snapshot: datetime,
+        scan_limit: int,
+        selection_digest: str,
         next_offset: int,
         buffered_more: bool,
         source_has_more: bool,
@@ -900,6 +1013,8 @@ class ResourceQueryService:
             "operation": _CONTINUATION_OPERATION,
             "fingerprint": fingerprint,
             "snapshot": snapshot.isoformat(),
+            "scan_limit": scan_limit,
+            "selection_digest": selection_digest,
             "position": {"offset": next_offset},
         })
 
@@ -1066,7 +1181,10 @@ class ResourceQueryService:
         return self._rich
 
     def _expired(self, started_at: float) -> bool:
-        return self._monotonic() - started_at >= RESOURCE_QUERY_TIMEOUT_SECONDS
+        return (
+            self._monotonic() - started_at
+            >= RESOURCE_QUERY_COOPERATIVE_BUDGET_SECONDS
+        )
 
     @staticmethod
     def _bounded_integer(value: int, name: str, maximum: int) -> int:
@@ -1098,6 +1216,10 @@ class ResourceQueryService:
 
     def _utc_or_none(self, value, name):
         return None if value is None else self._utc(value, name)
+
+    @staticmethod
+    def _iso_or_none(value: datetime | None) -> str | None:
+        return None if value is None else value.isoformat()
 
     @staticmethod
     def _bounded_text(value: str, maximum_bytes: int) -> str:
