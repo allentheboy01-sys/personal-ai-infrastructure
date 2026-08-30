@@ -7,6 +7,14 @@ from pydantic import Field
 
 from pdi.data_status import DataStatusError, DataStatusService
 from pdi.query import InvalidQueryError, QueryError, QueryService
+from pdi.resource_query import (
+    ResourceQueryFilters,
+    ResourceQueryPrimary,
+    ResourceQueryService,
+    ResourceQuerySort,
+    ResourceQueryUnavailableError,
+    serialize_resource_query_result,
+)
 from pdi.observation import ObservationError, ObservationService
 from pdi.rich_retrieval import (
     RichFilters,
@@ -87,6 +95,7 @@ def create_server(
     retrieval_service: RetrievalService | None = None,
     rich_retrieval_service: RichRetrievalService | None = None,
     data_status_service: DataStatusService | None = None,
+    resource_query_service: ResourceQueryService | None = None,
 ) -> MCPServer:
     server = MCPServer(
         name="pdi-personal-retrieval",
@@ -96,6 +105,50 @@ def create_server(
             "creation, upload, modification, or completion times."
         ),
     )
+
+    @server.tool(structured_output=True)
+    async def pdi_query_resources(
+        primary: Annotated[
+            ResourceQueryPrimary,
+            Field(discriminator="kind"),
+        ],
+        filters: ResourceQueryFilters | None = None,
+        sort: ResourceQuerySort | None = None,
+        limit: int = 10,
+        scan_limit: int = 500,
+        continuable: bool = False,
+        continuation: str | None = None,
+    ) -> ToolResult:
+        """Run one typed, deterministic, bounded Resource selection.
+
+        The caller must choose exactly one primary; PDI performs no automatic
+        cross-strategy fallback. Ordinary top-N requests should leave
+        continuable=false and never page merely because more matches exist.
+        provider_semantic currently requires explicit provider=immich.
+        pdi_observed_at, file_modified_at, and captured_at are distinct time
+        bases and are never substituted for one another.
+        """
+
+        def operation() -> ToolResult:
+            if resource_query_service is None:
+                raise ResourceQueryUnavailableError(
+                    "Unified Resource query service is unavailable"
+                )
+            result = resource_query_service.query_resources(
+                primary=primary,
+                filters=filters,
+                sort=sort,
+                limit=limit,
+                scan_limit=scan_limit,
+                continuable=continuable,
+                continuation=continuation,
+            )
+            return {
+                "ok": True,
+                **serialize_resource_query_result(result),
+            }
+
+        return _query_call(operation)
 
     @server.tool(structured_output=True)
     def pdi_list_recent_resources(

@@ -29,7 +29,8 @@ consumer runtime, and no additional runtime integration is currently claimed.
 - Streaming Nextcloud traversal with non-authoritative handling for Resources
   that disappear between observation and content read.
 - Typed deterministic Observation extraction and evidenced statements.
-- Query, aggregation, Provider-semantic retrieval, and rich retrieval services.
+- Query, aggregation, Provider-semantic retrieval, rich retrieval, and one
+  typed bounded Resource-list application service.
 - Stable `pdi:resource:<uuid>` references and bounded Resource Access.
 - A read-only MCP consumer boundary and formal PipelineRun status projection.
 - Typed Resources, minimal Person identity, and a dedicated Provider-derived

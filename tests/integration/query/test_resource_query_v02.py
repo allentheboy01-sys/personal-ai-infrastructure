@@ -629,6 +629,22 @@ def test_mcp_v02_surface_serialization_and_postgresql(v02_context) -> None:
                     "limit": 2,
                 },
             )
+            bounded = await client.call_tool(
+                "pdi_query_resources",
+                {
+                    "primary": {
+                        "kind": "path_tree",
+                        "path_prefix": data.path_prefix,
+                    },
+                    "filters": {
+                        "provider": data.provider,
+                        "observed_from": data.observed_from.isoformat(),
+                        "observed_to": data.observed_to.isoformat(),
+                    },
+                    "sort": {"basis": "path", "direction": "asc"},
+                    "limit": 2,
+                },
+            )
 
         assert {tool.name for tool in tools} == {
             "pdi_list_recent_resources",
@@ -639,6 +655,7 @@ def test_mcp_v02_surface_serialization_and_postgresql(v02_context) -> None:
             "pdi_retrieve_resources",
             "pdi_rich_retrieve_resources",
             "pdi_get_data_status",
+            "pdi_query_resources",
         }
         payload = aggregation.structured_content
         assert payload is not None
@@ -681,5 +698,30 @@ def test_mcp_v02_surface_serialization_and_postgresql(v02_context) -> None:
         assert recent_payload is not None
         assert "resources" in recent_payload
         assert recent_payload["next_cursor"] is not None
+
+        bounded_payload = bounded.structured_content
+        assert bounded_payload is not None
+        assert bounded_payload["ok"] is True
+        assert bounded_payload["schema"] == "pdi.resource-list.v1"
+        assert bounded_payload["query_kind"] == "path_tree"
+        assert bounded_payload["selection_status"] == "complete"
+        assert bounded_payload["continuation"] is None
+        assert len(bounded_payload["resources"]) == 2
+        assert all(
+            resource["relative_path"].startswith(
+                data.path_prefix.removeprefix("/") + "/"
+            )
+            for resource in bounded_payload["resources"]
+        )
+        bounded_encoded = json.dumps(bounded_payload)
+        for internal_name in (
+            "sources",
+            "observations",
+            "external_id",
+            "provider_locator",
+            "metadata",
+            "raw",
+        ):
+            assert f'"{internal_name}"' not in bounded_encoded
 
     asyncio.run(exercise())

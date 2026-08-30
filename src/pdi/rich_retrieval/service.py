@@ -46,12 +46,60 @@ class RichRetrievalService:
         filters: RichFilters | None = None,
         limit: int = DEFAULT_RICH_RESULT_LIMIT,
     ) -> RichRetrievalResult:
-        validated_primary = self._primary(primary)
-        validated_filters = self._filters(filters or RichFilters())
         validated_limit = self._limit(limit)
+        return self._select_resources(
+            primary=primary,
+            filters=filters or RichFilters(),
+            candidate_limit=PRIMARY_CANDIDATE_LIMIT,
+            result_limit=validated_limit,
+        )
+
+    def select_resources(
+        self,
+        *,
+        primary: RichPrimary,
+        filters: RichFilters | None = None,
+        candidate_limit: int,
+    ) -> RichRetrievalResult:
+        """Reuse one Rich primary and its filters under an explicit bound."""
+
+        validated_candidate_limit = self._candidate_limit(candidate_limit)
+        return self._select_resources(
+            primary=primary,
+            filters=filters or RichFilters(),
+            candidate_limit=validated_candidate_limit,
+            result_limit=validated_candidate_limit,
+        )
+
+    def load_filter_signals(
+        self,
+        *,
+        resource_refs: tuple[str, ...],
+        filters: RichFilters,
+    ):
+        """Load current filter signals through the validated read boundary."""
+
+        return self._repository.load_rich_filter_signals(
+            resource_refs=resource_refs,
+            filters=self._filters(filters),
+        )
+
+    def _select_resources(
+        self,
+        *,
+        primary: RichPrimary,
+        filters: RichFilters,
+        candidate_limit: int,
+        result_limit: int,
+    ) -> RichRetrievalResult:
+        validated_primary = self._primary(primary)
+        validated_filters = self._filters(filters)
 
         candidates, unmapped_count, primary_stage = (
-            self._execute_primary(validated_primary)
+            self._execute_primary(
+                validated_primary,
+                candidate_limit=candidate_limit,
+            )
         )
         stages = [primary_stage]
         remaining = list(candidates)
@@ -188,7 +236,7 @@ class RichRetrievalService:
                     else None
                 ),
             )
-            for candidate in remaining[:validated_limit]
+            for candidate in remaining[:result_limit]
         )
         stages.append(RetrievalStage(
             "final_limit",
@@ -204,6 +252,8 @@ class RichRetrievalService:
     def _execute_primary(
         self,
         primary: RichPrimary,
+        *,
+        candidate_limit: int,
     ) -> tuple[tuple[RichCandidate, ...], int, RetrievalStage]:
         if isinstance(primary, ProviderSemanticPrimary):
             if self._retrieval_service is None:
@@ -213,7 +263,7 @@ class RichRetrievalService:
             result = self._retrieval_service.retrieve_resources(
                 query=primary.query,
                 provider=primary.provider,
-                limit=PRIMARY_CANDIDATE_LIMIT,
+                limit=candidate_limit,
             )
             candidates = tuple(
                 RichCandidate(
@@ -235,7 +285,7 @@ class RichRetrievalService:
         if isinstance(primary, PersonLabelPrimary):
             candidates = self._repository.search_current_person_label(
                 primary=primary,
-                limit=PRIMARY_CANDIDATE_LIMIT,
+                limit=candidate_limit,
             )
             return (
                 candidates,
@@ -249,7 +299,7 @@ class RichRetrievalService:
 
         candidates = self._repository.search_current_observation_text(
             primary=primary,
-            limit=PRIMARY_CANDIDATE_LIMIT,
+            limit=candidate_limit,
         )
         return (
             candidates,
@@ -478,6 +528,18 @@ class RichRetrievalService:
             or not 1 <= limit <= MAX_RICH_RESULT_LIMIT
         ):
             raise InvalidQueryError("limit must be between 1 and 20")
+        return limit
+
+    @staticmethod
+    def _candidate_limit(limit: int) -> int:
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= 2000
+        ):
+            raise InvalidQueryError(
+                "candidate_limit must be between 1 and 2000"
+            )
         return limit
 
     @staticmethod

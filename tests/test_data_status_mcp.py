@@ -48,7 +48,7 @@ def test_data_status_tool_has_no_parameters_and_bounded_safe_output() -> None:
     async def exercise() -> None:
         async with Client(server) as client:
             tools = (await client.list_tools()).tools
-            assert len(tools) == 8
+            assert len(tools) == 9
             tool = next(tool for tool in tools if tool.name == "pdi_get_data_status")
             assert tool.input_schema["properties"] == {}
             result = await client.call_tool("pdi_get_data_status", {})

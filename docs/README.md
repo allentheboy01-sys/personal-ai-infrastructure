@@ -46,6 +46,7 @@ Provider API.
 
 - [Personal retrieval read boundary](design/personal-retrieval-read-v0.1.md)
 - [PDI Query V0.2](design/pdi-query-v0.2.md)
+- [Unified bounded Resource query V0.1](design/pdi-unified-resource-query-v0.1.md)
 - [Data Status V0.1](design/pdi-data-status-v0.1.md)
 - [Read-only MCP composition](../src/pdi_mcp/)
 - [Bounded Resource Access process](../src/pdi_resource_access/)

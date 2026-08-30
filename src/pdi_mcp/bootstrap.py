@@ -8,6 +8,7 @@ from pdi.config.settings import (
 from pdi.database import create_postgres_engine
 from pdi.data_status import DataStatusService, PipelineRunRepository
 from pdi.query import QueryService
+from pdi.resource_query import ResourceQueryService
 from pdi.observation import (
     ObservationService,
     PostgreSQLObservationRepository,
@@ -39,12 +40,20 @@ def create_runtime_server(
             ),
             repository,
         )
+    rich_retrieval_service = RichRetrievalService(
+        repository,
+        retrieval_service,
+    )
     return create_server(
         query_service,
         observation_service,
         retrieval_service,
-        RichRetrievalService(repository, retrieval_service),
+        rich_retrieval_service,
         DataStatusService(PipelineRunRepository(engine)),
+        ResourceQueryService(
+            query_service,
+            rich_retrieval_service,
+        ),
     )
 
 

@@ -1,0 +1,36 @@
+{
+  "query": "mathematical-modeling",
+  "observed_from": "2026-07-01T00:00:00+00:00",
+  "observed_to": "2026-08-01T00:00:00+00:00",
+  "matching_titles": [
+    "mathematical-modeling",
+    "mathematical-modeling-notes.md",
+    "mathematical-modeling-report-01.md",
+    "mathematical-modeling-report-02.md",
+    "mathematical-modeling-report-03.md",
+    "mathematical-modeling-report-04.md",
+    "mathematical-modeling-report-05.md",
+    "mathematical-modeling-report-06.md",
+    "mathematical-modeling-report-07.md",
+    "mathematical-modeling-report-08.md",
+    "mathematical-modeling-report-09.md",
+    "mathematical-modeling-report-10.md"
+  ],
+  "distractor_titles": [
+    "cooking-notes.md",
+    "garden-plan.md",
+    "travel-checklist.md"
+  ],
+  "outside_time_titles": [
+    "mathematical-modeling-archive.md"
+  ],
+  "expected": {
+    "candidate_count": 16,
+    "scanned_count": 12,
+    "returned_count": 10,
+    "serialized_bytes": 3507,
+    "application_call_count": 1,
+    "provider_semantic_call_count": 0,
+    "agent_pagination_required": 0
+  }
+}
