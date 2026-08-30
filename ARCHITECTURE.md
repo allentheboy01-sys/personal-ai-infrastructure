@@ -117,6 +117,10 @@ Resource access is separate from query and retrieval:
 Resource reference + approved access kind
         |
 ResourceAccessService -> eligible Provider source -> controlled byte stream
+
+Resource reference + bounded text window
+        |
+ResourceTextService -> current Blob identity -> verified Provider text
 ```
 
 It returns controlled representations rather than filesystem paths or Provider
@@ -124,15 +128,20 @@ credentials. Image and video thumbnails remain bounded image representations.
 Video playback is a distinct streaming contract that preserves validated
 single-range HTTP semantics without buffering the media body. Eligibility,
 upstream validation, concurrency, and stream cleanup are enforced at the
-service boundary. The deployed process uses its own launcher and
-Unix-domain-socket/HTTP boundary.
+service boundary. Bounded text access is a separate complete-content contract:
+it resolves a private active Source, verifies the complete Provider body
+against the current Blob SHA-256, and only then returns a bounded UTF-8 text
+window. Observation excerpts are not complete Resource representations. The
+deployed media process uses its own launcher and Unix-domain-socket/HTTP
+boundary.
 
 ## MCP boundary
 
 PDI MCP is the read-only consumer boundary. It composes the public services and
-serializes stable results. It currently exposes eight Tools for data status,
-recent, search, aggregation, Provider-semantic retrieval, rich retrieval,
-Resource detail, and Resource observations.
+serializes stable results. It currently exposes ten Tools for bounded unified
+query, bounded text Resource access, data status, recent, search, aggregation,
+Provider-semantic retrieval, rich retrieval, Resource detail, and Resource
+observations.
 
 MCP Tool handlers must not import ORM types, open database sessions directly,
 or receive Provider credentials. A runtime may expose a deliberately smaller

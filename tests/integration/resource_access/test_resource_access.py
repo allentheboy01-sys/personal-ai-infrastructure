@@ -11,7 +11,7 @@ from pdi.repository import PostgreSQLRepository
 from pdi.repository.orm.asset import AssetORM
 from pdi.repository.orm.asset_source import AssetSourceORM
 from pdi.repository.orm.blob import BlobORM
-from pdi.resource_access import ResourceAccessSource
+from pdi.resource_access import ResourceAccessSource, TextResourceAccessSource
 from tests.integration.database_guard import require_safe_test_database_url
 
 
@@ -40,6 +40,7 @@ def test_postgres_resource_access_mapping_is_read_only_and_detached() -> None:
         "video",
         "inactive",
         "nextcloud",
+        "nextcloud_text",
         "ambiguous_a",
         "ambiguous_b",
     )}
@@ -71,10 +72,20 @@ def test_postgres_resource_access_mapping_is_read_only_and_detached() -> None:
                         if name.startswith("ambiguous")
                         else asset_ids["eligible"]
                     ),
-                    "hash": f"resource-access-{uuid4()}",
+                    "hash": (
+                        "a" * 64
+                        if name == "nextcloud_text"
+                        else "b" * 64
+                        if name == "nextcloud"
+                        else f"resource-access-{uuid4()}"
+                    ),
                     "size": 100,
                     "mime_type": (
-                        "video/mp4" if name == "video" else "image/jpeg"
+                        "video/mp4"
+                        if name == "video"
+                        else "text/markdown"
+                        if name == "nextcloud_text"
+                        else "image/jpeg"
                     ),
                 }
                 for name in blob_ids
@@ -86,7 +97,11 @@ def test_postgres_resource_access_mapping_is_read_only_and_detached() -> None:
                 {
                     "id": source_ids[name],
                     "blob_id": blob_ids[name],
-                    "provider": "nextcloud" if name == "nextcloud" else "immich",
+                    "provider": (
+                        "nextcloud"
+                        if name in {"nextcloud", "nextcloud_text"}
+                        else "immich"
+                    ),
                     "external_id": locators[name],
                     "path": f"/resource-access/{name}",
                     "name": f"{name}.jpg",
@@ -124,7 +139,11 @@ def test_postgres_resource_access_mapping_is_read_only_and_detached() -> None:
         ambiguous = repository.resolve_access_sources(
             str(asset_ids["ambiguous"])
         )
+        text_sources = repository.resolve_text_access_sources(
+            str(asset_ids["eligible"])
+        )
         missing = repository.resolve_access_sources(str(uuid4()))
+        missing_text = repository.resolve_text_access_sources(str(uuid4()))
 
         assert eligible is not None and set(eligible) == {
             ResourceAccessSource(
@@ -147,6 +166,29 @@ def test_postgres_resource_access_mapping_is_read_only_and_detached() -> None:
             locators["ambiguous_b"],
         }
         assert missing is None
+        assert text_sources is not None and set(text_sources) == {
+            TextResourceAccessSource(
+                source_id=str(source_ids["nextcloud"]),
+                provider="nextcloud",
+                provider_locator="/resource-access/nextcloud",
+                resource_type="file",
+                mime_type="image/jpeg",
+                size_bytes=100,
+                blob_sha256="b" * 64,
+                version_tag="1",
+            ),
+            TextResourceAccessSource(
+                source_id=str(source_ids["nextcloud_text"]),
+                provider="nextcloud",
+                provider_locator="/resource-access/nextcloud_text",
+                resource_type="file",
+                mime_type="text/markdown",
+                size_bytes=100,
+                blob_sha256="a" * 64,
+                version_tag="1",
+            ),
+        }
+        assert missing_text is None
         assert all(isinstance(item, ResourceAccessSource) for item in ambiguous)
         assert all(
             statement.startswith("SELECT")

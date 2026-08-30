@@ -40,3 +40,27 @@ class ResourceAccessUnavailableError(ResourceAccessError):
     """Persistence/configuration failure safe for external serialization."""
 
     code = "resource_access_unavailable"
+
+
+class TextUnavailableError(ResourceAccessError):
+    code = "text_unavailable"
+
+
+class AmbiguousTextContentError(ResourceAccessError):
+    code = "ambiguous_text_content"
+
+
+class TextTooLargeError(ResourceAccessError):
+    code = "text_too_large"
+
+
+class InvalidTextWindowError(ResourceAccessError, ValueError):
+    code = "invalid_text_window"
+
+
+class InvalidTextContentError(ResourceAccessError):
+    code = "invalid_text_content"
+
+
+class ContentChangedSinceSyncError(ResourceAccessError):
+    code = "content_changed_since_sync"

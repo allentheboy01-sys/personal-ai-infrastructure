@@ -36,6 +36,8 @@ from pdi.query.resources import (
 from pdi.resource_access import (
     ResourceAccessRepository,
     ResourceAccessSource,
+    ResourceTextRepository,
+    TextResourceAccessSource,
 )
 from pdi.rich_retrieval import (
     InvalidRichRetrievalStateError,
@@ -67,6 +69,7 @@ class PostgreSQLRepository(
     RetrievalMappingRepository,
     RichRetrievalRepository,
     ResourceAccessRepository,
+    ResourceTextRepository,
 ):
     def __init__(
         self,
@@ -469,6 +472,47 @@ class PostgreSQLRepository(
                     provider_locator=source.external_id,
                     resource_type=asset.resource_type,
                     mime_type=blob.mime_type,
+                )
+                for source, blob, asset in rows
+            )
+
+    def resolve_text_access_sources(
+        self,
+        asset_id: str,
+    ) -> tuple[TextResourceAccessSource, ...] | None:
+        """Resolve detached active Nextcloud file Sources for text access."""
+
+        parsed_id = UUID(asset_id)
+        with self._session_factory() as session:
+            if session.get(AssetORM, parsed_id) is None:
+                return None
+
+            rows = session.execute(
+                select(AssetSourceORM, BlobORM, AssetORM)
+                .join(
+                    BlobORM,
+                    AssetSourceORM.blob_id == BlobORM.id,
+                )
+                .join(AssetORM, BlobORM.asset_id == AssetORM.id)
+                .where(
+                    BlobORM.asset_id == parsed_id,
+                    AssetORM.resource_type == ResourceType.FILE.value,
+                    AssetSourceORM.is_active.is_(True),
+                    AssetSourceORM.provider == "nextcloud",
+                )
+                .order_by(AssetSourceORM.id.asc())
+            ).all()
+
+            return tuple(
+                TextResourceAccessSource(
+                    source_id=str(source.id),
+                    provider=source.provider,
+                    provider_locator=source.path or "",
+                    resource_type=asset.resource_type,
+                    mime_type=blob.mime_type,
+                    size_bytes=blob.size,
+                    blob_sha256=blob.hash,
+                    version_tag=source.version_tag,
                 )
                 for source, blob, asset in rows
             )

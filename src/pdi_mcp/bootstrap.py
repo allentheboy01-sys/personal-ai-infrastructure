@@ -2,13 +2,16 @@ from mcp.server import MCPServer
 
 from pdi.config.settings import (
     ImmichSettings,
+    NextcloudSettings,
     load_database_url,
     load_immich_settings,
+    load_nextcloud_settings,
 )
 from pdi.database import create_postgres_engine
 from pdi.data_status import DataStatusService, PipelineRunRepository
 from pdi.query import QueryService
 from pdi.resource_query import ResourceQueryService
+from pdi.resource_access import NextcloudTextAdapter, ResourceTextService
 from pdi.observation import (
     ObservationService,
     PostgreSQLObservationRepository,
@@ -24,6 +27,7 @@ from .server import create_server
 def create_runtime_server(
     database_url: str,
     immich_settings: ImmichSettings | None = None,
+    nextcloud_settings: NextcloudSettings | None = None,
 ) -> MCPServer:
     engine = create_postgres_engine(database_url)
     repository = PostgreSQLRepository(engine)
@@ -44,6 +48,14 @@ def create_runtime_server(
         repository,
         retrieval_service,
     )
+    text_adapters = {}
+    if nextcloud_settings is not None:
+        nextcloud_text = NextcloudTextAdapter(
+            nextcloud_settings.url,
+            nextcloud_settings.user,
+            nextcloud_settings.password,
+        )
+        text_adapters[nextcloud_text.provider] = nextcloud_text
     return create_server(
         query_service,
         observation_service,
@@ -54,6 +66,7 @@ def create_runtime_server(
             query_service,
             rich_retrieval_service,
         ),
+        ResourceTextService(repository, text_adapters),
     )
 
 
@@ -62,8 +75,13 @@ def main() -> None:
         immich_settings = load_immich_settings()
     except RuntimeError:
         immich_settings = None
+    try:
+        nextcloud_settings = load_nextcloud_settings()
+    except RuntimeError:
+        nextcloud_settings = None
     server = create_runtime_server(
         load_database_url(),
         immich_settings,
+        nextcloud_settings,
     )
     server.run(transport="stdio")

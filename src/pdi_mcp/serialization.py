@@ -12,6 +12,7 @@ from pdi.query import (
 from pdi.observation import StatementValueType, StatementView
 from pdi.rich_retrieval import RichRetrievalResult
 from pdi.retrieval import ResourceRetrievalResult
+from pdi.resource_access import ResourceText
 
 
 def serialize_status_snapshot(snapshot: StatusSnapshot) -> dict[str, object]:
@@ -54,6 +55,24 @@ def serialize_status_snapshot(snapshot: StatusSnapshot) -> dict[str, object]:
             }
             for pipeline in snapshot.pipelines
         ],
+    }
+
+
+def serialize_resource_text(result: ResourceText) -> dict[str, object]:
+    return {
+        "schema": result.schema,
+        "resource_ref": result.resource_ref,
+        "provider": result.provider,
+        "media_type": result.media_type,
+        "encoding": result.encoding,
+        "source": result.source,
+        "text": result.text,
+        "offset_bytes": result.offset_bytes,
+        "returned_bytes": result.returned_bytes,
+        "total_bytes": result.total_bytes,
+        "truncated": result.truncated,
+        "next_offset": result.next_offset,
+        "content_sha256": result.content_sha256,
     }
 
 

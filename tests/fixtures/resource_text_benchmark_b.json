@@ -1,0 +1,12 @@
+{
+  "media_type": "text/markdown",
+  "text": "# Mathematical Modeling\n\nA bounded verified resource body.\n",
+  "expected": {
+    "provider_read_calls": 1,
+    "source_bytes": 59,
+    "returned_bytes": 59,
+    "total_bytes": 59,
+    "content_hash_verified": true,
+    "mcp_calls": 1
+  }
+}

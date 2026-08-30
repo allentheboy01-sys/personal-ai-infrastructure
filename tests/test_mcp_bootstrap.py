@@ -23,11 +23,19 @@ def test_mcp_main_composes_with_database_only(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         bootstrap,
+        "load_nextcloud_settings",
+        lambda: (_ for _ in ()).throw(
+            PDIConfigurationError("Nextcloud is not configured")
+        ),
+    )
+    monkeypatch.setattr(
+        bootstrap,
         "create_runtime_server",
-        lambda database_url, immich_settings: (
+        lambda database_url, immich_settings, nextcloud_settings: (
             calls.update(
                 database_url=database_url,
                 immich_settings=immich_settings,
+                nextcloud_settings=nextcloud_settings,
             )
             or Server()
         ),
@@ -38,5 +46,6 @@ def test_mcp_main_composes_with_database_only(monkeypatch) -> None:
     assert calls == {
         "database_url": "postgresql+psycopg://user:password@db/pdi",
         "immich_settings": None,
+        "nextcloud_settings": None,
         "transport": "stdio",
     }

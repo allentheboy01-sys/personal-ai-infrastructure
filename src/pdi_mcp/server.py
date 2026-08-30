@@ -27,10 +27,16 @@ from pdi.retrieval import (
     RetrievalError,
     RetrievalService,
 )
+from pdi.resource_access import (
+    ResourceAccessError,
+    ResourceAccessUnavailableError,
+    ResourceTextService,
+)
 
 from .serialization import (
     serialize_resource_aggregation,
     serialize_resource_detail,
+    serialize_resource_text,
     serialize_rich_retrieval_result,
     serialize_retrieval_result,
     serialize_resource_summary,
@@ -48,6 +54,7 @@ def _error_result(
         | ObservationError
         | RetrievalError
         | RichRetrievalError
+        | ResourceAccessError
     ),
 ) -> ToolResult:
     return {
@@ -67,6 +74,7 @@ def _query_call(operation: Callable[[], ToolResult]) -> ToolResult:
         ObservationError,
         RetrievalError,
         RichRetrievalError,
+        ResourceAccessError,
     ) as error:
         return _error_result(error)
 
@@ -96,15 +104,46 @@ def create_server(
     rich_retrieval_service: RichRetrievalService | None = None,
     data_status_service: DataStatusService | None = None,
     resource_query_service: ResourceQueryService | None = None,
+    resource_text_service: ResourceTextService | None = None,
 ) -> MCPServer:
     server = MCPServer(
         name="pdi-personal-retrieval",
         instructions=(
-            "Read-only access to resource metadata stored by PDI. "
+            "Read-only access to PDI Resource metadata and verified bounded "
+            "text representations. "
             "Do not describe PDI observation times as user or provider "
             "creation, upload, modification, or completion times."
         ),
     )
+
+    @server.tool(structured_output=True)
+    async def pdi_read_resource_text(
+        resource_ref: str,
+        offset_bytes: int = 0,
+        max_bytes: int = 8192,
+    ) -> ToolResult:
+        """Read one verified bounded window of actual Resource text.
+
+        Accepts only a canonical ResourceRef. This reads complete validated
+        Provider content and never treats document.text_excerpt as a complete
+        document. It does not automatically read another window; use the
+        returned next_offset explicitly. Unsupported binary, PDF, DOCX, and
+        other document formats fail fast.
+        """
+
+        try:
+            if resource_text_service is None:
+                raise ResourceAccessUnavailableError(
+                    "Resource text access is unavailable"
+                )
+            result = await resource_text_service.read_text(
+                resource_ref,
+                offset_bytes=offset_bytes,
+                max_bytes=max_bytes,
+            )
+            return {"ok": True, **serialize_resource_text(result)}
+        except ResourceAccessError as error:
+            return _error_result(error)
 
     @server.tool(structured_output=True)
     async def pdi_query_resources(

@@ -638,7 +638,7 @@ def test_mcp_serializes_real_rich_document_without_leakage(
                     "predicate": "document.text_excerpt",
                 },
             )
-        assert len(tools) == 9
+        assert len(tools) == 10
         observation = response.structured_content["observations"][0]
         assert observation["value"] == "MCP excerpt"
         assert observation["generator_name"] == "nextcloud_odt"
