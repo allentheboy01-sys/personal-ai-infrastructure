@@ -1,9 +1,12 @@
-from collections.abc import Callable
+import base64
+from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Annotated, Literal
 
 from mcp.server import MCPServer
-from pydantic import Field
+from mcp.types import CallToolResult, ImageContent, TextContent
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from pdi.data_status import DataStatusError, DataStatusService
 from pdi.query import InvalidQueryError, QueryError, QueryService
@@ -28,8 +31,10 @@ from pdi.retrieval import (
     RetrievalService,
 )
 from pdi.resource_access import (
+    ResourceAccessService,
     ResourceAccessError,
     ResourceAccessUnavailableError,
+    ResourceRepresentationKind,
     ResourceTextService,
 )
 
@@ -46,6 +51,39 @@ from .serialization import (
 
 
 ToolResult = dict[str, object]
+
+
+class ResourceImagePreviewSuccess(BaseModel):
+    model_config = ConfigDict(extra="forbid", validate_by_name=True)
+
+    ok: Literal[True]
+    schema_name: Literal["pdi.resource-image-preview.v1"] = Field(
+        alias="schema"
+    )
+    resource_ref: str
+    representation: Literal["image_preview"]
+    media_type: str
+    byte_length: int
+
+
+class PublicToolError(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    message: str
+
+
+class ResourceImagePreviewFailure(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ok: Literal[False]
+    error: PublicToolError
+
+
+class ResourceImagePreviewResult(
+    RootModel[ResourceImagePreviewSuccess | ResourceImagePreviewFailure]
+):
+    pass
 
 
 def _error_result(
@@ -105,16 +143,92 @@ def create_server(
     data_status_service: DataStatusService | None = None,
     resource_query_service: ResourceQueryService | None = None,
     resource_text_service: ResourceTextService | None = None,
+    resource_access_service: ResourceAccessService | None = None,
+    resource_access_close: Callable[[], Awaitable[None]] | None = None,
 ) -> MCPServer:
+    closed = False
+
+    @asynccontextmanager
+    async def lifespan(_server: MCPServer):
+        nonlocal closed
+        try:
+            yield None
+        finally:
+            if resource_access_close is not None and not closed:
+                closed = True
+                await resource_access_close()
+
     server = MCPServer(
         name="pdi-personal-retrieval",
         instructions=(
             "Read-only access to PDI Resource metadata and verified bounded "
-            "text representations. "
+            "text and image-preview representations. "
             "Do not describe PDI observation times as user or provider "
             "creation, upload, modification, or completion times."
         ),
+        lifespan=lifespan if resource_access_close is not None else None,
     )
+
+    @server.tool(structured_output=True)
+    async def pdi_read_resource_image_preview(
+        resource_ref: str,
+    ) -> Annotated[CallToolResult, ResourceImagePreviewResult]:
+        """Read one bounded actual image preview from a PDI ResourceRef.
+
+        The caller supplies only a canonical ResourceRef. PDI selects its
+        provider-backed preview representation, returns one standard MCP image
+        block, and performs no thumbnail, OCR, metadata, or Provider fallback.
+        """
+
+        try:
+            if resource_access_service is None:
+                raise ResourceAccessUnavailableError(
+                    "Resource image preview access is unavailable"
+                )
+            opened = await resource_access_service.open_representation(
+                resource_ref,
+                ResourceRepresentationKind.PREVIEW,
+            )
+            async with opened:
+                payload = bytearray()
+                async for chunk in opened:
+                    payload.extend(chunk)
+            data = bytes(payload)
+            metadata = ResourceImagePreviewSuccess(
+                ok=True,
+                schema_name="pdi.resource-image-preview.v1",
+                resource_ref=opened.descriptor.resource_ref,
+                representation="image_preview",
+                media_type=opened.descriptor.media_type,
+                byte_length=len(data),
+            ).model_dump(mode="json", by_alias=True)
+            return CallToolResult(
+                content=[
+                    ImageContent(
+                        type="image",
+                        data=base64.b64encode(data).decode("ascii"),
+                        mimeType=opened.descriptor.media_type,
+                    )
+                ],
+                structuredContent=metadata,
+            )
+        except ResourceAccessError as error:
+            failure = ResourceImagePreviewFailure(
+                ok=False,
+                error=PublicToolError(
+                    code=error.code,
+                    message=str(error),
+                ),
+            ).model_dump(mode="json")
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=f"{error.code}: {error}",
+                    )
+                ],
+                structuredContent=failure,
+            )
 
     @server.tool(structured_output=True)
     async def pdi_read_resource_text(

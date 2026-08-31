@@ -70,7 +70,7 @@ def test_unified_resource_query_mcp_contract_is_compact_and_additive() -> None:
                 },
             )
 
-        assert len(tools) == 10
+        assert len(tools) == 11
         tool = next(tool for tool in tools if tool.name == "pdi_query_resources")
         description = " ".join((tool.description or "").split())
         assert "choose exactly one primary" in description

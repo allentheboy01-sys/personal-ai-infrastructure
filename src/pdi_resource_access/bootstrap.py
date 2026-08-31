@@ -5,8 +5,7 @@ from pdi.config.settings import load_database_url
 from pdi.database import create_postgres_engine
 from pdi.repository import PostgreSQLRepository
 from pdi.resource_access import (
-    ImmichRepresentationAdapter,
-    ResourceAccessService,
+    create_immich_resource_access_runtime,
 )
 
 from .app import create_app
@@ -19,18 +18,15 @@ def create_runtime_app(
 ) -> Starlette:
     engine = create_postgres_engine(database_url or load_database_url())
     settings = immich_settings or load_immich_settings()
-    adapter = ImmichRepresentationAdapter(
-        settings.url,
-        settings.api_key,
-    )
     repository = PostgreSQLRepository(engine)
-    service = ResourceAccessService(
+    runtime = create_immich_resource_access_runtime(
         repository,
-        {adapter.provider: adapter},
+        base_url=settings.url,
+        api_key=settings.api_key,
     )
 
     async def shutdown() -> None:
-        await adapter.aclose()
+        await runtime.aclose()
         engine.dispose()
 
-    return create_app(service, shutdown=shutdown)
+    return create_app(runtime.service, shutdown=shutdown)

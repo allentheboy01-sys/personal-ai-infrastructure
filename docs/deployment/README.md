@@ -56,7 +56,10 @@ optional globally and required only when that Provider is selected:
   never Gmail, and fails if no eligible Provider is configured.
 
 MCP needs only the database. Immich configuration optionally enables semantic
-retrieval; Nextcloud and Gmail credentials are not MCP requirements.
+retrieval and bounded image-preview Resource access. Without Immich
+configuration, the image-preview Tool remains registered and returns a stable
+capability-unavailable result when invoked. Nextcloud and Gmail credentials are
+not MCP requirements.
 
 ## Core versus deployment choices
 

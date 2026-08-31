@@ -138,10 +138,13 @@ boundary.
 ## MCP boundary
 
 PDI MCP is the read-only consumer boundary. It composes the public services and
-serializes stable results. It currently exposes ten Tools for bounded unified
-query, bounded text Resource access, data status, recent, search, aggregation,
-Provider-semantic retrieval, rich retrieval, Resource detail, and Resource
-observations.
+serializes stable results. It currently exposes eleven Tools for bounded
+unified query, bounded text Resource access, bounded image-preview Resource
+access, data status, recent, search, aggregation, Provider-semantic retrieval,
+rich retrieval, Resource detail, and Resource observations. The image-preview
+Tool delegates Source and Provider selection to the public Resource Access
+service, consumes only its already-bounded stream, and returns standard MCP
+image content plus compact public metadata.
 
 MCP Tool handlers must not import ORM types, open database sessions directly,
 or receive Provider credentials. A runtime may expose a deliberately smaller

@@ -11,7 +11,11 @@ from pdi.database import create_postgres_engine
 from pdi.data_status import DataStatusService, PipelineRunRepository
 from pdi.query import QueryService
 from pdi.resource_query import ResourceQueryService
-from pdi.resource_access import NextcloudTextAdapter, ResourceTextService
+from pdi.resource_access import (
+    NextcloudTextAdapter,
+    ResourceTextService,
+    create_immich_resource_access_runtime,
+)
 from pdi.observation import (
     ObservationService,
     PostgreSQLObservationRepository,
@@ -36,6 +40,7 @@ def create_runtime_server(
         PostgreSQLObservationRepository(engine)
     )
     retrieval_service = None
+    resource_access_runtime = None
     if immich_settings is not None:
         retrieval_service = RetrievalService(
             ImmichSemanticRetrievalAdapter(
@@ -43,6 +48,11 @@ def create_runtime_server(
                 immich_settings.api_key,
             ),
             repository,
+        )
+        resource_access_runtime = create_immich_resource_access_runtime(
+            repository,
+            base_url=immich_settings.url,
+            api_key=immich_settings.api_key,
         )
     rich_retrieval_service = RichRetrievalService(
         repository,
@@ -67,6 +77,16 @@ def create_runtime_server(
             rich_retrieval_service,
         ),
         ResourceTextService(repository, text_adapters),
+        resource_access_service=(
+            None
+            if resource_access_runtime is None
+            else resource_access_runtime.service
+        ),
+        resource_access_close=(
+            None
+            if resource_access_runtime is None
+            else resource_access_runtime.aclose
+        ),
     )
 
 

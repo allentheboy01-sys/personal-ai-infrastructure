@@ -28,6 +28,10 @@ from .models import (
 from .provider import ProviderRepresentation, ProviderRepresentationAdapter
 from .nextcloud_text import NextcloudTextAdapter, TEXT_CHUNK_SIZE
 from .repository import ResourceAccessRepository, ResourceTextRepository
+from .runtime import (
+    ImmichResourceAccessRuntime,
+    create_immich_resource_access_runtime,
+)
 from .service import (
     MAX_ACTIVE_STREAMS,
     PREVIEW_MAX_BYTES,
@@ -56,6 +60,7 @@ __all__ = [
     "ContentChangedSinceSyncError",
     "DEFAULT_TEXT_WINDOW_BYTES",
     "ImmichRepresentationAdapter",
+    "ImmichResourceAccessRuntime",
     "InvalidResourceReferenceError",
     "InvalidTextContentError",
     "InvalidTextWindowError",
@@ -94,5 +99,6 @@ __all__ = [
     "TextTooLargeError",
     "TextUnavailableError",
     "UnsupportedRepresentationError",
+    "create_immich_resource_access_runtime",
     "RESOURCE_TEXT_SCHEMA",
 ]

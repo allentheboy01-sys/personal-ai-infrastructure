@@ -406,6 +406,7 @@ def test_mcp_aggregation_is_the_only_new_tool_and_serializes_semantics() -> None
             "pdi_get_data_status",
             "pdi_query_resources",
             "pdi_read_resource_text",
+            "pdi_read_resource_image_preview",
         }
         payload = grouped.structured_content
         assert payload is not None
@@ -440,7 +441,7 @@ def test_person_label_discovery_is_visible_in_existing_aggregate_schema() -> Non
         create_server(QueryService(RecordingRepository())).list_tools()
     )
 
-    assert len(tools) == 10
+    assert len(tools) == 11
     aggregate = next(
         tool for tool in tools if tool.name == "pdi_aggregate_resources"
     )
@@ -478,7 +479,7 @@ def test_observation_tool_is_the_only_v0_1_addition_and_does_not_leak_ids() -> N
                 },
             )
 
-        assert len(tools) == 10
+        assert len(tools) == 11
         assert result.structured_content == {
             "ok": True,
             "observations": [{
@@ -550,7 +551,7 @@ def test_retrieval_tool_serializes_public_resources_without_leakage() -> None:
                 },
             )
 
-        assert len(tools) == 10
+        assert len(tools) == 11
         assert result.structured_content == {
             "ok": True,
             "provider": "immich",
@@ -714,7 +715,7 @@ def test_rich_retrieval_tool_has_tagged_input_and_bounded_payload() -> None:
                 },
             )
 
-        assert len(tools) == 10
+        assert len(tools) == 11
         primary_schema = rich_tool.input_schema["properties"]["primary"]
         assert primary_schema["discriminator"]["propertyName"] == "kind"
         assert len(primary_schema["oneOf"]) == 3
@@ -866,7 +867,7 @@ def test_rich_retrieval_accepts_person_label_primary_without_new_tool() -> None:
                     "filters": {"mime_category": "image"},
                 },
             )
-        assert len(tools) == 10
+        assert len(tools) == 11
         assert result.is_error is False
         assert result.structured_content == {
             "ok": True,
@@ -893,7 +894,7 @@ def test_person_label_primary_is_in_public_schema_without_client_harness() -> No
 
     tools = asyncio.run(server.list_tools())
 
-    assert len(tools) == 10
+    assert len(tools) == 11
     rich_tool = next(
         tool
         for tool in tools
