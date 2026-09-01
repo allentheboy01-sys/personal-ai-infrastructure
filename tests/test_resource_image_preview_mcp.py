@@ -1,12 +1,17 @@
 import asyncio
 import base64
 import json
+import socket
 from uuid import uuid4
 
 import httpx
 import pytest
+import uvicorn
+from jsonschema import Draft202012Validator
 from mcp import Client
-from mcp.types import ImageContent
+from mcp.types import ImageContent, ListToolsResult
+from mcp_types.methods import serialize_server_result
+from pydantic import ValidationError
 
 import pdi.resource_access.runtime as resource_access_runtime
 from pdi.query import QueryService, format_resource_ref
@@ -89,6 +94,146 @@ async def call_image_tool(server, resource_ref: str):
             {"resource_ref": resource_ref},
         )
     return tools, result
+
+
+def image_preview_success(resource_ref: str) -> dict[str, object]:
+    return {
+        "ok": True,
+        "schema": "pdi.resource-image-preview.v1",
+        "resource_ref": resource_ref,
+        "representation": "image_preview",
+        "media_type": "image/jpeg",
+        "byte_length": 4,
+    }
+
+
+def image_preview_failure() -> dict[str, object]:
+    return {
+        "ok": False,
+        "error": {
+            "code": "resource_access_unavailable",
+            "message": "Resource image preview access is unavailable",
+        },
+    }
+
+
+def assert_image_preview_output_schema(
+    output_schema: dict[str, object],
+) -> None:
+    assert output_schema["type"] == "object"
+    assert len(output_schema["anyOf"]) == 2
+    validator = Draft202012Validator(output_schema)
+    validator.validate(image_preview_success(format_resource_ref(uuid4())))
+    validator.validate(image_preview_failure())
+
+
+def test_image_preview_output_schema_is_wire_valid_object_union() -> None:
+    server = create_server(QueryService(UnusedQueryRepository()))
+    tools = asyncio.run(server.list_tools())
+    tool = next(
+        item
+        for item in tools
+        if item.name == "pdi_read_resource_image_preview"
+    )
+
+    assert tool.output_schema is not None
+    assert_image_preview_output_schema(tool.output_schema)
+
+    old_root_union_schema = dict(tool.output_schema)
+    old_root_union_schema.pop("type")
+    image_tool_index = next(
+        index
+        for index, item in enumerate(tools)
+        if item.name == "pdi_read_resource_image_preview"
+    )
+    old_tools = [
+        item.model_copy(
+            update={"output_schema": old_root_union_schema},
+        )
+        if item.name == "pdi_read_resource_image_preview"
+        else item
+        for item in tools
+    ]
+    old_wire_result = ListToolsResult(tools=old_tools).model_dump(
+        by_alias=True,
+        mode="json",
+        exclude_none=True,
+    )
+    with pytest.raises(ValidationError) as caught:
+        serialize_server_result(
+            "tools/list",
+            "2025-11-25",
+            old_wire_result,
+        )
+    assert caught.value.errors(include_input=False)[0]["loc"] == (
+        "tools",
+        image_tool_index,
+        "outputSchema",
+        "type",
+    )
+
+
+def test_streamable_http_legacy_tools_list_serializes_image_schema() -> None:
+    async def run() -> None:
+        server = create_server(QueryService(UnusedQueryRepository()))
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        app = server.streamable_http_app(
+            json_response=True,
+            stateless_http=True,
+            host="127.0.0.1",
+        )
+        http_server = uvicorn.Server(
+            uvicorn.Config(
+                app,
+                host="127.0.0.1",
+                port=port,
+                log_level="critical",
+                access_log=False,
+            )
+        )
+        serving = asyncio.create_task(http_server.serve(sockets=[listener]))
+        try:
+            for _ in range(200):
+                if http_server.started:
+                    break
+                if serving.done():
+                    await serving
+                await asyncio.sleep(0.01)
+            assert http_server.started
+            async with Client(
+                f"http://127.0.0.1:{port}/mcp",
+                mode="legacy",
+                raise_exceptions=True,
+            ) as client:
+                assert client.protocol_version == "2025-11-25"
+                tools = (await client.list_tools()).tools
+            tool = next(
+                item
+                for item in tools
+                if item.name == "pdi_read_resource_image_preview"
+            )
+            assert tool.output_schema is not None
+            assert_image_preview_output_schema(tool.output_schema)
+            serialized = json.dumps(tool.output_schema).lower()
+            for forbidden in (
+                "provider_locator",
+                "x-api-key",
+                "authorization",
+                "credential",
+                "imagecontent",
+                "base64",
+            ):
+                assert forbidden not in serialized
+        finally:
+            http_server.should_exit = True
+            await asyncio.wait_for(serving, timeout=5)
+            listener.close()
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("media_type", ["image/jpeg", "image/avif"])

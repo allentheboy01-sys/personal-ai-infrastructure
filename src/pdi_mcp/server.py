@@ -83,7 +83,7 @@ class ResourceImagePreviewFailure(BaseModel):
 class ResourceImagePreviewResult(
     RootModel[ResourceImagePreviewSuccess | ResourceImagePreviewFailure]
 ):
-    pass
+    model_config = ConfigDict(json_schema_extra={"type": "object"})
 
 
 def _error_result(
