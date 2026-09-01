@@ -656,6 +656,8 @@ def test_mcp_v02_surface_serialization_and_postgresql(v02_context) -> None:
             "pdi_rich_retrieve_resources",
             "pdi_get_data_status",
             "pdi_query_resources",
+            "pdi_read_resource_text",
+            "pdi_read_resource_image_preview",
         }
         payload = aggregation.structured_content
         assert payload is not None
