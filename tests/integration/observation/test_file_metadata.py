@@ -87,7 +87,6 @@ def _fact(
     token: str,
     *,
     metadata: dict,
-    content_hash: str | None,
 ) -> ProviderFact:
     return ProviderFact(
         provider="nextcloud",
@@ -99,7 +98,7 @@ def _fact(
             "size": 8,
             "mime_type": "text/markdown",
             "version_tag": "etag-stable",
-            "content_hash": content_hash,
+            "content_hash": None,
         },
         raw=metadata,
     )
@@ -108,8 +107,14 @@ def _fact(
 class _Adapter:
     provider_name = "nextcloud"
 
-    def __init__(self, fact: ProviderFact) -> None:
+    def __init__(
+        self,
+        fact: ProviderFact,
+        *,
+        allow_open: bool = False,
+    ) -> None:
         self.fact = fact
+        self.allow_open = allow_open
 
     def connect(self) -> None:
         return None
@@ -118,7 +123,11 @@ class _Adapter:
         return (self.fact,)
 
     def open(self, fact: ProviderFact):
-        pytest.fail("Temporal metadata reconciliation must not open content")
+        if not self.allow_open:
+            pytest.fail(
+                "Temporal metadata reconciliation must not open content"
+            )
+        yield b"12345678"
 
 
 def test_sync_backfills_new_curated_metadata_with_same_version_and_blob(
@@ -135,9 +144,12 @@ def test_sync_backfills_new_curated_metadata_with_same_version_and_blob(
     first = _fact(
         token,
         metadata=original_metadata,
-        content_hash=f"temporal-hash-{token}",
     )
-    SyncEngine(_Adapter(first), Matcher(), repository).sync_once()
+    SyncEngine(
+        _Adapter(first, allow_open=True),
+        Matcher(),
+        repository,
+    ).sync_once()
     before = repository.find_source(
         provider="nextcloud",
         external_id=f"temporal-sync-{token}",
@@ -147,6 +159,7 @@ def test_sync_backfills_new_curated_metadata_with_same_version_and_blob(
     blob_id = before.blob_id
     blob = repository.get_blob(blob_id)
     assert blob is not None
+    assert blob.size == 8
     asset_ids.add(UUID(blob.asset_id))
 
     backfilled_metadata = {
@@ -156,7 +169,6 @@ def test_sync_backfills_new_curated_metadata_with_same_version_and_blob(
     second = _fact(
         token,
         metadata=backfilled_metadata,
-        content_hash=None,
     )
     SyncEngine(_Adapter(second), Matcher(), repository).sync_once()
     after = repository.find_source(

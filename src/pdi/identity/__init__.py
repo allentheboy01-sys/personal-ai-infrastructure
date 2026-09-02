@@ -1,3 +1,15 @@
-from .matcher import Matcher
+from .matcher import (
+    BlobContentEvidenceInvariantError,
+    ContentEvidencePolicyError,
+    ContentEvidenceSizeOverflowError,
+    Matcher,
+    ProviderContentSizeMismatchError,
+)
 
-__all__ = ["Matcher"]
+__all__ = [
+    "BlobContentEvidenceInvariantError",
+    "ContentEvidencePolicyError",
+    "ContentEvidenceSizeOverflowError",
+    "Matcher",
+    "ProviderContentSizeMismatchError",
+]

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+import hashlib
 from uuid import uuid4
 
 from pdi.adapters.base import ProviderFact
@@ -22,6 +23,10 @@ def create_test_engine():
         require_safe_test_database_url(),
     )
 
+
+def _digest(label: str) -> str:
+    return hashlib.sha256(label.encode()).hexdigest()
+
 def test_connection():
     engine = create_test_engine()
     repo = PostgreSQLRepository(engine)
@@ -44,7 +49,8 @@ def test_distinct_message_sources_with_same_hash_persist_separately() -> None:
             external_id=f"message-{suffix}",
             name=None,
             attributes={
-                "content_hash": f"same-message-hash-{token}",
+                "content_hash": _digest(f"same-message-hash-{token}"),
+                "content_byte_length": 0,
                 "mime_type": "message/rfc822",
                 "version_tag": "immutable",
             },
@@ -87,7 +93,8 @@ def test_shared_blob_preserves_per_source_observations() -> None:
             "size": 0,
             "mime_type": "text/x-python",
             "version_tag": "a-v1",
-            "content_hash": f"shared-hash-{token}",
+            "content_hash": _digest(f"shared-hash-{token}"),
+            "content_byte_length": 0,
         },
         raw={},
     )
@@ -101,7 +108,8 @@ def test_shared_blob_preserves_per_source_observations() -> None:
             "size": 0,
             "mime_type": "text/markdown",
             "version_tag": "b-v1",
-            "content_hash": f"shared-hash-{token}",
+            "content_hash": _digest(f"shared-hash-{token}"),
+            "content_byte_length": 0,
         },
         raw={},
     )

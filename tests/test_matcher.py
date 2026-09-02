@@ -1,11 +1,29 @@
+import hashlib
+
 import pytest
 
 from pdi.adapters.base import ProviderFact
-from pdi.decision import ActionType
-from pdi.identity import Matcher
+from pdi.decision import ActionType, RequirementType
+from pdi.identity import (
+    BlobContentEvidenceInvariantError,
+    ContentEvidenceSizeOverflowError,
+    Matcher,
+    ProviderContentSizeMismatchError,
+)
 from pdi.models import Asset, AssetSource, Blob, ResourceType
 from pdi.models.asset_source import POSTGRES_BIGINT_MAX
 from pdi.repository import InMemoryRepository
+
+
+def _digest(label: str) -> str:
+    return hashlib.sha256(label.encode()).hexdigest()
+
+
+def _content_evidence(label: str, byte_length: int) -> dict[str, object]:
+    return {
+        "content_hash": _digest(label),
+        "content_byte_length": byte_length,
+    }
 
 
 def test_create_new_asset():
@@ -23,7 +41,7 @@ def test_create_new_asset():
             "mime_type": "application/pdf",
             "modified_at": None,
             "version_tag": "v1",
-            "content_hash": "hash-aaa",
+            **_content_evidence("hash-aaa", 1024),
         },
         raw={},
     )
@@ -68,7 +86,7 @@ def test_invalid_provider_size_cannot_reach_new_blob_or_source(
             "size": invalid_size,
             "mime_type": "text/plain",
             "version_tag": "v1",
-            "content_hash": "invalid-size-hash",
+            **_content_evidence("invalid-size-hash", 0),
         },
         raw={},
     )
@@ -98,7 +116,10 @@ def test_valid_provider_size_reaches_new_blob_and_source(
             "size": valid_size,
             "mime_type": "text/plain",
             "version_tag": "v1",
-            "content_hash": "valid-size-hash",
+            **_content_evidence(
+                "valid-size-hash",
+                0 if valid_size is None else valid_size,
+            ),
         },
         raw={},
     )
@@ -109,7 +130,7 @@ def test_valid_provider_size_reaches_new_blob_and_source(
     created_source = decision.actions[2].source
     assert created_blob is not None
     assert created_source is not None
-    assert created_blob.size == valid_size
+    assert created_blob.size == (0 if valid_size is None else valid_size)
     assert created_source.provider_size == valid_size
 
 
@@ -125,7 +146,7 @@ def _message_fact(
         external_id=external_id,
         name=None,
         attributes={
-            "content_hash": content_hash,
+            **_content_evidence(content_hash, 128),
             "mime_type": "message/rfc822",
             "size": 128,
             "version_tag": version_tag,
@@ -162,7 +183,9 @@ def test_existing_message_preserves_resource_and_versions_inside_it():
     repository.execute(matcher.match(original, repository))
     original_asset_id = next(iter(repository.assets))
 
-    assert matcher.match(original, repository).reason == "source_unchanged"
+    repeated = matcher.match(original, repository)
+    assert repeated.reason == "source_content_verified_unchanged"
+    assert repeated.actions == []
 
     changed = _message_fact(
         "message-a",
@@ -191,7 +214,7 @@ def test_existing_source_kind_mismatch_fails_explicitly():
         external_id="message-a",
         name="message.eml",
         attributes={
-            "content_hash": "same-raw-hash",
+            **_content_evidence("same-raw-hash", 128),
             "version_tag": "immutable-message",
         },
         raw={},
@@ -217,7 +240,7 @@ def test_same_source_should_do_nothing():
             "mime_type": "application/pdf",
             "modified_at": None,
             "version_tag": "v1",
-            "content_hash": "hash-aaa",
+            **_content_evidence("hash-aaa", 1024),
         },
         raw={},
     )
@@ -234,7 +257,7 @@ def test_same_source_should_do_nothing():
         repository=repository,
     )
 
-    assert second_decision.reason == "source_unchanged"
+    assert second_decision.reason == "source_content_verified_unchanged"
     assert second_decision.actions == []
 
     assert len(repository.assets) == 1
@@ -256,7 +279,7 @@ def test_rename_should_only_update_source():
             "mime_type": "application/pdf",
             "modified_at": None,
             "version_tag": "v1",
-            "content_hash": "hash-aaa",
+            **_content_evidence("hash-aaa", 1024),
         },
         raw={},
     )
@@ -279,7 +302,7 @@ def test_rename_should_only_update_source():
             "mime_type": "application/pdf",
             "modified_at": None,
             "version_tag": "v1",
-            "content_hash": "hash-aaa",
+            **_content_evidence("hash-aaa", 1024),
         },
         raw={},
     )
@@ -329,7 +352,7 @@ def test_content_change_should_create_new_blob():
             "mime_type": "application/pdf",
             "modified_at": None,
             "version_tag": "v1",
-            "content_hash": "hash-aaa",
+            **_content_evidence("hash-aaa", 1024),
         },
         raw={},
     )
@@ -352,7 +375,7 @@ def test_content_change_should_create_new_blob():
             "mime_type": "application/pdf",
             "modified_at": None,
             "version_tag": "v2",
-            "content_hash": "hash-bbb",
+            **_content_evidence("hash-bbb", 2048),
         },
         raw={},
     )
@@ -382,7 +405,7 @@ def test_content_change_should_create_new_blob():
     blob = repository.get_blob(source.blob_id)
 
     assert blob is not None
-    assert blob.hash == "hash-bbb"
+    assert blob.hash == _digest("hash-bbb")
 
     assert len(repository.assets) == 1
     assert len(repository.blobs) == 2
@@ -403,7 +426,7 @@ def test_new_source_should_reuse_existing_blob():
             "mime_type": "text/x-python",
             "modified_at": None,
             "version_tag": "nextcloud-v1",
-            "content_hash": "hash-aaa",
+            **_content_evidence("hash-aaa", 1024),
         },
         raw={},
     )
@@ -426,7 +449,7 @@ def test_new_source_should_reuse_existing_blob():
             "mime_type": "text/markdown",
             "modified_at": None,
             "version_tag": "google-v1",
-            "content_hash": "hash-aaa",
+            **_content_evidence("hash-aaa", 1024),
         },
         raw={},
     )
@@ -475,16 +498,7 @@ def test_new_source_should_reuse_existing_blob():
     assert len(repository.sources) == 2
 
 
-@pytest.mark.parametrize(
-    ("attribute", "changed_value"),
-    [
-        ("mime_type", "text/markdown"),
-        ("size", 2048),
-    ],
-)
-def test_same_version_provider_observation_change_updates_source(
-    attribute: str,
-    changed_value: object,
+def test_same_version_provider_mime_change_updates_source_without_evidence(
 ) -> None:
     repository = InMemoryRepository()
     matcher = Matcher()
@@ -498,7 +512,7 @@ def test_same_version_provider_observation_change_updates_source(
             "size": 1024,
             "mime_type": "text/plain",
             "version_tag": "v1",
-            "content_hash": "same-hash",
+            **_content_evidence("same-hash", 1024),
         },
         raw={},
     )
@@ -509,25 +523,69 @@ def test_same_version_provider_observation_change_updates_source(
         kind=fact.kind,
         external_id=fact.external_id,
         name=fact.name,
-        attributes={**fact.attributes, attribute: changed_value},
+        attributes={
+            key: value
+            for key, value in fact.attributes.items()
+            if key not in {"content_hash", "content_byte_length"}
+        }
+        | {"mime_type": "text/markdown"},
         raw=dict(fact.raw),
     )
 
     decision = matcher.match(changed, repository)
 
     assert decision.reason == "source_metadata_changed"
+    assert decision.requirements == []
     assert [action.type for action in decision.actions] == [
         ActionType.UPDATE_SOURCE,
     ]
     updated_source = decision.actions[0].source
     assert updated_source is not None
     assert updated_source.blob_id == original_blob.id
-    if attribute == "mime_type":
-        assert updated_source.provider_mime_type == changed_value
-        assert updated_source.provider_size == 1024
-    else:
-        assert updated_source.provider_mime_type == "text/plain"
-        assert updated_source.provider_size == changed_value
+    assert updated_source.provider_mime_type == "text/markdown"
+    assert updated_source.provider_size == 1024
+    assert repository.blobs[original_blob.id] == original_blob
+
+
+def test_same_version_non_null_provider_size_drift_requires_evidence(
+) -> None:
+    repository = InMemoryRepository()
+    matcher = Matcher()
+    fact = ProviderFact(
+        provider="nextcloud",
+        kind="file",
+        external_id="observed-file",
+        name="observed.txt",
+        attributes={
+            "path": "observed.txt",
+            "size": 1024,
+            "mime_type": "text/plain",
+            "version_tag": "v1",
+            **_content_evidence("same-hash", 1024),
+        },
+        raw={},
+    )
+    repository.execute(matcher.match(fact, repository))
+    original_blob = next(iter(repository.blobs.values()))
+    changed = ProviderFact(
+        provider=fact.provider,
+        kind=fact.kind,
+        external_id=fact.external_id,
+        name=fact.name,
+        attributes={
+            "path": "observed.txt",
+            "size": 2048,
+            "mime_type": "text/plain",
+            "version_tag": "v1",
+        },
+        raw={},
+    )
+
+    decision = matcher.match(changed, repository)
+
+    assert decision.reason == "content_evidence_required"
+    assert decision.requirements == [RequirementType.CONTENT_EVIDENCE]
+    assert decision.actions == []
     assert repository.blobs[original_blob.id] == original_blob
 
 
@@ -562,7 +620,6 @@ def test_legacy_null_source_first_observation_updates_source() -> None:
             "size": 32,
             "mime_type": "text/plain",
             "version_tag": source.version_tag,
-            "content_hash": blob.hash,
         },
         raw={},
     )
@@ -595,7 +652,7 @@ def test_existing_source_should_not_jump_between_assets():
             "mime_type": "application/pdf",
             "modified_at": None,
             "version_tag": "a-v1",
-            "content_hash": "hash-aaa",
+            **_content_evidence("hash-aaa", 100),
         },
         raw={},
     )
@@ -611,7 +668,7 @@ def test_existing_source_should_not_jump_between_assets():
             "mime_type": "application/pdf",
             "modified_at": None,
             "version_tag": "b-v1",
-            "content_hash": "hash-bbb",
+            **_content_evidence("hash-bbb", 200),
         },
         raw={},
     )
@@ -670,7 +727,7 @@ def test_existing_source_should_not_jump_between_assets():
             "mime_type": "application/pdf",
             "modified_at": None,
             "version_tag": "a-v2",
-            "content_hash": "hash-bbb",
+            **_content_evidence("hash-bbb", 200),
         },
         raw={},
     )
@@ -706,7 +763,7 @@ def test_existing_source_should_not_jump_between_assets():
 
     assert blob_a_after is not None
 
-    assert blob_a_after.hash == "hash-bbb"
+    assert blob_a_after.hash == _digest("hash-bbb")
     assert blob_a_after.asset_id == blob_a_before.asset_id
     assert blob_a_after.asset_id != blob_b.asset_id
     assert blob_a_after.id != blob_b.id
@@ -727,7 +784,7 @@ def test_new_source_preserves_provider_raw_metadata() -> None:
         attributes={
             "path": "/docs/metadata.txt",
             "version_tag": "v1",
-            "content_hash": "hash-metadata",
+            **_content_evidence("hash-metadata", 128),
             "size": 128,
             "mime_type": "text/plain",
         },

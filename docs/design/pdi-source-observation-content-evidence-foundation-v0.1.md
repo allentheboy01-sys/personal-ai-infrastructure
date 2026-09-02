@@ -47,16 +47,56 @@ exact non-negative integer byte length. Each bytes-like chunk is normalized
 independently, so contiguous and non-contiguous memoryviews are supported while
 the input iterable is still consumed exactly once.
 
-This gate keeps the existing digest-only API as a compatibility wrapper. Blob
-creation still uses its existing size path until the Matcher evidence policy is
-implemented in a later gate; historical Blob rows are not rewritten.
+The digest-only API remains as a compatibility wrapper. Matcher content paths
+that create or select a Blob require complete content evidence. The Sync Engine
+calculates the digest and byte length in one Provider body read and carries them
+as transient `content_hash` and `content_byte_length` attributes; neither value
+is Provider metadata or copied into `AssetSource.metadata`.
+
+New Blob rows use the evidence digest and the byte length from that same stream.
+Provider-declared size remains a Source observation and must match the streamed
+byte length when content evidence is obtained. A mismatch fails the fact before
+any Source or Blob action is applied. Existing Blobs are never rewritten.
+
+Provider version tags are change hints, not content proof. A version change
+requires content evidence. A same-version Provider-size change also requires
+content evidence, except for the bounded legacy transition below:
+
+- an existing null `provider_size` may be populated without opening content
+  when the incoming Provider size equals the attached Blob size;
+- if the incoming size differs from the attached Blob size, content evidence is
+  required;
+- a MIME-only observation change updates the Source without creating or
+  mutating a Blob.
+
+After verification, matching digest and byte length update only Source
+observations. Different bytes create or reuse a Blob inside the existing Asset.
+A matching digest with a different known Blob byte length is an invariant
+violation and fails closed rather than mutating or duplicating a same-hash
+Blob. A historical `Blob.size = NULL` is treated only as missing legacy
+evidence: matching content may continue to reference that Blob without filling
+or mutating the historical row. Every newly-created Blob has an evidence size.
+
+`Blob.mime_type` remains transitional legacy-compatible data for existing
+consumers. It is not promoted to canonical MIME authority by this work, and a
+new Source reusing a shared Blob cannot change it.
+
+`RequirementType.CONTENT_HASH` remains only as a deliberate compatibility
+contract for older requirement producers; the Sync Engine satisfies it through
+the same single content-evidence read. Matcher Blob paths use
+`CONTENT_EVIDENCE` explicitly.
+
+A future qualified Provider event that explicitly signals content change must
+force content evidence even when the version tag is unchanged. This gate does
+not add a speculative `ProviderFact` field or implement Nextcloud Activity or
+Immich incremental discovery; that signal hook remains deferred with those
+batch contracts.
 
 ## Deferred work
 
 The following remain deliberately deferred:
 
 - Provider-modified time as a typed Source observation;
-- the same-version size-drift content-evidence requirement;
 - canonical MIME classification and classifier provenance;
 - migration or backfill of existing Source observations;
 - switching Query, Resource Access, enrichment, or MCP consumers from Blob

@@ -1,3 +1,4 @@
+import hashlib
 import logging
 
 import pytest
@@ -5,7 +6,7 @@ import pytest
 from pdi.adapters.base import ProviderFact
 from pdi.engine import SyncEngine
 from pdi.identity import Matcher
-from pdi.models import ResourceType
+from pdi.models import Asset, AssetSource, Blob, ResourceType
 from pdi.repository import InMemoryRepository
 
 
@@ -62,6 +63,43 @@ def test_same_message_reuses_asset_and_changed_raw_stays_in_asset():
     assert repository.get_blob(source.blob_id).asset_id == original_asset
     assert len(repository.assets) == 1
     assert len(repository.blobs) == 2
+
+
+def test_legacy_message_blob_with_unknown_size_remains_usable():
+    repository = InMemoryRepository()
+    raw = b"Subject: Synthetic\r\n\r\nBody"
+    digest = hashlib.sha256(raw).hexdigest()
+    asset = Asset(resource_type=ResourceType.MESSAGE, title="Synthetic")
+    blob = Blob(
+        asset_id=asset.id,
+        hash=digest,
+        size=None,
+        mime_type="message/rfc822",
+    )
+    source = AssetSource(
+        blob_id=blob.id,
+        provider="gmail",
+        external_id="legacy-message",
+        name="Synthetic subject",
+        version_tag=digest,
+        provider_mime_type=None,
+        provider_size=None,
+        metadata={"internalDate": "1000"},
+    )
+    repository.assets[asset.id] = asset
+    repository.blobs[blob.id] = blob
+    repository.sources[source.id] = source
+
+    _sync(repository, [_fact("legacy-message")], raw=raw)
+
+    saved = repository.find_source("gmail", "legacy-message")
+    assert saved is not None
+    assert saved.blob_id == blob.id
+    assert saved.provider_mime_type == "message/rfc822"
+    assert saved.provider_size is None
+    assert repository.blobs[blob.id].size is None
+    assert len(repository.assets) == 1
+    assert len(repository.blobs) == 1
 
 
 def test_complete_missing_deactivates_but_failed_scan_does_not():

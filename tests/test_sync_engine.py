@@ -105,7 +105,7 @@ def test_partial_recursive_failure_does_not_deactivate_sources(
     )
 
     monkeypatch.setattr(adapter, "connect", lambda: None)
-    monkeypatch.setattr(adapter, "open", lambda fact: [b"content"])
+    monkeypatch.setattr(adapter, "open", lambda fact: [b"0123456789"])
 
     def failing_propfind(path: str) -> list[ProviderFact]:
         if path == "":
@@ -303,7 +303,7 @@ class _MutableProviderAdapter:
         self.opened_external_ids.append(fact.external_id)
         if fact.external_id in self._disappeared_external_ids:
             raise ProviderResourceDisappearedError(self.provider_name)
-        yield f"content-{fact.external_id}".encode()
+        yield b"0123456789"
 
 
 def test_disappeared_fact_marks_run_incomplete_but_later_fact_commits(

@@ -1,7 +1,9 @@
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pdi.adapters.base import ProviderFact
+from pdi.capability.hash import ContentEvidence
 from pdi.decision import (
     Action,
     ActionType,
@@ -9,9 +11,41 @@ from pdi.decision import (
     RequirementType,
 )
 from pdi.models import Asset, AssetSource, Blob, ResourceType
-from pdi.models.asset_source import validate_provider_size
+from pdi.models.asset_source import (
+    POSTGRES_BIGINT_MAX,
+    validate_provider_size,
+)
 from pdi.repository import Repository
-from datetime import UTC, datetime
+
+
+class ContentEvidencePolicyError(RuntimeError):
+    """Transient content evidence violates a frozen Matcher invariant."""
+
+
+class ProviderContentSizeMismatchError(ContentEvidencePolicyError):
+    """Provider size disagrees with the exact streamed byte length."""
+
+    def __init__(
+        self,
+        provider: str,
+        provider_size: int,
+        content_byte_length: int,
+    ) -> None:
+        self.provider = provider
+        self.provider_size = provider_size
+        self.content_byte_length = content_byte_length
+        super().__init__(
+            "Provider content size does not match streamed evidence: "
+            f"provider={provider}"
+        )
+
+
+class ContentEvidenceSizeOverflowError(ContentEvidencePolicyError):
+    """Streamed content cannot be represented by durable Blob.size."""
+
+
+class BlobContentEvidenceInvariantError(ContentEvidencePolicyError):
+    """An existing same-hash Blob has incompatible byte-length evidence."""
 
 
 class Matcher:
@@ -28,6 +62,8 @@ class Matcher:
                 reason=invalid_reason,
                 confidence=0.0,
             )
+
+        self._get_optional_provider_size_attribute(fact, "size")
 
         if fact.kind == "folder":
             return Decision(
@@ -64,28 +100,30 @@ class Matcher:
         fact: ProviderFact,
         repository: Repository,
     ) -> Decision:
-        content_hash = self._get_string_attribute(
-            fact,
-            "content_hash",
-        )
+        content_evidence = self._get_content_evidence(fact)
 
-        if content_hash is None:
-            return self._content_hash_required()
+        if content_evidence is None:
+            return self._content_evidence_required()
 
         if fact.kind == ResourceType.MESSAGE:
             return self._create_new_resource(
                 fact=fact,
-                content_hash=content_hash,
+                content_evidence=content_evidence,
                 resource_type=ResourceType.MESSAGE,
                 reason="new_message_source",
             )
 
         # 新 Source 可以在整个 World Model 中复用相同内容。
         existing_blob = repository.find_blob_by_hash(
-            content_hash,
+            content_evidence.sha256,
         )
 
         if existing_blob is not None:
+            self._require_blob_matches_content_evidence(
+                existing_blob,
+                content_evidence,
+                allow_legacy_unknown_size=False,
+            )
             source = self._build_source(
                 fact=fact,
                 blob_id=existing_blob.id,
@@ -104,7 +142,7 @@ class Matcher:
 
         return self._create_new_resource(
             fact=fact,
-            content_hash=content_hash,
+            content_evidence=content_evidence,
             resource_type=ResourceType.FILE,
             reason="new_source_new_blob",
         )
@@ -113,7 +151,7 @@ class Matcher:
         self,
         *,
         fact: ProviderFact,
-        content_hash: str,
+        content_evidence: ContentEvidence,
         resource_type: ResourceType,
         reason: str,
     ) -> Decision:
@@ -124,7 +162,7 @@ class Matcher:
         blob = self._build_blob(
             fact=fact,
             asset_id=asset.id,
-            content_hash=content_hash,
+            content_evidence=content_evidence,
         )
         source = self._build_source(fact=fact, blob_id=blob.id)
         return Decision(
@@ -152,6 +190,7 @@ class Matcher:
             return self._match_same_version_source(
                 fact=fact,
                 source=source,
+                repository=repository,
             )
 
         return self._match_changed_version_source(
@@ -164,7 +203,31 @@ class Matcher:
         self,
         fact: ProviderFact,
         source: AssetSource,
+        repository: Repository,
     ) -> Decision:
+        current_blob = self._require_current_blob(
+            source=source,
+            repository=repository,
+        )
+        content_evidence = self._get_content_evidence(fact)
+
+        if content_evidence is not None:
+            return self._match_verified_existing_content(
+                fact=fact,
+                source=source,
+                repository=repository,
+                current_blob=current_blob,
+                content_evidence=content_evidence,
+                same_version=True,
+            )
+
+        if self._same_version_requires_content_evidence(
+            fact=fact,
+            source=source,
+            current_blob=current_blob,
+        ):
+            return self._content_evidence_required()
+
         if self._source_state_is_unchanged(
             fact=fact,
             source=source,
@@ -198,55 +261,117 @@ class Matcher:
         source: AssetSource,
         repository: Repository,
     ) -> Decision:
-        content_hash = self._get_string_attribute(
-            fact,
-            "content_hash",
+        content_evidence = self._get_content_evidence(fact)
+
+        if content_evidence is None:
+            return self._content_evidence_required()
+
+        current_blob = self._require_current_blob(
+            source=source,
+            repository=repository,
+        )
+        return self._match_verified_existing_content(
+            fact=fact,
+            source=source,
+            repository=repository,
+            current_blob=current_blob,
+            content_evidence=content_evidence,
+            same_version=False,
         )
 
-        if content_hash is None:
-            return self._content_hash_required()
+    @staticmethod
+    def _content_evidence_required() -> Decision:
+        return Decision(
+            actions=[],
+            requirements=[
+                RequirementType.CONTENT_EVIDENCE,
+            ],
+            reason="content_evidence_required",
+            confidence=0.0,
+        )
 
+    @staticmethod
+    def _require_current_blob(
+        *,
+        source: AssetSource,
+        repository: Repository,
+    ) -> Blob:
         if source.blob_id is None:
-            return Decision(
-                actions=[],
-                reason="existing_source_has_no_blob",
-                confidence=0.0,
+            raise ContentEvidencePolicyError(
+                "Existing Source has no Blob"
             )
 
-        current_blob = repository.get_blob(
-            source.blob_id,
-        )
+        current_blob = repository.get_blob(source.blob_id)
 
         if current_blob is None:
-            return Decision(
-                actions=[],
-                reason="existing_source_blob_not_found",
-                confidence=0.0,
+            raise ContentEvidencePolicyError(
+                "Existing Source Blob was not found"
             )
 
         if current_blob.asset_id is None:
-            return Decision(
-                actions=[],
-                reason="existing_blob_has_no_asset",
-                confidence=0.0,
+            raise ContentEvidencePolicyError(
+                "Existing Blob has no Asset"
             )
 
-        # 已有 Source 必须维持原 Asset 生命周期。
-        # 因此只能在当前 Asset 内复用已有 Blob。
-        existing_blob_in_asset = (
-            repository.find_blob_by_hash_in_asset(
-                content_hash=content_hash,
-                asset_id=current_blob.asset_id,
-            )
+        return current_blob
+
+    @classmethod
+    def _same_version_requires_content_evidence(
+        cls,
+        *,
+        fact: ProviderFact,
+        source: AssetSource,
+        current_blob: Blob,
+    ) -> bool:
+        incoming_size = cls._get_optional_provider_size_attribute(
+            fact,
+            "size",
         )
 
-        if existing_blob_in_asset is not None:
-            updated_source = self._updated_source(
-                source=source,
-                fact=fact,
-                blob_id=existing_blob_in_asset.id,
+        if source.provider_size != incoming_size:
+            return not (
+                source.provider_size is None
+                and incoming_size is not None
+                and current_blob.size == incoming_size
             )
 
+        return (
+            incoming_size is not None
+            and current_blob.size != incoming_size
+        )
+
+    @classmethod
+    def _match_verified_existing_content(
+        cls,
+        *,
+        fact: ProviderFact,
+        source: AssetSource,
+        repository: Repository,
+        current_blob: Blob,
+        content_evidence: ContentEvidence,
+        same_version: bool,
+    ) -> Decision:
+        if current_blob.hash == content_evidence.sha256:
+            cls._require_blob_matches_content_evidence(
+                current_blob,
+                content_evidence,
+                allow_legacy_unknown_size=True,
+            )
+            if same_version and cls._source_state_is_unchanged(
+                fact=fact,
+                source=source,
+            ):
+                return Decision(
+                    actions=[],
+                    reason="source_content_verified_unchanged",
+                    confidence=1.0,
+                )
+
+            updated_source = cls._updated_source(
+                source=source,
+                fact=fact,
+                blob_id=current_blob.id,
+            )
             return Decision(
                 actions=[
                     Action(
@@ -254,47 +379,146 @@ class Matcher:
                         source=updated_source,
                     ),
                 ],
-                reason="source_returned_to_existing_blob_in_asset",
+                reason=(
+                    "source_content_verified_unchanged"
+                    if (
+                        same_version
+                        and cls._same_version_requires_content_evidence(
+                            fact=fact,
+                            source=source,
+                            current_blob=current_blob,
+                        )
+                    )
+                    else (
+                        "source_metadata_changed"
+                        if same_version
+                        else "source_returned_to_existing_blob_in_asset"
+                    )
+                ),
                 confidence=1.0,
             )
 
-        new_blob = self._build_blob(
-            fact=fact,
+        if current_blob.asset_id is None:
+            raise ContentEvidencePolicyError(
+                "Existing Blob has no Asset"
+            )
+
+        existing_blob_in_asset = repository.find_blob_by_hash_in_asset(
+            content_hash=content_evidence.sha256,
             asset_id=current_blob.asset_id,
-            content_hash=content_hash,
         )
 
-        updated_source = self._updated_source(
+        if existing_blob_in_asset is not None:
+            cls._require_blob_matches_content_evidence(
+                existing_blob_in_asset,
+                content_evidence,
+                allow_legacy_unknown_size=True,
+            )
+            updated_source = cls._updated_source(
+                source=source,
+                fact=fact,
+                blob_id=existing_blob_in_asset.id,
+            )
+            return Decision(
+                actions=[
+                    Action(
+                        type=ActionType.UPDATE_SOURCE,
+                        source=updated_source,
+                    ),
+                ],
+                reason=(
+                    "source_content_changed_same_version_reused_blob"
+                    if same_version
+                    else "source_returned_to_existing_blob_in_asset"
+                ),
+                confidence=1.0,
+            )
+
+        new_blob = cls._build_blob(
+            fact=fact,
+            asset_id=current_blob.asset_id,
+            content_evidence=content_evidence,
+        )
+        updated_source = cls._updated_source(
             source=source,
             fact=fact,
             blob_id=new_blob.id,
         )
-
         return Decision(
             actions=[
-                Action(
-                    type=ActionType.CREATE_BLOB,
-                    blob=new_blob,
-                ),
-                Action(
-                    type=ActionType.UPDATE_SOURCE,
-                    source=updated_source,
-                ),
+                Action(type=ActionType.CREATE_BLOB, blob=new_blob),
+                Action(type=ActionType.UPDATE_SOURCE, source=updated_source),
             ],
-            reason="new_blob_for_existing_asset",
+            reason=(
+                "source_content_changed_same_version_new_blob"
+                if same_version
+                else "new_blob_for_existing_asset"
+            ),
             confidence=1.0,
         )
 
-    @staticmethod
-    def _content_hash_required() -> Decision:
-        return Decision(
-            actions=[],
-            requirements=[
-                RequirementType.CONTENT_HASH,
-            ],
-            reason="content_hash_required",
-            confidence=0.0,
+    @classmethod
+    def _get_content_evidence(
+        cls,
+        fact: ProviderFact,
+    ) -> ContentEvidence | None:
+        content_hash = fact.attributes.get("content_hash")
+        content_byte_length = fact.attributes.get("content_byte_length")
+
+        if content_hash is None and content_byte_length is None:
+            return None
+
+        try:
+            content_evidence = ContentEvidence(
+                sha256=content_hash,
+                byte_length=content_byte_length,
+            )
+        except ValueError as error:
+            raise ContentEvidencePolicyError(
+                "Transient content evidence is incomplete or invalid"
+            ) from error
+
+        if content_evidence.byte_length > POSTGRES_BIGINT_MAX:
+            raise ContentEvidenceSizeOverflowError(
+                "Content byte length exceeds PostgreSQL BIGINT"
+            )
+
+        provider_size = cls._get_optional_provider_size_attribute(
+            fact,
+            "size",
         )
+        if (
+            provider_size is not None
+            and provider_size != content_evidence.byte_length
+        ):
+            raise ProviderContentSizeMismatchError(
+                provider=fact.provider,
+                provider_size=provider_size,
+                content_byte_length=content_evidence.byte_length,
+            )
+
+        return content_evidence
+
+    @staticmethod
+    def _require_blob_matches_content_evidence(
+        blob: Blob,
+        content_evidence: ContentEvidence,
+        *,
+        allow_legacy_unknown_size: bool,
+    ) -> None:
+        if (
+            blob.hash != content_evidence.sha256
+            or (
+                blob.size != content_evidence.byte_length
+                and not (
+                    allow_legacy_unknown_size
+                    and blob.size is None
+                )
+            )
+        ):
+            raise BlobContentEvidenceInvariantError(
+                "Existing Blob does not match same-content evidence"
+            )
 
     @staticmethod
     def _validate_fact(
@@ -467,13 +691,8 @@ class Matcher:
     def _build_blob(
         fact: ProviderFact,
         asset_id: str,
-        content_hash: str,
+        content_evidence: ContentEvidence,
     ) -> Blob:
-        size = Matcher._get_optional_provider_size_attribute(
-            fact,
-            "size",
-        )
-
         mime_type = fact.attributes.get("mime_type")
 
         if not isinstance(mime_type, str):
@@ -481,8 +700,8 @@ class Matcher:
 
         return Blob(
             asset_id=asset_id,
-            hash=content_hash,
-            size=size,
+            hash=content_evidence.sha256,
+            size=content_evidence.byte_length,
             mime_type=mime_type,
         )
 

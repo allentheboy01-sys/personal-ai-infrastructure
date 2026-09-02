@@ -2,7 +2,7 @@ import logging
 import time
 
 from pdi.adapters.base import Adapter, ProviderResourceDisappearedError
-from pdi.capability.hash import calculate_sha256
+from pdi.capability.hash import calculate_content_evidence
 from pdi.decision import RequirementType
 from pdi.identity import Matcher
 from pdi.repository import Repository
@@ -91,18 +91,20 @@ class SyncEngine:
                 repository=self.repository,
             )
 
-            if (
-                RequirementType.CONTENT_HASH
-                in decision.requirements
-            ):
+            content_requirements = {
+                RequirementType.CONTENT_HASH,
+                RequirementType.CONTENT_EVIDENCE,
+            }
+            evidence_was_computed = False
+            if content_requirements.intersection(decision.requirements):
                 logger.debug(
-                    "Content hash required provider=%s kind=%s",
+                    "Content evidence required provider=%s kind=%s",
                     fact.provider,
                     fact.kind,
                 )
 
                 try:
-                    content_hash = calculate_sha256(
+                    content_evidence = calculate_content_evidence(
                         self.adapter.open(fact)
                     )
                 except ProviderResourceDisappearedError:
@@ -115,13 +117,17 @@ class SyncEngine:
                     )
                     continue
 
-                fact.attributes["content_hash"] = content_hash
+                fact.attributes["content_hash"] = content_evidence.sha256
+                fact.attributes["content_byte_length"] = (
+                    content_evidence.byte_length
+                )
                 if fact.kind == "message":
-                    fact.attributes["version_tag"] = content_hash
+                    fact.attributes["version_tag"] = content_evidence.sha256
                 hash_count += 1
+                evidence_was_computed = True
 
                 logger.debug(
-                    "Content hash calculated provider=%s kind=%s",
+                    "Content evidence calculated provider=%s kind=%s",
                     fact.provider,
                     fact.kind,
                 )
@@ -139,6 +145,17 @@ class SyncEngine:
                     fact.kind,
                     decision.requirements,
                 )
+
+                if (
+                    evidence_was_computed
+                    and content_requirements.intersection(
+                        decision.requirements
+                    )
+                ):
+                    raise RuntimeError(
+                        "Content evidence requirement remained after "
+                        "one Provider body read"
+                    )
 
                 raise RuntimeError(
                     "SyncEngine could not satisfy requirements: "

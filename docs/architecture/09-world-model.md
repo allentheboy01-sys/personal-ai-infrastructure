@@ -83,7 +83,12 @@ It answers:
 
 > What exact content did this Asset have?
 
-A Blob is primarily identified by content evidence such as a cryptographic hash.
+A Blob is primarily identified by content evidence such as a cryptographic
+hash. Its size is the exact byte length of the same stream used to calculate
+that hash. Provider-reported size remains Source observation data.
+
+The existing Blob MIME field remains legacy-underspecified until canonical MIME
+classification is designed. Provider MIME cannot mutate an already-shared Blob.
 
 When content changes, PDI creates a new Blob rather than mutating the existing Blob.
 
@@ -121,6 +126,7 @@ A Source carries Provider-facing state such as:
 - `path`;
 - `name`;
 - `version_tag`;
+- normalized Provider MIME and size observations;
 - Provider metadata;
 - current `blob_id`;
 - active state;

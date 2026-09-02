@@ -89,6 +89,18 @@ Blob uses a hybrid state model:
 - frequently queried common fields remain strongly typed, such as content hash, size, and MIME type;
 - type-specific state is stored in a structured `state` field, implemented as JSONB in PostgreSQL.
 
+For byte-backed Blobs, `hash` and `size` are content-intrinsic evidence: the
+size is the exact byte length of the same stream used to calculate the hash.
+Provider-declared size is Source observation data and cannot override this
+evidence. Historical rows with a null size remain readable as missing legacy
+evidence; they are not rewritten in place.
+
+The current `mime_type` column predates normalized Source MIME observations and
+is legacy-underspecified. It remains immutable and readable for compatibility,
+but Provider MIME does not define shared Blob identity or authorize mutation of
+an existing Blob. Canonical content MIME classification is a separate future
+decision.
+
 Examples of type-specific state include contact fields, event times, or message metadata.
 
 ### Lifecycle
@@ -117,6 +129,7 @@ Typical fields include:
 - external object identifier;
 - path or provider location;
 - ETag or provider version marker;
+- normalized Provider size and MIME observations;
 - provider-specific source metadata.
 
 ### Ownership

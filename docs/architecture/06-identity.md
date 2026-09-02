@@ -73,18 +73,27 @@ Therefore, a rename or move updates the existing Source rather than creating a n
 
 ## Content Identity
 
-A Provider version tag and a content hash answer different questions:
+A Provider version tag and content evidence answer different questions:
 
 - `version_tag`: does the Provider report that this object changed?
-- `content_hash`: is the content actually different?
+- `content_hash` plus `content_byte_length`: what exact bytes were streamed?
 
 Identity first uses lightweight Provider metadata. When a changed version tag is not enough to determine content identity, it returns:
 
 ```text
-Requirement(CONTENT_HASH)
+Requirement(CONTENT_EVIDENCE)
 ```
 
-The Sync Engine satisfies the requirement and calls Identity again with an enriched fact.
+The Sync Engine satisfies the requirement in one body read and calls Identity
+again with both transient evidence fields. Provider size remains a separate
+Source observation. A Provider size mismatch, or an existing same-hash Blob
+with a different byte length, fails closed.
+
+For a same-version Source, MIME-only observation drift updates the Source
+without content access. Provider-size drift requires content evidence. As a
+bounded migration transition, a null Source provider size can be populated
+without content access only when the incoming size equals the current Blob's
+evidence size.
 
 ## State Transitions
 
@@ -145,6 +154,8 @@ The Source is marked inactive and receives a deletion timestamp. It is not physi
 8. Missing objects are not inferred from a partial or failed scan.
 9. Deactivation preserves history instead of deleting it.
 10. Identity decisions must remain independent of the storage implementation.
+11. New Blob hash and size come from the same streamed content evidence.
+12. Provider observations never mutate an existing shared Blob.
 
 ## Current Boundary
 
