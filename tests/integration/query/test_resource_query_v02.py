@@ -291,6 +291,156 @@ def test_aggregation_boundaries_days_and_mime_semantics(v02_context) -> None:
     }
 
 
+def test_source_mime_authority_conflicts_shared_blob_and_legacy_fallback(
+    v02_context,
+) -> None:
+    _, repository, service, data = v02_context
+    token = uuid4().hex
+    path_prefix = f"/mime-authority/{token}"
+    shared = Asset(
+        title=f"Shared MIME {token}",
+        created_at=data.now - timedelta(hours=1),
+        updated_at=data.now - timedelta(hours=1),
+    )
+    false_image = Asset(
+        title=f"False image {token}",
+        created_at=data.now - timedelta(hours=2),
+        updated_at=data.now - timedelta(hours=2),
+    )
+    legacy = Asset(
+        title=f"Legacy MIME {token}",
+        created_at=data.now - timedelta(hours=3),
+        updated_at=data.now - timedelta(hours=3),
+    )
+    unknown = Asset(
+        title=f"Unknown MIME {token}",
+        created_at=data.now - timedelta(hours=4),
+        updated_at=data.now - timedelta(hours=4),
+    )
+    shared_blob = Blob(
+        asset_id=shared.id,
+        hash=f"mime-shared-{token}",
+        size=10,
+        mime_type="application/octet-stream",
+    )
+    false_image_blob = Blob(
+        asset_id=false_image.id,
+        hash=f"mime-false-image-{token}",
+        size=10,
+        mime_type="image/jpeg",
+    )
+    legacy_blob = Blob(
+        asset_id=legacy.id,
+        hash=f"mime-legacy-{token}",
+        size=10,
+        mime_type="text/plain",
+    )
+    unknown_blob = Blob(
+        asset_id=unknown.id,
+        hash=f"mime-unknown-{token}",
+        size=10,
+        mime_type=None,
+    )
+
+    def source(
+        blob: Blob,
+        name: str,
+        provider_mime_type: str | None,
+    ) -> AssetSource:
+        return AssetSource(
+            blob_id=blob.id,
+            provider=f"mime-provider-{name}",
+            external_id=f"mime-source-{token}-{name}",
+            path=f"{path_prefix}/{name}",
+            name=name,
+            provider_mime_type=provider_mime_type,
+        )
+
+    sources = (
+        source(shared_blob, "source.py", "text/x-python"),
+        source(shared_blob, "source.md", "text/markdown"),
+        source(false_image_blob, "opaque.bin", "application/octet-stream"),
+        source(legacy_blob, "legacy.txt", None),
+        source(unknown_blob, "unknown.bin", None),
+    )
+    repository.execute(Decision(actions=[
+        *(
+            Action(type=ActionType.CREATE_ASSET, asset=asset)
+            for asset in (shared, false_image, legacy, unknown)
+        ),
+        *(
+            Action(type=ActionType.CREATE_BLOB, blob=blob)
+            for blob in (
+                shared_blob,
+                false_image_blob,
+                legacy_blob,
+                unknown_blob,
+            )
+        ),
+        *(
+            Action(type=ActionType.CREATE_SOURCE, source=item)
+            for item in sources
+        ),
+    ]))
+
+    for mime_type, expected_ref in (
+        ("text/x-python", format_resource_ref(shared.id)),
+        ("text/markdown", format_resource_ref(shared.id)),
+        ("application/octet-stream", format_resource_ref(false_image.id)),
+        ("text/plain", format_resource_ref(legacy.id)),
+    ):
+        page = service.list_resource_page(
+            days=10,
+            mime_type=mime_type,
+            path_prefix=path_prefix,
+        )
+        assert [item.resource_ref for item in page.resources] == [expected_ref]
+
+    assert service.list_resource_page(
+        days=10,
+        mime_type="image/jpeg",
+        path_prefix=path_prefix,
+    ).resources == ()
+    assert service.search_resource_page(
+        query="opaque",
+        mime_type="image/jpeg",
+        path_prefix=path_prefix,
+    ).resources == ()
+    assert [item.resource_ref for item in service.search_resource_page(
+        query="opaque",
+        mime_type="application/octet-stream",
+        path_prefix=path_prefix,
+    ).resources] == [format_resource_ref(false_image.id)]
+    assert [item.resource_ref for item in service.list_resource_page(
+        days=10,
+        mime_category="unknown",
+        path_prefix=path_prefix,
+    ).resources] == [format_resource_ref(unknown.id)]
+
+    grouped = service.aggregate_resources(
+        group_by="mime_type",
+        observed_from=data.now - timedelta(days=1),
+        observed_to=data.now,
+        path_prefix=path_prefix,
+    )
+    assert {(bucket.key, bucket.count) for bucket in grouped.buckets} == {
+        ("text/x-python", 1),
+        ("text/markdown", 1),
+        ("application/octet-stream", 1),
+        ("text/plain", 1),
+        ("unknown", 1),
+    }
+    detail = service.get_resource(format_resource_ref(shared.id))
+    assert detail is not None
+    assert {item.mime_type for item in detail.sources} == {
+        "text/x-python",
+        "text/markdown",
+    }
+    assert {item.mime_type for item in detail.content_variants} == {
+        "application/octet-stream"
+    }
+
+
 def test_provider_counts_distinct_resources_and_same_source_filters(
     v02_context,
 ) -> None:

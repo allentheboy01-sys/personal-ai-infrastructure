@@ -90,6 +90,13 @@ that hash. Provider-reported size remains Source observation data.
 The existing Blob MIME field remains legacy-underspecified until canonical MIME
 classification is designed. Provider MIME cannot mutate an already-shared Blob.
 
+Source-facing Query, Resource Access, and enrichment projections use an
+effective Source MIME: `Source.provider_mime_type` when it is non-null, and
+`Blob.mime_type` only when the Source observation is null. The Blob value is a
+legacy migration fallback, not MIME authority. A Provider MIME observation
+therefore wins even when it conflicts with the shared Blob value. Canonical
+content MIME classification is not implemented.
+
 When content changes, PDI creates a new Blob rather than mutating the existing Blob.
 
 ```text

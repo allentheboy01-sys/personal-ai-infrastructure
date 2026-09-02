@@ -283,6 +283,7 @@ class ResourceAccessService:
             source.provider == "immich"
             and source.provider in self._provider_adapters
             and source.resource_type == "file"
+            and isinstance(source.mime_type, str)
             and source.mime_type.lower().startswith(mime_prefixes)
         )
 

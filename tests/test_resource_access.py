@@ -33,7 +33,7 @@ def _source(
     locator: str = "source-a",
     *,
     provider: str = "immich",
-    mime_type: str = "image/jpeg",
+    mime_type: str | None = "image/jpeg",
     resource_type: str = "file",
 ) -> ResourceAccessSource:
     return ResourceAccessSource(
@@ -186,6 +186,10 @@ def test_service_validates_canonical_ref_and_kind() -> None:
         ((), RepresentationUnavailableError),
         ((_source(resource_type="message"),), RepresentationUnavailableError),
         ((_source(provider="nextcloud"),), RepresentationUnavailableError),
+        (
+            (_source(mime_type="application/octet-stream"),),
+            RepresentationUnavailableError,
+        ),
         ((_source(), _source("source-b")), AmbiguousAccessSourceError),
     ],
 )
@@ -201,6 +205,23 @@ def test_service_source_resolution(sources, expected) -> None:
 
     asyncio.run(run())
     assert adapter.calls == []
+
+
+def test_null_mime_is_ineligible_without_crashing() -> None:
+    service, adapter = _service(StubRepository((_source(mime_type=None),)))
+
+    async def run() -> None:
+        with pytest.raises(RepresentationUnavailableError):
+            await service.open_representation(
+                format_resource_ref(uuid4()),
+                "thumbnail",
+            )
+        with pytest.raises(RepresentationUnavailableError):
+            await service.open_video(format_resource_ref(uuid4()), None)
+
+    asyncio.run(run())
+    assert adapter.calls == []
+    assert adapter.video_calls == []
 
 
 def test_video_thumbnail_is_a_bounded_image_representation() -> None:

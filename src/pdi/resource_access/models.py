@@ -15,7 +15,7 @@ class ResourceAccessSource:
     provider: str
     provider_locator: str = field(repr=False)
     resource_type: str
-    mime_type: str
+    mime_type: str | None
 
 
 @dataclass(frozen=True, slots=True)

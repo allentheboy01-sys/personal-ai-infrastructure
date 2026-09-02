@@ -3,9 +3,9 @@
 ## Status and scope
 
 This foundation separates normalized Provider observations from content
-evidence without changing current query, Resource Access, enrichment, or MCP
-contracts. It does not classify canonical MIME types or backfill existing
-Sources.
+evidence. Source-facing Query, Resource Access, enrichment, and MCP projections
+now apply the effective Source MIME rule described below. It does not classify
+canonical MIME types or backfill existing Sources.
 
 ## Source observations
 
@@ -81,6 +81,14 @@ or mutating the historical row. Every newly-created Blob has an evidence size.
 consumers. It is not promoted to canonical MIME authority by this work, and a
 new Source reusing a shared Blob cannot change it.
 
+For Source-facing Query, Resource Access, and enrichment behavior,
+`effective_source_mime_type` is the non-null
+`AssetSource.provider_mime_type`; only a null Source observation falls back to
+`Blob.mime_type` for legacy migration compatibility. Conflicts always resolve
+to the Provider observation. Blob-level views may continue exposing the legacy
+Blob field, but it does not decide Source filtering, grouping, access, or
+enrichment eligibility. This rule does not define canonical content MIME.
+
 `RequirementType.CONTENT_HASH` remains only as a deliberate compatibility
 contract for older requirement producers; the Sync Engine satisfies it through
 the same single content-evidence read. Matcher Blob paths use
@@ -99,8 +107,8 @@ The following remain deliberately deferred:
 - Provider-modified time as a typed Source observation;
 - canonical MIME classification and classifier provenance;
 - migration or backfill of existing Source observations;
-- switching Query, Resource Access, enrichment, or MCP consumers from Blob
-  MIME/size to Source observations.
+- canonical size semantics beyond the already-frozen Blob content length and
+  Source Provider-size observation boundaries.
 
 The legacy bootstrap `schema.sql` and its schema preflight describe the frozen
 unversioned V0.1 adoption schema. The additive Alembic revision, ORM metadata,

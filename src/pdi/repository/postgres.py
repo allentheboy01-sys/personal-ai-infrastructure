@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
 from pdi.decision import Action, ActionType, Decision
-from pdi.models import Asset, AssetSource, Blob, ResourceType
+from pdi.models import (
+    Asset,
+    AssetSource,
+    Blob,
+    ResourceType,
+    effective_source_mime_type,
+)
 from pdi.query.models import (
     AssetDetail,
     AssetSummary,
@@ -475,7 +481,10 @@ class PostgreSQLRepository(
                     provider=source.provider,
                     provider_locator=source.external_id,
                     resource_type=asset.resource_type,
-                    mime_type=blob.mime_type,
+                    mime_type=effective_source_mime_type(
+                        source.provider_mime_type,
+                        blob.mime_type,
+                    ),
                 )
                 for source, blob, asset in rows
             )
@@ -513,7 +522,10 @@ class PostgreSQLRepository(
                     provider=source.provider,
                     provider_locator=source.path or "",
                     resource_type=asset.resource_type,
-                    mime_type=blob.mime_type,
+                    mime_type=effective_source_mime_type(
+                        source.provider_mime_type,
+                        blob.mime_type,
+                    ),
                     size_bytes=blob.size,
                     blob_sha256=blob.hash,
                     version_tag=source.version_tag,
@@ -543,7 +555,9 @@ class PostgreSQLRepository(
         if provider is not None:
             filters.append(AssetSourceORM.provider == provider)
         if mime_type is not None:
-            filters.append(BlobORM.mime_type == mime_type)
+            filters.append(
+                cls._effective_source_mime_expression() == mime_type
+            )
         if mime_category is not None:
             filters.append(
                 cls._mime_category_expression() == mime_category
@@ -560,19 +574,27 @@ class PostgreSQLRepository(
         return filters
 
     @staticmethod
-    def _mime_category_expression():
+    def _effective_source_mime_expression():
+        return func.coalesce(
+            AssetSourceORM.provider_mime_type,
+            BlobORM.mime_type,
+        )
+
+    @classmethod
+    def _mime_category_expression(cls):
+        effective_mime = cls._effective_source_mime_expression()
         return case(
             (
                 or_(
-                    BlobORM.mime_type.is_(None),
-                    BlobORM.mime_type == "",
+                    effective_mime.is_(None),
+                    effective_mime == "",
                 ),
                 "unknown",
             ),
             (
-                func.strpos(BlobORM.mime_type, "/") > 0,
+                func.strpos(effective_mime, "/") > 0,
                 func.lower(
-                    func.split_part(BlobORM.mime_type, "/", 1)
+                    func.split_part(effective_mime, "/", 1)
                 ),
             ),
             else_="other",
@@ -635,7 +657,10 @@ class PostgreSQLRepository(
             provider=source_orm.provider,
             location=source_orm.path,
             name=source_orm.name,
-            mime_type=blob_orm.mime_type,
+            mime_type=effective_source_mime_type(
+                source_orm.provider_mime_type,
+                blob_orm.mime_type,
+            ),
             size_bytes=blob_orm.size,
             is_active=source_orm.is_active,
         )
@@ -1410,15 +1435,16 @@ class PostgreSQLRepository(
                 "YYYY-MM-DD",
             )
         if group_by is ResourceGroupBy.MIME_TYPE:
+            effective_mime = cls._effective_source_mime_expression()
             return case(
                 (
                     or_(
-                        BlobORM.mime_type.is_(None),
-                        BlobORM.mime_type == "",
+                        effective_mime.is_(None),
+                        effective_mime == "",
                     ),
                     "unknown",
                 ),
-                else_=BlobORM.mime_type,
+                else_=effective_mime,
             )
         if group_by is ResourceGroupBy.MIME_CATEGORY:
             return cls._mime_category_expression()

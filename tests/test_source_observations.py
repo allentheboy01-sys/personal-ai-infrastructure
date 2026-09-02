@@ -1,7 +1,7 @@
 import pytest
 
 from pdi.decision import Action, ActionType, Decision
-from pdi.models import AssetSource
+from pdi.models import AssetSource, effective_source_mime_type
 from pdi.models.asset_source import POSTGRES_BIGINT_MAX
 from pdi.repository import InMemoryRepository
 
@@ -42,6 +42,23 @@ def test_legacy_source_without_observations_remains_valid() -> None:
 
     assert source.provider_mime_type is None
     assert source.provider_size is None
+
+
+@pytest.mark.parametrize(
+    ("provider_mime", "blob_mime", "expected"),
+    [
+        ("text/markdown", "application/octet-stream", "text/markdown"),
+        ("application/octet-stream", "image/jpeg", "application/octet-stream"),
+        (None, "text/plain", "text/plain"),
+        (None, None, None),
+    ],
+)
+def test_effective_source_mime_is_provider_first_with_null_only_fallback(
+    provider_mime: str | None,
+    blob_mime: str | None,
+    expected: str | None,
+) -> None:
+    assert effective_source_mime_type(provider_mime, blob_mime) == expected
 
 
 @pytest.mark.parametrize(

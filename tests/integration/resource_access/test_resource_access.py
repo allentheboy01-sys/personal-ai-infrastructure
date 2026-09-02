@@ -81,9 +81,7 @@ def test_postgres_resource_access_mapping_is_read_only_and_detached() -> None:
                     ),
                     "size": 100,
                     "mime_type": (
-                        "video/mp4"
-                        if name == "video"
-                        else "text/markdown"
+                        "application/octet-stream"
                         if name == "nextcloud_text"
                         else "image/jpeg"
                     ),
@@ -106,6 +104,15 @@ def test_postgres_resource_access_mapping_is_read_only_and_detached() -> None:
                     "path": f"/resource-access/{name}",
                     "name": f"{name}.jpg",
                     "version_tag": "1",
+                    "provider_mime_type": (
+                        "video/mp4"
+                        if name == "video"
+                        else "text/markdown"
+                        if name == "nextcloud_text"
+                        else "application/octet-stream"
+                        if name == "nextcloud"
+                        else None
+                    ),
                     "metadata": {},
                     "is_active": name != "inactive",
                     "deleted_at": now if name == "inactive" else None,
@@ -172,7 +179,7 @@ def test_postgres_resource_access_mapping_is_read_only_and_detached() -> None:
                 provider="nextcloud",
                 provider_locator="/resource-access/nextcloud",
                 resource_type="file",
-                mime_type="image/jpeg",
+                mime_type="application/octet-stream",
                 size_bytes=100,
                 blob_sha256="b" * 64,
                 version_tag="1",

@@ -7,6 +7,17 @@ from uuid import uuid4
 POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807
 
 
+def effective_source_mime_type(
+    provider_mime_type: str | None,
+    legacy_blob_mime_type: str | None,
+) -> str | None:
+    """Return Provider MIME, with a NULL-only legacy Blob fallback."""
+
+    if provider_mime_type is not None:
+        return provider_mime_type
+    return legacy_blob_mime_type
+
+
 def validate_provider_size(value: object) -> int | None:
     """Validate a normalized Provider size for durable Source storage."""
 

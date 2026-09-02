@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import Engine, select, update
+from sqlalchemy import Engine, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from pdi.query import format_resource_ref, parse_resource_ref
@@ -292,7 +292,10 @@ class PostgreSQLObservationRepository:
                     AssetSourceORM.external_id,
                     BlobORM.hash,
                     BlobORM.size,
-                    BlobORM.mime_type,
+                    func.coalesce(
+                        AssetSourceORM.provider_mime_type,
+                        BlobORM.mime_type,
+                    ),
                     AssetSourceORM.path,
                     AssetSourceORM.name,
                     AssetSourceORM.version_tag,
