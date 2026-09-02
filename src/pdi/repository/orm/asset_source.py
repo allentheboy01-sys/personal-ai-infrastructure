@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -65,6 +66,16 @@ class AssetSourceORM(Base):
 
     version_tag: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
+    )
+
+    provider_mime_type: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    provider_size: Mapped[int | None] = mapped_column(
+        BigInteger,
         nullable=True,
     )
 

@@ -177,6 +177,8 @@ class PostgreSQLRepository(
             path=source.path,
             name=source.name,
             version_tag=source.version_tag,
+            provider_mime_type=source.provider_mime_type,
+            provider_size=source.provider_size,
             metadata_=source.metadata,
             is_active=source.is_active,
             deleted_at=source.deleted_at,
@@ -194,6 +196,8 @@ class PostgreSQLRepository(
             path=source_orm.path,
             name=source_orm.name,
             version_tag=source_orm.version_tag,
+            provider_mime_type=source_orm.provider_mime_type,
+            provider_size=source_orm.provider_size,
             metadata=dict(source_orm.metadata_),
             is_active=source_orm.is_active,
             deleted_at=source_orm.deleted_at,
@@ -1665,6 +1669,8 @@ class PostgreSQLRepository(
         source_orm.path = source.path
         source_orm.name = source.name
         source_orm.version_tag = source.version_tag
+        source_orm.provider_mime_type = source.provider_mime_type
+        source_orm.provider_size = source.provider_size
         source_orm.metadata_ = source.metadata
 
     def _execute_deactivate_source(

@@ -9,6 +9,7 @@ from pdi.decision import (
     RequirementType,
 )
 from pdi.models import Asset, AssetSource, Blob, ResourceType
+from pdi.models.asset_source import validate_provider_size
 from pdi.repository import Repository
 from datetime import UTC, datetime
 
@@ -357,6 +358,16 @@ class Matcher:
                 fact,
                 "version_tag",
             )
+            and source.provider_mime_type
+            == cls._get_optional_string_attribute(
+                fact,
+                "mime_type",
+            )
+            and source.provider_size
+            == cls._get_optional_provider_size_attribute(
+                fact,
+                "size",
+            )
             and source.metadata
             == cls._build_source_metadata(fact)
         )
@@ -380,6 +391,14 @@ class Matcher:
                 fact,
                 "version_tag",
             ),
+            provider_mime_type=cls._get_optional_string_attribute(
+                fact,
+                "mime_type",
+            ),
+            provider_size=cls._get_optional_provider_size_attribute(
+                fact,
+                "size",
+            ),
             metadata=cls._build_source_metadata(fact),
         )
 
@@ -401,6 +420,14 @@ class Matcher:
             version_tag=cls._get_optional_string_attribute(
                 fact,
                 "version_tag",
+            ),
+            provider_mime_type=cls._get_optional_string_attribute(
+                fact,
+                "mime_type",
+            ),
+            provider_size=cls._get_optional_provider_size_attribute(
+                fact,
+                "size",
             ),
             metadata=cls._build_source_metadata(fact),
         )
@@ -430,15 +457,22 @@ class Matcher:
         return None
 
     @staticmethod
+    def _get_optional_provider_size_attribute(
+        fact: ProviderFact,
+        key: str,
+    ) -> int | None:
+        return validate_provider_size(fact.attributes.get(key))
+
+    @staticmethod
     def _build_blob(
         fact: ProviderFact,
         asset_id: str,
         content_hash: str,
     ) -> Blob:
-        size = fact.attributes.get("size")
-
-        if not isinstance(size, int):
-            size = None
+        size = Matcher._get_optional_provider_size_attribute(
+            fact,
+            "size",
+        )
 
         mime_type = fact.attributes.get("mime_type")
 

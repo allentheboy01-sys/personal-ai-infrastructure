@@ -71,6 +71,59 @@ def test_distinct_message_sources_with_same_hash_persist_separately() -> None:
     )
     engine.dispose()
 
+
+def test_shared_blob_preserves_per_source_observations() -> None:
+    engine = create_test_engine()
+    repository = PostgreSQLRepository(engine)
+    matcher = Matcher()
+    token = uuid4().hex
+    first = ProviderFact(
+        provider=f"nextcloud-test-{token}",
+        kind="file",
+        external_id=f"source-a-{token}",
+        name="empty.py",
+        attributes={
+            "path": "empty.py",
+            "size": 0,
+            "mime_type": "text/x-python",
+            "version_tag": "a-v1",
+            "content_hash": f"shared-hash-{token}",
+        },
+        raw={},
+    )
+    second = ProviderFact(
+        provider=f"other-test-{token}",
+        kind="file",
+        external_id=f"source-b-{token}",
+        name="empty.md",
+        attributes={
+            "path": "empty.md",
+            "size": 0,
+            "mime_type": "text/markdown",
+            "version_tag": "b-v1",
+            "content_hash": f"shared-hash-{token}",
+        },
+        raw={},
+    )
+
+    repository.execute(matcher.match(first, repository))
+    repository.execute(matcher.match(second, repository))
+
+    source_a = repository.find_source(first.provider, first.external_id)
+    source_b = repository.find_source(second.provider, second.external_id)
+    assert source_a is not None
+    assert source_b is not None
+    assert source_a.blob_id == source_b.blob_id
+    assert source_a.provider_mime_type == "text/x-python"
+    assert source_b.provider_mime_type == "text/markdown"
+    assert source_a.provider_size == source_b.provider_size == 0
+    shared_blob = repository.get_blob(source_a.blob_id)
+    assert shared_blob is not None
+    assert shared_blob.mime_type == "text/x-python"
+    assert shared_blob.size == 0
+
+    engine.dispose()
+
 def test_execute_create_complete_asset_chain() -> None:
     engine = create_test_engine()
 
@@ -98,6 +151,8 @@ def test_execute_create_complete_asset_chain() -> None:
         path="/tests/repository.txt",
         name="repository.txt",
         version_tag="v1",
+        provider_mime_type="text/markdown",
+        provider_size=1024,
         metadata={
             "test": True,
         },
@@ -152,6 +207,8 @@ def test_execute_create_complete_asset_chain() -> None:
     assert stored_source.path == source.path
     assert stored_source.name == source.name
     assert stored_source.version_tag == source.version_tag
+    assert stored_source.provider_mime_type == source.provider_mime_type
+    assert stored_source.provider_size == source.provider_size
     assert stored_source.metadata == source.metadata
 
     # 同时验证另外两个 Hash 查询
@@ -228,6 +285,8 @@ def test_execute_update_source() -> None:
         path="/tests/original.txt",
         name="original.txt",
         version_tag="v1",
+        provider_mime_type="text/plain",
+        provider_size=100,
         metadata={
             "state": "original",
         },
@@ -271,6 +330,8 @@ def test_execute_update_source() -> None:
         path="/tests/renamed.txt",
         name="renamed.txt",
         version_tag="v2",
+        provider_mime_type="text/markdown",
+        provider_size=200,
         metadata={
             "state": "updated",
         },
@@ -300,6 +361,8 @@ def test_execute_update_source() -> None:
     assert stored_source.path == "/tests/renamed.txt"
     assert stored_source.name == "renamed.txt"
     assert stored_source.version_tag == "v2"
+    assert stored_source.provider_mime_type == "text/markdown"
+    assert stored_source.provider_size == 200
     assert stored_source.metadata == {
         "state": "updated",
     }

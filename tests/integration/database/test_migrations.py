@@ -9,6 +9,7 @@ from alembic.migration import MigrationContext
 import pytest
 from sqlalchemy import Connection, Engine, create_engine, inspect, text
 from sqlalchemy.pool import NullPool
+from sqlalchemy.sql.sqltypes import BigInteger, Text
 
 from pdi.database.schema_preflight import (
     BASELINE_REVISION,
@@ -37,6 +38,7 @@ PERSON_IDENTITY_V0_1_REVISION = "6a7c8d9e0f12"
 RESOURCE_PERSON_RELATION_V0_1_REVISION = "9c4e1a7b2d30"
 TYPED_RESOURCE_V0_1_REVISION = "3b1e6f8a4c20"
 PERSON_LABEL_RETRIEVAL_V0_1_REVISION = "7d2f4a6b8c10"
+SOURCE_OBSERVATION_FOUNDATION_REVISION = "2f6a8c1d4e90"
 
 
 def _alembic_config(connection) -> Config:
@@ -196,7 +198,7 @@ def test_empty_database_upgrade_and_schema(
                 "SELECT version_num "
                 "FROM alembic_version"
             )
-        ).scalar_one() == PERSON_LABEL_RETRIEVAL_V0_1_REVISION
+        ).scalar_one() == SOURCE_OBSERVATION_FOUNDATION_REVISION
 
 
 def test_query_v0_2_indexes_upgrade_reflection_and_downgrade(
@@ -500,7 +502,110 @@ def test_upgrade_downgrade_upgrade(
     with migration_engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == PERSON_LABEL_RETRIEVAL_V0_1_REVISION
+        ).scalar_one() == SOURCE_OBSERVATION_FOUNDATION_REVISION
+
+
+def test_source_observation_foundation_upgrade_downgrade_reupgrade(
+    migration_engine: Engine,
+) -> None:
+    _run_alembic(
+        migration_engine,
+        command.upgrade,
+        PERSON_LABEL_RETRIEVAL_V0_1_REVISION,
+    )
+    asset_id = uuid4()
+    blob_id = uuid4()
+    source_id = uuid4()
+    with migration_engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO assets "
+                "(id, resource_type, title, metadata, created_at, updated_at) "
+                "VALUES (:id, 'file', 'Legacy Source', '{}'::jsonb, now(), now())"
+            ),
+            {"id": asset_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO blobs (id, asset_id, hash, size, mime_type) "
+                "VALUES (:id, :asset_id, :hash, 7, 'text/plain')"
+            ),
+            {
+                "id": blob_id,
+                "asset_id": asset_id,
+                "hash": f"legacy-{blob_id}",
+            },
+        )
+        connection.execute(
+            text(
+                "INSERT INTO asset_sources "
+                "(id, blob_id, provider, external_id, metadata) "
+                "VALUES (:id, :blob_id, 'test', :external_id, '{}'::jsonb)"
+            ),
+            {
+                "id": source_id,
+                "blob_id": blob_id,
+                "external_id": f"legacy-{source_id}",
+            },
+        )
+
+    _run_alembic(migration_engine, command.upgrade, "head")
+    with migration_engine.connect() as connection:
+        columns = {
+            column["name"]: column
+            for column in inspect(connection).get_columns("asset_sources")
+        }
+        assert isinstance(columns["provider_mime_type"]["type"], Text)
+        assert columns["provider_mime_type"]["nullable"] is True
+        assert isinstance(columns["provider_size"]["type"], BigInteger)
+        assert columns["provider_size"]["nullable"] is True
+        indexed_columns = {
+            column
+            for index in inspect(connection).get_indexes("asset_sources")
+            for column in index.get("column_names") or ()
+        }
+        assert "provider_mime_type" not in indexed_columns
+        assert "provider_size" not in indexed_columns
+        observations = connection.execute(
+            text(
+                "SELECT provider_mime_type, provider_size "
+                "FROM asset_sources WHERE id = :id"
+            ),
+            {"id": source_id},
+        ).one()
+        assert observations == (None, None)
+        blob_state = connection.execute(
+            text("SELECT hash, size, mime_type FROM blobs WHERE id = :id"),
+            {"id": blob_id},
+        ).one()
+        assert blob_state == (f"legacy-{blob_id}", 7, "text/plain")
+
+    _run_alembic(
+        migration_engine,
+        command.downgrade,
+        PERSON_LABEL_RETRIEVAL_V0_1_REVISION,
+    )
+    with migration_engine.connect() as connection:
+        columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("asset_sources")
+        }
+        assert "provider_mime_type" not in columns
+        assert "provider_size" not in columns
+        assert connection.execute(
+            text("SELECT count(*) FROM asset_sources WHERE id = :id"),
+            {"id": source_id},
+        ).scalar_one() == 1
+
+    _run_alembic(migration_engine, command.upgrade, "head")
+    with migration_engine.connect() as connection:
+        assert connection.execute(
+            text(
+                "SELECT provider_mime_type, provider_size "
+                "FROM asset_sources WHERE id = :id"
+            ),
+            {"id": source_id},
+        ).one() == (None, None)
 
 
 def test_resource_person_relation_schema_constraints_and_downgrade(

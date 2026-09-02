@@ -4,6 +4,7 @@ from pdi.adapters.base import ProviderFact
 from pdi.decision import ActionType
 from pdi.identity import Matcher
 from pdi.models import Asset, AssetSource, Blob, ResourceType
+from pdi.models.asset_source import POSTGRES_BIGINT_MAX
 from pdi.repository import InMemoryRepository
 
 
@@ -43,6 +44,73 @@ def test_create_new_asset():
         ActionType.CREATE_BLOB,
         ActionType.CREATE_SOURCE,
     ]
+    created_source = decision.actions[2].source
+    assert created_source is not None
+    assert created_source.provider_mime_type == "application/pdf"
+    assert created_source.provider_size == 1024
+
+
+@pytest.mark.parametrize(
+    "invalid_size",
+    [True, -1, POSTGRES_BIGINT_MAX + 1, 1.5, "1"],
+)
+def test_invalid_provider_size_cannot_reach_new_blob_or_source(
+    invalid_size: object,
+) -> None:
+    repository = InMemoryRepository()
+    fact = ProviderFact(
+        provider="nextcloud",
+        kind="file",
+        external_id="invalid-size",
+        name="invalid-size.txt",
+        attributes={
+            "path": "invalid-size.txt",
+            "size": invalid_size,
+            "mime_type": "text/plain",
+            "version_tag": "v1",
+            "content_hash": "invalid-size-hash",
+        },
+        raw={},
+    )
+
+    with pytest.raises(ValueError, match="provider_size"):
+        Matcher().match(fact, repository)
+
+    assert repository.blobs == {}
+    assert repository.sources == {}
+
+
+@pytest.mark.parametrize(
+    "valid_size",
+    [None, 0, POSTGRES_BIGINT_MAX],
+)
+def test_valid_provider_size_reaches_new_blob_and_source(
+    valid_size: int | None,
+) -> None:
+    repository = InMemoryRepository()
+    fact = ProviderFact(
+        provider="nextcloud",
+        kind="file",
+        external_id="valid-size",
+        name="valid-size.txt",
+        attributes={
+            "path": "valid-size.txt",
+            "size": valid_size,
+            "mime_type": "text/plain",
+            "version_tag": "v1",
+            "content_hash": "valid-size-hash",
+        },
+        raw={},
+    )
+
+    decision = Matcher().match(fact, repository)
+
+    created_blob = decision.actions[1].blob
+    created_source = decision.actions[2].source
+    assert created_blob is not None
+    assert created_source is not None
+    assert created_blob.size == valid_size
+    assert created_source.provider_size == valid_size
 
 
 def _message_fact(
@@ -332,7 +400,7 @@ def test_new_source_should_reuse_existing_blob():
         attributes={
             "path": "Documents/毕业论文.pdf",
             "size": 1024,
-            "mime_type": "application/pdf",
+            "mime_type": "text/x-python",
             "modified_at": None,
             "version_tag": "nextcloud-v1",
             "content_hash": "hash-aaa",
@@ -355,7 +423,7 @@ def test_new_source_should_reuse_existing_blob():
         attributes={
             "path": None,
             "size": 1024,
-            "mime_type": "application/pdf",
+            "mime_type": "text/markdown",
             "modified_at": None,
             "version_tag": "google-v1",
             "content_hash": "hash-aaa",
@@ -393,10 +461,124 @@ def test_new_source_should_reuse_existing_blob():
     assert google_source is not None
 
     assert nextcloud_source.blob_id == google_source.blob_id
+    assert nextcloud_source.provider_mime_type == "text/x-python"
+    assert nextcloud_source.provider_size == 1024
+    assert google_source.provider_mime_type == "text/markdown"
+    assert google_source.provider_size == 1024
+
+    shared_blob = repository.get_blob(nextcloud_source.blob_id)
+    assert shared_blob is not None
+    assert shared_blob.mime_type == "text/x-python"
 
     assert len(repository.assets) == 1
     assert len(repository.blobs) == 1
     assert len(repository.sources) == 2
+
+
+@pytest.mark.parametrize(
+    ("attribute", "changed_value"),
+    [
+        ("mime_type", "text/markdown"),
+        ("size", 2048),
+    ],
+)
+def test_same_version_provider_observation_change_updates_source(
+    attribute: str,
+    changed_value: object,
+) -> None:
+    repository = InMemoryRepository()
+    matcher = Matcher()
+    fact = ProviderFact(
+        provider="nextcloud",
+        kind="file",
+        external_id="observed-file",
+        name="observed.txt",
+        attributes={
+            "path": "observed.txt",
+            "size": 1024,
+            "mime_type": "text/plain",
+            "version_tag": "v1",
+            "content_hash": "same-hash",
+        },
+        raw={},
+    )
+    repository.execute(matcher.match(fact, repository))
+    original_blob = next(iter(repository.blobs.values()))
+    changed = ProviderFact(
+        provider=fact.provider,
+        kind=fact.kind,
+        external_id=fact.external_id,
+        name=fact.name,
+        attributes={**fact.attributes, attribute: changed_value},
+        raw=dict(fact.raw),
+    )
+
+    decision = matcher.match(changed, repository)
+
+    assert decision.reason == "source_metadata_changed"
+    assert [action.type for action in decision.actions] == [
+        ActionType.UPDATE_SOURCE,
+    ]
+    updated_source = decision.actions[0].source
+    assert updated_source is not None
+    assert updated_source.blob_id == original_blob.id
+    if attribute == "mime_type":
+        assert updated_source.provider_mime_type == changed_value
+        assert updated_source.provider_size == 1024
+    else:
+        assert updated_source.provider_mime_type == "text/plain"
+        assert updated_source.provider_size == changed_value
+    assert repository.blobs[original_blob.id] == original_blob
+
+
+def test_legacy_null_source_first_observation_updates_source() -> None:
+    repository = InMemoryRepository()
+    matcher = Matcher()
+    asset = Asset(title="Legacy Source")
+    blob = Blob(
+        asset_id=asset.id,
+        hash="legacy-hash",
+        size=32,
+        mime_type="text/plain",
+    )
+    source = AssetSource(
+        blob_id=blob.id,
+        provider="nextcloud",
+        external_id="legacy-source",
+        path="legacy.txt",
+        name="legacy.txt",
+        version_tag="v1",
+    )
+    repository.assets[asset.id] = asset
+    repository.blobs[blob.id] = blob
+    repository.sources[source.id] = source
+    fact = ProviderFact(
+        provider=source.provider,
+        kind="file",
+        external_id=source.external_id,
+        name=source.name,
+        attributes={
+            "path": source.path,
+            "size": 32,
+            "mime_type": "text/plain",
+            "version_tag": source.version_tag,
+            "content_hash": blob.hash,
+        },
+        raw={},
+    )
+
+    decision = matcher.match(fact, repository)
+
+    assert decision.requirements == []
+    assert decision.reason == "source_metadata_changed"
+    assert [action.type for action in decision.actions] == [
+        ActionType.UPDATE_SOURCE,
+    ]
+    updated_source = decision.actions[0].source
+    assert updated_source is not None
+    assert updated_source.provider_mime_type == "text/plain"
+    assert updated_source.provider_size == 32
+    assert repository.blobs[blob.id] == blob
 
 def test_existing_source_should_not_jump_between_assets():
     repository = InMemoryRepository()
