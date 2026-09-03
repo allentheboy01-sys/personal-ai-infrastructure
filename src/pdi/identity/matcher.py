@@ -572,7 +572,9 @@ class Matcher:
         source: AssetSource,
     ) -> bool:
         return (
-            source.path == cls._get_optional_string_attribute(
+            source.is_active
+            and source.deleted_at is None
+            and source.path == cls._get_optional_string_attribute(
                 fact,
                 "path",
             )
@@ -635,6 +637,8 @@ class Matcher:
     ) -> AssetSource:
         return replace(
             source,
+            is_active=True,
+            deleted_at=None,
             blob_id=blob_id,
             path=cls._get_optional_string_attribute(
                 fact,

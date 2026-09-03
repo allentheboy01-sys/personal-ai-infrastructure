@@ -1,4 +1,5 @@
 import hashlib
+from datetime import UTC, datetime
 
 import pytest
 
@@ -914,3 +915,112 @@ def test_deactivate_source() -> None:
     assert action.source is source
     assert source.is_active is False
     assert source.deleted_at is not None
+
+
+def test_observed_inactive_source_is_reactivated_without_new_identity() -> None:
+    repository = InMemoryRepository()
+    matcher = Matcher()
+    asset = Asset(title="Restored Immich asset")
+    blob = Blob(
+        asset_id=asset.id,
+        hash=_digest("restored"),
+        size=8,
+        mime_type="image/jpeg",
+    )
+    source = AssetSource(
+        blob_id=blob.id,
+        provider="immich",
+        external_id="asset-restored",
+        path="/library/restored.jpg",
+        name="restored.jpg",
+        version_tag="v1",
+        provider_mime_type="image/jpeg",
+        provider_size=8,
+        metadata={"trashed": False},
+        is_active=False,
+        deleted_at=datetime.now(UTC),
+    )
+    repository.assets[asset.id] = asset
+    repository.blobs[blob.id] = blob
+    repository.sources[source.id] = source
+    fact = ProviderFact(
+        provider="immich",
+        kind="file",
+        external_id="asset-restored",
+        name="restored.jpg",
+        attributes={
+            "path": "/library/restored.jpg",
+            "version_tag": "v1",
+            "mime_type": "image/jpeg",
+            "size": 8,
+        },
+        raw={"trashed": False},
+    )
+
+    decision = matcher.match(fact, repository)
+    assert [action.type for action in decision.actions] == [
+        ActionType.UPDATE_SOURCE
+    ]
+    repository.execute(decision)
+
+    restored = repository.find_source("immich", "asset-restored")
+    assert restored is not None
+    assert restored.id == source.id
+    assert restored.is_active is True
+    assert restored.deleted_at is None
+    assert len(repository.assets) == 1
+    assert len(repository.blobs) == 1
+
+
+def test_immich_trash_and_restore_remain_active_provider_observations() -> None:
+    repository = InMemoryRepository()
+    matcher = Matcher()
+    asset = Asset(title="Trash lifecycle")
+    blob = Blob(
+        asset_id=asset.id,
+        hash=_digest("trash-lifecycle"),
+        size=5,
+        mime_type="image/jpeg",
+    )
+    source = AssetSource(
+        blob_id=blob.id,
+        provider="immich",
+        external_id="trash-lifecycle",
+        path="/library/photo.jpg",
+        name="photo.jpg",
+        version_tag="v1",
+        provider_mime_type="image/jpeg",
+        provider_size=5,
+        metadata={"trashed": False},
+    )
+    repository.assets[asset.id] = asset
+    repository.blobs[blob.id] = blob
+    repository.sources[source.id] = source
+
+    def observation(trashed: bool) -> ProviderFact:
+        return ProviderFact(
+            provider="immich",
+            kind="file",
+            external_id="trash-lifecycle",
+            name="photo.jpg",
+            attributes={
+                "path": "/library/photo.jpg",
+                "version_tag": "v1",
+                "mime_type": "image/jpeg",
+                "size": 5,
+            },
+            raw={"trashed": trashed},
+        )
+
+    repository.execute(matcher.match(observation(True), repository))
+    trashed = repository.find_source("immich", "trash-lifecycle")
+    assert trashed is not None
+    assert trashed.is_active is True
+    assert trashed.metadata == {"trashed": True}
+
+    repository.execute(matcher.match(observation(False), repository))
+    restored = repository.find_source("immich", "trash-lifecycle")
+    assert restored is not None
+    assert restored.id == source.id
+    assert restored.is_active is True
+    assert restored.metadata == {"trashed": False}

@@ -234,6 +234,22 @@ not yet define:
 - one atomic transaction for an entire scan;
 - scheduler behavior.
 
+Immich implements the first bounded timestamp discovery mechanism using the
+v3.1 `POST /api/search/metadata` contract. Both full and incremental searches
+include soft-trashed assets, because trash is reversible Provider state and not
+permanent disappearance. The incremental mechanism emits no qualified
+tombstones. Page-based metadata search is not an atomic database snapshot, so
+the overlap window and periodic full reconciliation remain required. Immich
+v3.2 structured-search compatibility and operational timer/lock cadence are
+deferred.
+The v3.1 response `total` and `count` are page-local and are never treated as a
+global query count. PDI validates them against each page, then repeats the same
+fixed query and requires identical ordered ID membership. A duplicate within a
+pass or a mismatch between passes is transient Provider discovery
+inconsistency, not checkpoint corruption: durable first-pass facts may remain,
+while the checkpoint remains unchanged for replay. Even two matching passes do
+not provide database snapshot isolation.
+
 ## Related Documents
 
 - [03 - Provider Adapter](03-provider-adapter.md)

@@ -4,7 +4,7 @@ import pytest
 import requests
 
 from pdi.adapters.base import ProviderFact
-from pdi.adapters.immich import ImmichAdapter
+from pdi.adapters.immich import ImmichAdapter, ImmichPaginationDriftError
 
 
 class FakeResponse:
@@ -161,7 +161,7 @@ def test_scan_paginates_and_maps_provider_facts(
                     "items": [asset],
                     "nextPage": "2",
                     "count": 1,
-                    "total": 2,
+                    "total": 1,
                 },
             },
         ),
@@ -171,7 +171,7 @@ def test_scan_paginates_and_maps_provider_facts(
                     "items": [second_asset],
                     "nextPage": None,
                     "count": 1,
-                    "total": 2,
+                    "total": 1,
                 },
             },
         ),
@@ -185,7 +185,7 @@ def test_scan_paginates_and_maps_provider_facts(
                 **kwargs,
             }
         )
-        return responses[len(requests) - 1]
+        return responses[(len(requests) - 1) % 2]
 
     monkeypatch.setattr(
         "pdi.adapters.immich.adapter.requests.post",
@@ -201,7 +201,7 @@ def test_scan_paginates_and_maps_provider_facts(
         facts = list(adapter.scan())
 
     assert len(facts) == 2
-    assert requests == [
+    expected_requests = [
         {
             "url": "https://immich.example/api/search/metadata",
             "headers": {
@@ -211,6 +211,7 @@ def test_scan_paginates_and_maps_provider_facts(
                 "page": 1,
                 "size": 1000,
                 "withExif": True,
+                "withDeleted": True,
             },
             "timeout": 30,
         },
@@ -223,10 +224,12 @@ def test_scan_paginates_and_maps_provider_facts(
                 "page": 2,
                 "size": 1000,
                 "withExif": True,
+                "withDeleted": True,
             },
             "timeout": 30,
         },
     ]
+    assert requests == expected_requests * 2
     assert all(
         response.raise_for_status_called
         for response in responses
@@ -279,6 +282,207 @@ def test_scan_paginates_and_maps_provider_facts(
     assert "Scanning Immich..." in caplog.messages
     assert "Found 2 Immich assets" in caplog.messages
     assert "Immich scan finished" in caplog.messages
+
+
+def test_incremental_search_accepts_page_local_counts_and_verifies_twice(
+    monkeypatch,
+) -> None:
+    responses = [
+        FakeResponse(json_data={
+            "assets": {
+                "items": [{"id": "a"}],
+                "count": 1,
+                "nextPage": "2",
+                "total": 1,
+            },
+        }),
+        FakeResponse(json_data={
+            "assets": {
+                "items": [{"id": "b"}, {"id": "c"}],
+                "count": 2,
+                "nextPage": None,
+                "total": 2,
+            },
+        }),
+    ]
+    calls: list[dict] = []
+
+    def fake_post(url: str, **kwargs):
+        calls.append({"url": url, **kwargs})
+        return responses[(len(calls) - 1) % 2]
+
+    monkeypatch.setattr(
+        "pdi.adapters.immich.adapter.requests.post", fake_post
+    )
+    adapter = ImmichAdapter("https://immich.example", "test-key")
+
+    facts = list(adapter.scan_updated_window(
+        updated_after="2026-09-03T00:55:00.000000Z",
+        updated_before="2026-09-03T01:10:00.000000Z",
+    ))
+
+    assert [fact.external_id for fact in facts] == ["a", "b", "c"]
+    expected_payloads = [
+        {
+            "updatedAfter": "2026-09-03T00:55:00.000000Z",
+            "updatedBefore": "2026-09-03T01:10:00.000000Z",
+            "withDeleted": True,
+            "page": 1,
+            "size": 1000,
+            "withExif": True,
+        },
+        {
+            "updatedAfter": "2026-09-03T00:55:00.000000Z",
+            "updatedBefore": "2026-09-03T01:10:00.000000Z",
+            "withDeleted": True,
+            "page": 2,
+            "size": 1000,
+            "withExif": True,
+        },
+    ]
+    assert [call["json"] for call in calls] == expected_payloads * 2
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "assets": {
+                "items": [], "nextPage": "invalid", "count": 0, "total": 0
+            }
+        },
+        {
+            "assets": {
+                "items": [], "nextPage": "1", "count": 0, "total": 0
+            }
+        },
+        {
+            "assets": {
+                "items": "invalid", "nextPage": None, "count": 0, "total": 0
+            }
+        },
+        {"missing": "assets"},
+    ],
+)
+def test_search_metadata_fails_closed_on_malformed_pagination(
+    monkeypatch,
+    payload,
+) -> None:
+    monkeypatch.setattr(
+        "pdi.adapters.immich.adapter.requests.post",
+        lambda *args, **kwargs: FakeResponse(json_data=payload),
+    )
+    adapter = ImmichAdapter("https://immich.example", "test-key")
+
+    with pytest.raises(ValueError):
+        list(adapter.scan())
+
+
+@pytest.mark.parametrize("field", ["total", "count"])
+@pytest.mark.parametrize("invalid_value", [None, True, -1, "0", 1])
+def test_search_metadata_rejects_invalid_page_local_count(
+    monkeypatch,
+    field,
+    invalid_value,
+) -> None:
+    page = {
+        "items": [],
+        "nextPage": None,
+        "count": 0,
+        "total": 0,
+    }
+    page[field] = invalid_value
+    monkeypatch.setattr(
+        "pdi.adapters.immich.adapter.requests.post",
+        lambda *args, **kwargs: FakeResponse(json_data={
+            "assets": page
+        }),
+    )
+
+    with pytest.raises(ValueError, match=f"invalid page {field}"):
+        list(ImmichAdapter("https://immich.example", "key").scan())
+
+
+def test_search_metadata_rejects_duplicate_id_within_one_pass(
+    monkeypatch,
+) -> None:
+    responses = [
+        FakeResponse(json_data={
+            "assets": {
+                "items": [{"id": "a"}, {"id": "b"}],
+                "count": 2,
+                "nextPage": "2",
+                "total": 2,
+            }
+        }),
+        FakeResponse(json_data={
+            "assets": {
+                "items": [{"id": "b"}, {"id": "c"}],
+                "count": 2,
+                "nextPage": None,
+                "total": 2,
+            }
+        }),
+    ]
+    monkeypatch.setattr(
+        "pdi.adapters.immich.adapter.requests.post",
+        lambda *args, **kwargs: responses.pop(0),
+    )
+
+    with pytest.raises(ImmichPaginationDriftError, match="repeated an asset"):
+        list(ImmichAdapter("https://immich.example", "key").scan())
+
+
+@pytest.mark.parametrize(
+    "verification_ids",
+    [
+        ["a", "b", "d", "c"],
+        ["a", "c"],
+        ["b", "a", "c"],
+    ],
+)
+def test_search_metadata_rejects_verification_membership_or_order_drift(
+    monkeypatch,
+    verification_ids,
+) -> None:
+    responses = [FakeResponse(json_data={
+        "assets": {
+            "items": [{"id": item} for item in ids],
+            "count": len(ids),
+            "total": len(ids),
+            "nextPage": None,
+        }
+    }) for ids in (["a", "b", "c"], verification_ids)]
+    monkeypatch.setattr(
+        "pdi.adapters.immich.adapter.requests.post",
+        lambda *args, **kwargs: responses.pop(0),
+    )
+
+    with pytest.raises(
+        ImmichPaginationDriftError, match="ordered membership changed"
+    ):
+        list(ImmichAdapter("https://immich.example", "key").scan())
+
+
+def test_search_metadata_accepts_different_page_local_totals() -> None:
+    adapter = ImmichAdapter("https://immich.example", "key")
+    responses = [
+        {
+            "items": [{"id": "a"}, {"id": "b"}],
+            "count": 2,
+            "total": 2,
+        },
+        {
+            "items": [{"id": "c"}],
+            "count": 1,
+            "total": 1,
+        },
+    ]
+    assert [
+        adapter._validate_page_count(page, field, len(page["items"]))
+        for page in responses
+        for field in ("count", "total")
+    ] == [None, None, None, None]
 
 
 @pytest.mark.parametrize(

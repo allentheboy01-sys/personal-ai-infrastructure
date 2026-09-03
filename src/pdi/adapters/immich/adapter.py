@@ -1,6 +1,7 @@
+from collections.abc import Iterable, Iterator
 import logging
 import urllib.parse
-from typing import Any, Iterable
+from typing import Any
 
 import requests
 
@@ -8,6 +9,10 @@ from pdi.adapters.base import Adapter, ProviderFact
 
 
 logger = logging.getLogger(__name__)
+
+
+class ImmichPaginationDriftError(RuntimeError):
+    """Immich page results changed during one metadata traversal."""
 
 
 class ImmichAdapter(Adapter):
@@ -42,9 +47,61 @@ class ImmichAdapter(Adapter):
 
         logger.info("Scanning Immich...")
 
-        facts: list[ProviderFact] = []
+        return self._search_metadata({"withDeleted": True})
+
+    def scan_updated_window(
+        self,
+        *,
+        updated_after: str,
+        updated_before: str,
+    ) -> Iterable[ProviderFact]:
+        """Stream assets updated inside one bounded Immich v3.1 window."""
+
+        return self._search_metadata(
+            {
+                "updatedAfter": updated_after,
+                "updatedBefore": updated_before,
+                "withDeleted": True,
+            }
+        )
+
+    def _search_metadata(
+        self,
+        filters: dict[str, object],
+    ) -> Iterator[ProviderFact]:
+        """Stream facts, then verify stable ordered membership."""
+
+        first_pass_ids: list[str] = []
+        for asset in self._iter_metadata_assets(filters):
+            external_id = self._asset_external_id(asset)
+            fact = self._to_provider_fact(asset)
+            first_pass_ids.append(external_id)
+            yield fact
+
+        verification_ids = [
+            self._asset_external_id(asset)
+            for asset in self._iter_metadata_assets(filters)
+        ]
+        if verification_ids != first_pass_ids:
+            raise ImmichPaginationDriftError(
+                "Immich search ordered membership changed between passes"
+            )
+
+        logger.info(
+            "Found %d Immich assets",
+            len(first_pass_ids),
+        )
+        logger.info("Immich scan finished")
+
+    def _iter_metadata_assets(
+        self,
+        filters: dict[str, object],
+    ) -> Iterator[dict[str, Any]]:
+        """Traverse one v3.1 page sequence with page-local validation."""
+
         page = 1
         seen_pages: set[int] = set()
+        seen_assets: set[str] = set()
 
         while page not in seen_pages:
             seen_pages.add(page)
@@ -53,6 +110,7 @@ class ImmichAdapter(Adapter):
                 f"{self.base_url}/api/search/metadata",
                 headers=self._headers(),
                 json={
+                    **filters,
                     "page": page,
                     "size": self._PAGE_SIZE,
                     "withExif": True,
@@ -62,17 +120,24 @@ class ImmichAdapter(Adapter):
 
             response.raise_for_status()
             assets_page = self._assets_page(response.json())
+            items = assets_page["items"]
+            self._validate_page_count(assets_page, "total", len(items))
+            self._validate_page_count(assets_page, "count", len(items))
 
-            for asset in assets_page["items"]:
+            for asset in items:
                 if not isinstance(asset, dict):
                     raise ValueError(
                         "Immich search response contains "
                         "a non-object asset"
                     )
 
-                facts.append(
-                    self._to_provider_fact(asset)
-                )
+                external_id = self._asset_external_id(asset)
+                if external_id in seen_assets:
+                    raise ImmichPaginationDriftError(
+                        "Immich search repeated an asset within one pass"
+                    )
+                seen_assets.add(external_id)
+                yield asset
 
             next_page = assets_page.get("nextPage")
 
@@ -97,13 +162,24 @@ class ImmichAdapter(Adapter):
                 "Immich search pagination repeated a page"
             )
 
-        logger.info(
-            "Found %d Immich assets",
-            len(facts),
-        )
-        logger.info("Immich scan finished")
+    @staticmethod
+    def _validate_page_count(
+        assets_page: dict[str, Any],
+        field: str,
+        item_count: int,
+    ) -> None:
+        value = assets_page.get(field)
+        if type(value) is not int or value < 0 or value != item_count:
+            raise ValueError(
+                f"Immich search response contains an invalid page {field}"
+            )
 
-        return facts
+    @staticmethod
+    def _asset_external_id(asset: dict[str, Any]) -> str:
+        external_id = asset.get("id")
+        if not isinstance(external_id, str) or not external_id:
+            raise ValueError("Immich asset does not contain a valid id")
+        return external_id
 
     def open(
         self,
@@ -181,12 +257,7 @@ class ImmichAdapter(Adapter):
         cls,
         asset: dict[str, Any],
     ) -> ProviderFact:
-        external_id = asset.get("id")
-
-        if not isinstance(external_id, str) or not external_id:
-            raise ValueError(
-                "Immich asset does not contain a valid id"
-            )
+        external_id = cls._asset_external_id(asset)
 
         exif_info = asset.get("exifInfo")
 

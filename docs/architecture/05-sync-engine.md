@@ -54,6 +54,22 @@ Provider-specific bootstrap checkpoint, it may atomically install that trusted
 checkpoint and clear `reconciliation_required`. A full scan alone never clears
 the latch automatically.
 
+Immich v3.1 is the first Provider-specific use of this boundary. Its
+`metadata_updated_at_v1` mechanism stores a canonical UTC timestamp and queries
+the stable metadata search endpoint from checkpoint minus five minutes through
+a run-start upper bound. The overlap and inclusive timestamp boundaries make
+replay intentional. Initial bootstrap and reconciliation recovery capture a
+fresh anchor before a successful full authoritative scan and install it last.
+Incremental absence is never deletion; Immich permanent deletion still
+requires periodic full reconciliation.
+Immich v3.1 reports `total` and `count` for the current page, not for the global
+query. PDI validates those values only against that page's item count. Because
+the API uses offset pagination without snapshot isolation, PDI traverses the
+same fixed query twice and requires the ordered asset-ID sequences to match.
+Duplicate IDs within either pass or a cross-pass mismatch fail discovery
+without advancing the checkpoint or marking checkpoint state invalid. This is
+fail-closed consistency evidence, not an atomic snapshot.
+
 Adapters may stream facts. Valid per-fact Decisions may therefore commit before
 the traversal completes, but those commits do not make the provider snapshot
 authoritative.
