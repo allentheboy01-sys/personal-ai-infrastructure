@@ -17,7 +17,8 @@ One synchronization session:
 - processes observations from one Provider scan;
 - may request additional evidence;
 - executes resulting Decisions;
-- reconciles missing Sources only after scan completion.
+- reconciles missing Sources only after a reconciliation-safe authoritative
+  full scan.
 
 A single session must not mix observations from multiple Provider identities.
 
@@ -168,7 +169,7 @@ The Repository executes the Decision, setting the Source inactive and preserving
 
 ## Difference Ownership
 
-The scan-level difference belongs to the synchronization lifecycle, not to per-fact Identity matching.
+The scan-level difference belongs to the synchronization lifecycle, not to per-fact Identity matching. Incremental absence is never deletion evidence.
 
 Identity understands the meaning of deactivation. The Sync Engine owns the complete-scan context required to determine which Sources are missing.
 
@@ -178,7 +179,8 @@ The Repository only provides queries and executes Decisions.
 
 1. Connection failure stops the session.
 2. Scan failure stops the session.
-3. A failed or partial scan never triggers reconciliation.
+3. A failed, partial, or incremental non-authoritative scan never triggers
+   missing-set reconciliation.
 4. Provider identity inconsistency stops the session.
 5. Unresolved Requirements prevent execution for the affected fact.
 6. Repository failure rolls back the affected Decision.
@@ -215,9 +217,15 @@ Identity V1 lifecycle supports:
 - Source deactivation;
 - structured progress logging.
 
-It does not yet define:
+It now defines generic PDI-owned checkpoint persistence, CAS-last advancement,
+replay safety, and a reconciliation-required state. `NULL` means uninitialized,
+not "no changes" or "keep the old checkpoint". Normal advances require a
+non-empty checkpoint. A distinct version-checked recovery operation requires a
+fresh trusted checkpoint and is invoked only after the caller has separately
+proved full reconciliation; ordinary full scans do not clear the state. It does
+not yet define:
 
-- incremental checkpoints;
+- Provider-specific incremental discovery or checkpoint contents;
 - general automatic retry policy beyond the bounded resource-disappearance read;
 - resume after interruption;
 - parallel Provider synchronization;

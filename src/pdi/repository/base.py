@@ -62,3 +62,11 @@ class Repository(ABC):
     ) -> None:
         """执行 Identity 生成的 Decision。"""
         raise NotImplementedError
+
+    @abstractmethod
+    def execute_many(
+        self,
+        decisions: tuple[Decision, ...],
+    ) -> None:
+        """Atomically execute one reconciliation-critical Decision set."""
+        raise NotImplementedError

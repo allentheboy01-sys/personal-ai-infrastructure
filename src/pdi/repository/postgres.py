@@ -1566,55 +1566,44 @@ class PostgreSQLRepository(
         self,
         decision: Decision,
     ) -> None:
+        self.execute_many((decision,))
+
+    def execute_many(
+        self,
+        decisions: tuple[Decision, ...],
+    ) -> None:
         with self._session_factory() as session:
             try:
-                for action in decision.actions:
-                    match action.type:
-                        case ActionType.CREATE_ASSET:
-                            self._execute_create_asset(
-                                session,
-                                action,
-                            )
-
-                        case ActionType.CREATE_BLOB:
-                            self._execute_create_blob(
-                                session,
-                                action,
-                            )
-
-                        case ActionType.CREATE_SOURCE:
-                            self._execute_create_source(
-                                session,
-                                action,
-                            )
-
-                        case ActionType.UPDATE_SOURCE:
-                            self._execute_update_source(
-                                session,
-                                action,
-                            )
-
-                        case ActionType.DEACTIVATE_SOURCE:
-                            self._execute_deactivate_source(
-                                session,
-                                action,
-                            )
-
-                        case _:
-                            raise ValueError(
-                                f"Unsupported action type: "
-                                f"{action.type}"
-                            )
-
-                    # 将当前 Action 写入数据库，
-                    # 但仍然不提交整个事务。
-                    session.flush()
-
+                for decision in decisions:
+                    self._execute_decision(session, decision)
                 session.commit()
-
             except Exception:
                 session.rollback()
                 raise
+
+    def _execute_decision(
+        self,
+        session: Session,
+        decision: Decision,
+    ) -> None:
+        for action in decision.actions:
+            match action.type:
+                case ActionType.CREATE_ASSET:
+                    self._execute_create_asset(session, action)
+                case ActionType.CREATE_BLOB:
+                    self._execute_create_blob(session, action)
+                case ActionType.CREATE_SOURCE:
+                    self._execute_create_source(session, action)
+                case ActionType.UPDATE_SOURCE:
+                    self._execute_update_source(session, action)
+                case ActionType.DEACTIVATE_SOURCE:
+                    self._execute_deactivate_source(session, action)
+                case _:
+                    raise ValueError(
+                        f"Unsupported action type: {action.type}"
+                    )
+
+            session.flush()
 
     def _execute_create_asset(
         self,

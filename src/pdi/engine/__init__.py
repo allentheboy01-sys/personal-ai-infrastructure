@@ -1,3 +1,23 @@
-from .sync_engine import IncompleteProviderSyncError, SyncEngine
+from .sync_engine import (
+    CheckpointCASConflictError,
+    DiscoveryBatch,
+    DiscoveryMode,
+    IncompleteProviderSyncError,
+    InvalidCheckpointError,
+    MissingNextCheckpointError,
+    QualifiedTombstone,
+    ReconciliationRequiredError,
+    SyncEngine,
+)
 
-__all__ = ["IncompleteProviderSyncError", "SyncEngine"]
+__all__ = [
+    "CheckpointCASConflictError",
+    "DiscoveryBatch",
+    "DiscoveryMode",
+    "IncompleteProviderSyncError",
+    "InvalidCheckpointError",
+    "MissingNextCheckpointError",
+    "QualifiedTombstone",
+    "ReconciliationRequiredError",
+    "SyncEngine",
+]

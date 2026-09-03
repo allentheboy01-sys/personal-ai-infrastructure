@@ -26,6 +26,7 @@ import pdi.repository.orm.blob
 import pdi.repository.orm.observation
 import pdi.repository.orm.person
 import pdi.repository.orm.pipeline_run
+import pdi.repository.orm.provider_sync_state
 import pdi.repository.orm.resource_person_relation
 
 
@@ -39,6 +40,7 @@ RESOURCE_PERSON_RELATION_V0_1_REVISION = "9c4e1a7b2d30"
 TYPED_RESOURCE_V0_1_REVISION = "3b1e6f8a4c20"
 PERSON_LABEL_RETRIEVAL_V0_1_REVISION = "7d2f4a6b8c10"
 SOURCE_OBSERVATION_FOUNDATION_REVISION = "2f6a8c1d4e90"
+PROVIDER_SYNC_STATE_REVISION = "5e7a9c2d1f30"
 
 
 def _alembic_config(connection) -> Config:
@@ -61,6 +63,7 @@ def _run_alembic(
 
 def _drop_test_schema(engine: Engine) -> None:
     with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS provider_sync_state"))
         connection.execute(text("DROP TABLE IF EXISTS resource_person_relations"))
         connection.execute(text("DROP TABLE IF EXISTS person_sources"))
         connection.execute(text("DROP TABLE IF EXISTS persons"))
@@ -152,6 +155,7 @@ def test_metadata_registration() -> None:
         "resource_statements",
         "resource_enrichments",
         "pipeline_runs",
+        "provider_sync_state",
         "persons",
         "person_sources",
         "resource_person_relations",
@@ -198,7 +202,7 @@ def test_empty_database_upgrade_and_schema(
                 "SELECT version_num "
                 "FROM alembic_version"
             )
-        ).scalar_one() == SOURCE_OBSERVATION_FOUNDATION_REVISION
+        ).scalar_one() == PROVIDER_SYNC_STATE_REVISION
 
 
 def test_query_v0_2_indexes_upgrade_reflection_and_downgrade(
@@ -502,7 +506,66 @@ def test_upgrade_downgrade_upgrade(
     with migration_engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
+        ).scalar_one() == PROVIDER_SYNC_STATE_REVISION
+
+
+def test_provider_sync_state_upgrade_downgrade_reupgrade(
+    migration_engine: Engine,
+) -> None:
+    _run_alembic(
+        migration_engine,
+        command.upgrade,
+        SOURCE_OBSERVATION_FOUNDATION_REVISION,
+    )
+    with migration_engine.connect() as connection:
+        assert "provider_sync_state" not in inspect(connection).get_table_names()
+
+    _run_alembic(migration_engine, command.upgrade, "head")
+    with migration_engine.connect() as connection:
+        inspector = inspect(connection)
+        columns = {
+            column["name"]: column
+            for column in inspector.get_columns("provider_sync_state")
+        }
+        assert set(columns) == {
+            "provider",
+            "mechanism",
+            "checkpoint",
+            "version",
+            "reconciliation_required",
+            "created_at",
+            "updated_at",
+        }
+        assert columns["checkpoint"]["nullable"] is True
+        assert columns["version"]["nullable"] is False
+        assert columns["reconciliation_required"]["nullable"] is False
+        assert inspector.get_pk_constraint("provider_sync_state")[
+            "constrained_columns"
+        ] == ["provider", "mechanism"]
+        constraint_names = {
+            constraint["name"]
+            for constraint in inspector.get_check_constraints(
+                "provider_sync_state"
+            )
+        }
+        assert constraint_names == {
+            "ck_provider_sync_state_mechanism_nonempty",
+            "ck_provider_sync_state_provider_nonempty",
+            "ck_provider_sync_state_version_nonnegative",
+        }
+
+    _run_alembic(
+        migration_engine,
+        command.downgrade,
+        SOURCE_OBSERVATION_FOUNDATION_REVISION,
+    )
+    with migration_engine.connect() as connection:
+        assert "provider_sync_state" not in inspect(connection).get_table_names()
+        assert connection.execute(
+            text("SELECT version_num FROM alembic_version")
         ).scalar_one() == SOURCE_OBSERVATION_FOUNDATION_REVISION
+
+    _run_alembic(migration_engine, command.upgrade, "head")
 
 
 def test_source_observation_foundation_upgrade_downgrade_reupgrade(

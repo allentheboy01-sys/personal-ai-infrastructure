@@ -2,6 +2,8 @@ from datetime import UTC, datetime
 import hashlib
 from uuid import uuid4
 
+import pytest
+
 from pdi.adapters.base import ProviderFact
 from pdi.database import create_postgres_engine
 from pdi.decision import Action, ActionType, Decision
@@ -465,4 +467,75 @@ def test_execute_deactivate_source() -> None:
         for active_source in active_sources
     )
 
+    engine.dispose()
+
+
+def test_execute_many_rolls_back_complete_reconciliation_set() -> None:
+    engine = create_test_engine()
+    repository = PostgreSQLRepository(engine)
+    token = uuid4().hex
+    sources = []
+    actions = []
+    for suffix in ("a", "b"):
+        asset = Asset(title=f"Atomic reconciliation {suffix}")
+        blob = Blob(
+            asset_id=asset.id,
+            hash=f"atomic-reconciliation-{token}-{suffix}",
+            size=1,
+            mime_type="text/plain",
+        )
+        source = AssetSource(
+            blob_id=blob.id,
+            provider=f"atomic-reconciliation-{token}",
+            external_id=suffix,
+        )
+        sources.append(source)
+        actions.extend((
+            Action(type=ActionType.CREATE_ASSET, asset=asset),
+            Action(type=ActionType.CREATE_BLOB, blob=blob),
+            Action(type=ActionType.CREATE_SOURCE, source=source),
+        ))
+    repository.execute(Decision(actions=actions))
+
+    first = repository.find_source(sources[0].provider, "a")
+    assert first is not None
+    first.is_active = False
+    first.deleted_at = datetime.now(UTC)
+    nonexistent = AssetSource(
+        id=str(uuid4()),
+        blob_id=sources[1].blob_id,
+        provider=sources[1].provider,
+        external_id="nonexistent",
+        is_active=False,
+        deleted_at=datetime.now(UTC),
+    )
+    third = repository.find_source(sources[1].provider, "b")
+    assert third is not None
+    third.is_active = False
+    third.deleted_at = datetime.now(UTC)
+
+    with pytest.raises(ValueError, match="Source not found"):
+        repository.execute_many((
+            Decision(actions=[Action(
+                type=ActionType.DEACTIVATE_SOURCE,
+                source=first,
+            )]),
+            Decision(actions=[Action(
+                type=ActionType.DEACTIVATE_SOURCE,
+                source=nonexistent,
+            )]),
+            Decision(actions=[Action(
+                type=ActionType.DEACTIVATE_SOURCE,
+                source=third,
+            )]),
+        ))
+
+    persisted = repository.find_source(sources[0].provider, "a")
+    assert persisted is not None
+    assert persisted.is_active is True
+    assert persisted.deleted_at is None
+    persisted_third = repository.find_source(sources[1].provider, "b")
+    assert persisted_third is not None
+    assert persisted_third.is_active is True
+    assert persisted_third.deleted_at is None
     engine.dispose()

@@ -12,6 +12,7 @@ import pdi.repository.orm.blob
 import pdi.repository.orm.observation
 import pdi.repository.orm.person
 import pdi.repository.orm.pipeline_run
+import pdi.repository.orm.provider_sync_state
 import pdi.repository.orm.resource_person_relation
 
 
@@ -32,6 +33,7 @@ _EXPECTED_TABLES = {
     "resource_statements",
     "resource_enrichments",
     "pipeline_runs",
+    "provider_sync_state",
     "persons",
     "person_sources",
     "resource_person_relations",

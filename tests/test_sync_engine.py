@@ -1,14 +1,114 @@
 import pytest
+from dataclasses import fields
+from datetime import UTC, datetime
 
 from pdi.adapters.base import (
     ProviderFact,
     ProviderResourceDisappearedError,
 )
 from pdi.adapters.nextcloud.adapter import NextcloudAdapter
-from pdi.engine import IncompleteProviderSyncError, SyncEngine
+from pdi.engine import (
+    DiscoveryBatch,
+    DiscoveryMode,
+    IncompleteProviderSyncError,
+    MissingNextCheckpointError,
+    SyncEngine,
+)
 from pdi.identity import Matcher
 from pdi.models import Asset, AssetSource, Blob
 from pdi.repository import InMemoryRepository
+from pdi.sync_state import ProviderSyncState
+
+
+class _MemorySyncStateRepository:
+    def __init__(self) -> None:
+        self.state: ProviderSyncState | None = None
+
+    def get_or_create(self, provider: str, mechanism: str) -> ProviderSyncState:
+        if self.state is None:
+            now = datetime.now(UTC)
+            self.state = ProviderSyncState(
+                provider,
+                mechanism,
+                None,
+                0,
+                False,
+                now,
+                now,
+            )
+        return self.state
+
+    def read(self, provider: str, mechanism: str):
+        return self.state
+
+    def compare_and_swap_checkpoint(
+        self,
+        provider: str,
+        mechanism: str,
+        *,
+        expected_version: int,
+        checkpoint: str,
+    ):
+        if not isinstance(checkpoint, str) or not checkpoint:
+            raise ValueError("trusted checkpoint required")
+        state = self.get_or_create(provider, mechanism)
+        if state.version != expected_version:
+            return None
+        self.state = ProviderSyncState(
+            provider,
+            mechanism,
+            checkpoint,
+            expected_version + 1,
+            False,
+            state.created_at,
+            datetime.now(UTC),
+        )
+        return self.state
+
+    def recover_after_reconciliation(
+        self,
+        provider: str,
+        mechanism: str,
+        *,
+        expected_version: int,
+        trusted_checkpoint: str,
+    ):
+        if not isinstance(trusted_checkpoint, str) or not trusted_checkpoint:
+            raise ValueError("trusted checkpoint required")
+        state = self.get_or_create(provider, mechanism)
+        if state.version != expected_version:
+            return None
+        self.state = ProviderSyncState(
+            provider,
+            mechanism,
+            trusted_checkpoint,
+            expected_version + 1,
+            False,
+            state.created_at,
+            datetime.now(UTC),
+        )
+        return self.state
+
+    def mark_reconciliation_required(
+        self,
+        provider: str,
+        mechanism: str,
+        *,
+        expected_version: int,
+    ):
+        state = self.get_or_create(provider, mechanism)
+        if state.version != expected_version:
+            return None
+        self.state = ProviderSyncState(
+            provider,
+            mechanism,
+            state.checkpoint,
+            expected_version + 1,
+            True,
+            state.created_at,
+            datetime.now(UTC),
+        )
+        return self.state
 
 
 def _seed_source(
@@ -71,6 +171,107 @@ def _nextcloud_fact(
         },
         raw=raw,
     )
+
+
+def test_provider_fact_contract_excludes_discovery_mechanics() -> None:
+    assert {field.name for field in fields(ProviderFact)} == {
+        "provider",
+        "kind",
+        "external_id",
+        "name",
+        "attributes",
+        "raw",
+    }
+
+
+def test_incremental_absence_never_deactivates_missing_sources() -> None:
+    repository = InMemoryRepository()
+    sources = {
+        external_id: _seed_source(
+            repository,
+            provider="nextcloud",
+            external_id=external_id,
+            path=f"{external_id}.md",
+            name=f"{external_id}.md",
+            version_tag=f"version-{external_id}",
+        )
+        for external_id in ("a", "b", "c")
+    }
+    fact = _nextcloud_fact(external_id="a", path="a.md")
+
+    class Adapter:
+        provider_name = "nextcloud"
+
+        def connect(self) -> None:
+            return None
+
+        def scan(self):
+            pytest.fail("incremental sync must use the batch discovery callback")
+
+        def open(self, fact):
+            pytest.fail("unchanged Source must not be opened")
+
+    state_repository = _MemorySyncStateRepository()
+    advanced = SyncEngine(
+        Adapter(),
+        Matcher(),
+        repository,
+        state_repository,
+    ).sync_incremental(
+        "fake-window",
+        lambda state: DiscoveryBatch(
+            provider="nextcloud",
+            mode=DiscoveryMode.INCREMENTAL_NON_AUTHORITATIVE,
+            facts=(fact,),
+            next_checkpoint="window-2",
+        ),
+    )
+
+    assert advanced.checkpoint == "window-2"
+    assert all(source.is_active for source in sources.values())
+
+
+def test_incremental_missing_checkpoint_fails_before_applying_facts() -> None:
+    repository = InMemoryRepository()
+    state_repository = _MemorySyncStateRepository()
+    state = state_repository.get_or_create("nextcloud", "fake-window")
+    state_repository.compare_and_swap_checkpoint(
+        "nextcloud",
+        "fake-window",
+        expected_version=state.version,
+        checkpoint="cursor-a",
+    )
+
+    class Adapter:
+        provider_name = "nextcloud"
+
+        def connect(self) -> None:
+            return None
+
+        def scan(self):
+            pytest.fail("incremental sync must not use full scan")
+
+        def open(self, fact):
+            yield b"data"
+
+    with pytest.raises(MissingNextCheckpointError):
+        SyncEngine(
+            Adapter(), Matcher(), repository, state_repository
+        ).sync_incremental(
+            "fake-window",
+            lambda state: DiscoveryBatch(
+                provider="nextcloud",
+                mode=DiscoveryMode.INCREMENTAL_NON_AUTHORITATIVE,
+                facts=(_nextcloud_fact(external_id="a", path="a.md"),),
+                next_checkpoint=None,
+            ),
+        )
+
+    unchanged = state_repository.read("nextcloud", "fake-window")
+    assert unchanged is not None
+    assert unchanged.checkpoint == "cursor-a"
+    assert unchanged.version == 1
+    assert repository.find_source("nextcloud", "a") is None
 
 
 def test_partial_recursive_failure_does_not_deactivate_sources(
@@ -144,6 +345,42 @@ def test_partial_recursive_failure_does_not_deactivate_sources(
     ) is not None
 
 
+def test_apply_failure_preserves_prior_fact_and_skips_reconciliation() -> None:
+    class FailingRepository(InMemoryRepository):
+        def __init__(self) -> None:
+            super().__init__()
+            self.execute_count = 0
+
+        def execute(self, decision) -> None:
+            self.execute_count += 1
+            if self.execute_count == 2:
+                raise RuntimeError("synthetic persistence failure")
+            super().execute(decision)
+
+    repository = FailingRepository()
+    missing = _seed_source(
+        repository,
+        provider="nextcloud",
+        external_id="existing-missing",
+        path="existing-missing.md",
+        name="existing-missing.md",
+        version_tag="old",
+    )
+    facts = [
+        _nextcloud_fact(external_id="first", path="first.md"),
+        _nextcloud_fact(external_id="second", path="second.md"),
+    ]
+    adapter = _MutableProviderAdapter(facts, set())
+
+    with pytest.raises(RuntimeError, match="persistence failure"):
+        SyncEngine(adapter, Matcher(), repository).sync_once()
+
+    assert repository.find_source("nextcloud", "first") is not None
+    assert repository.find_source("nextcloud", "second") is None
+    assert missing.is_active is True
+    assert missing.deleted_at is None
+
+
 def test_complete_recursive_scan_deactivates_genuinely_missing_source(
     monkeypatch,
 ) -> None:
@@ -168,6 +405,14 @@ def test_complete_recursive_scan_deactivates_genuinely_missing_source(
         path="missing.md",
         name="missing.md",
         version_tag="version-missing-file",
+    )
+    another_missing_source = _seed_source(
+        repository,
+        provider="nextcloud",
+        external_id="another-missing-file",
+        path="another-missing.md",
+        name="another-missing.md",
+        version_tag="version-another-missing-file",
     )
     adapter = NextcloudAdapter(
         base_url="https://nextcloud.example",
@@ -198,6 +443,8 @@ def test_complete_recursive_scan_deactivates_genuinely_missing_source(
     assert seen_source.is_active is True
     assert missing_source.is_active is False
     assert missing_source.deleted_at is not None
+    assert another_missing_source.is_active is False
+    assert another_missing_source.deleted_at is not None
 
 
 def test_unchanged_immich_asset_does_not_open_or_duplicate(

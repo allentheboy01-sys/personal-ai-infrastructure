@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from pdi.decision import ActionType, Decision
 from pdi.models import Asset, AssetSource, Blob
 
@@ -77,6 +79,21 @@ class InMemoryRepository(Repository):
         self,
         decision: Decision,
     ) -> None:
+        self.execute_many((decision,))
+
+    def execute_many(
+        self,
+        decisions: tuple[Decision, ...],
+    ) -> None:
+        snapshot = deepcopy((self.assets, self.blobs, self.sources))
+        try:
+            for decision in decisions:
+                self._execute_decision(decision)
+        except Exception:
+            self.assets, self.blobs, self.sources = snapshot
+            raise
+
+    def _execute_decision(self, decision: Decision) -> None:
         for action in decision.actions:
             if action.type == ActionType.CREATE_ASSET:
                 if action.asset is None:
@@ -126,7 +143,9 @@ class InMemoryRepository(Repository):
                         f"Source not found: {action.source.id}"
                     )
 
-                self.sources[action.source.id] = action.source
+                stored = self.sources[action.source.id]
+                stored.is_active = action.source.is_active
+                stored.deleted_at = action.source.deleted_at
 
             else:
                 raise ValueError(

@@ -31,6 +31,29 @@ whose required per-fact reads all resolved. A failed, partial, or otherwise
 non-authoritative scan must never deactivate Sources merely because they were
 not observed.
 
+Discovery has two explicit run-level modes. `FULL_AUTHORITATIVE` may infer
+missing Sources only when the entire run remains reconciliation-safe.
+`INCREMENTAL_NON_AUTHORITATIVE` never infers deletion from absence: a Source
+missing from one change batch remains active. Discovery mode, checkpoints, and
+deletion evidence are batch mechanics and never fields on `ProviderFact`.
+
+Incremental checkpoints belong to PDI operational persistence in the dedicated
+`provider_sync_state` table. The engine reads state before discovery, applies
+all facts and any future qualified tombstones durably, then advances the opaque
+checkpoint with compare-and-swap as the final write. A failure before that CAS
+may leave facts committed and the checkpoint unchanged; replaying the same
+window is intentional and identity-safe. Invalid or uninterpretable state is
+marked `reconciliation_required` and blocks further incremental discovery
+until a future full reconciliation restores trust.
+
+A `NULL` checkpoint means only that no trusted checkpoint has been established.
+Normal advancement requires a non-empty opaque checkpoint and cannot erase a
+trusted checkpoint. Recovery is a separate CAS operation: after a caller has
+independently proven a successful full reconciliation and acquired a fresh
+Provider-specific bootstrap checkpoint, it may atomically install that trusted
+checkpoint and clear `reconciliation_required`. A full scan alone never clears
+the latch automatically.
+
 Adapters may stream facts. Valid per-fact Decisions may therefore commit before
 the traversal completes, but those commits do not make the provider snapshot
 authoritative.
@@ -78,6 +101,10 @@ The run remains non-authoritative, performs no missing-source reconciliation,
 and fails after traversal with a sanitized incomplete-sync error.
 
 ## Does NOT
+
+This foundation does not implement Nextcloud Activity discovery, Immich
+timestamp discovery, Provider-specific tombstone qualification, or automatic
+incremental scheduling.
 
 The Sync Engine does not:
 
