@@ -37,6 +37,11 @@ missing Sources only when the entire run remains reconciliation-safe.
 missing from one change batch remains active. Discovery mode, checkpoints, and
 deletion evidence are batch mechanics and never fields on `ProviderFact`.
 
+Authority is relative to the observation scope defined by the configured
+Adapter connection. A complete traversal can be authoritative for a credential,
+account, tenant, folder, or permission scope without claiming access to all
+data physically stored behind the Provider.
+
 Incremental checkpoints belong to PDI operational persistence in the dedicated
 `provider_sync_state` table. The engine reads state before discovery, applies
 all facts and any future qualified tombstones durably, then advances the opaque
@@ -60,8 +65,8 @@ the stable metadata search endpoint from checkpoint minus five minutes through
 a run-start upper bound. The overlap and inclusive timestamp boundaries make
 replay intentional. Initial bootstrap and reconciliation recovery capture a
 fresh anchor before a successful full authoritative scan and install it last.
-Incremental absence is never deletion; Immich permanent deletion still
-requires periodic full reconciliation.
+Incremental absence is never scope-exit evidence; periodic full reconciliation
+is required to converge Sources that leave the configured observation scope.
 Immich v3.1 reports `total` and `count` for the current page, not for the global
 query. PDI validates those values only against that page's item count. Because
 the API uses offset pagination without snapshot isolation, PDI traverses the
@@ -69,6 +74,15 @@ same fixed query twice and requires the ordered asset-ID sequences to match.
 Duplicate IDs within either pass or a cross-pass mismatch fail discovery
 without advancing the checkpoint or marking checkpoint state invalid. This is
 fail-closed consistency evidence, not an atomic snapshot.
+
+Immich V0.1 synchronizes the configured API key's visible metadata-search
+scope. It does not promise enumeration of Locked assets and does not attempt an
+elevated session, PIN handling, or direct database access. A stable full-scope
+absence deactivates the Source, but does not classify why it became absent:
+permanent deletion, Locked visibility, permissions, sharing, or another scope
+change have the same observable result. If the same Provider identity returns
+to scope, Identity reactivates its existing Source. Soft-trash assets returned
+through `withDeleted=true` remain active Provider resources.
 
 Adapters may stream facts. Valid per-fact Decisions may therefore commit before
 the traversal completes, but those commits do not make the provider snapshot

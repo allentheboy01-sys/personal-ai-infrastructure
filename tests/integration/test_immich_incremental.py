@@ -106,7 +106,7 @@ def _initialize_checkpoint(state_repository, provider: str) -> None:
     assert advanced is not None
 
 
-def test_postgres_incremental_updates_without_missing_deactivation(context):
+def test_postgres_incremental_scope_absence_does_not_deactivate(context):
     adapter, repository, state_repository, engine = context
     adapter.full_facts = tuple(
         _fact(adapter.provider_name, external_id)
@@ -290,7 +290,9 @@ def test_malformed_immich_checkpoint_marks_reconciliation_required(context):
     assert state.version == advanced.version + 1
 
 
-def test_full_reconciliation_deactivates_permanently_absent_asset(context):
+def test_full_reconciliation_deactivates_source_outside_observation_scope(
+    context,
+):
     adapter, repository, _, engine = context
     adapter.full_facts = (
         _fact(adapter.provider_name, "a"),
@@ -306,6 +308,47 @@ def test_full_reconciliation_deactivates_permanently_absent_asset(context):
     assert source_a is not None and source_a.is_active is True
     assert source_b is not None and source_b.is_active is False
     assert source_b.deleted_at is not None
+
+
+def test_source_returning_to_api_key_scope_reuses_identity(context):
+    adapter, repository, state_repository, engine = context
+    adapter.full_facts = (_fact(adapter.provider_name, "a"),)
+    engine.sync_once()
+    original = repository.find_source(adapter.provider_name, "a")
+    assert original is not None
+    original_id = original.id
+    original_blob_id = original.blob_id
+    assert original_blob_id is not None
+    original_blob = repository.get_blob(original_blob_id)
+    assert original_blob is not None
+    original_asset_id = original_blob.asset_id
+
+    _initialize_checkpoint(state_repository, adapter.provider_name)
+    adapter.incremental_facts = ()
+    ImmichIncrementalSync(
+        adapter, engine, state_repository, clock=lambda: T1
+    ).run_incremental()
+    still_active = repository.find_source(adapter.provider_name, "a")
+    assert still_active is not None and still_active.is_active is True
+
+    adapter.full_facts = ()
+    engine.sync_once()
+    outside_scope = repository.find_source(adapter.provider_name, "a")
+    assert outside_scope is not None
+    assert outside_scope.is_active is False
+    assert outside_scope.deleted_at is not None
+
+    adapter.full_facts = (_fact(adapter.provider_name, "a"),)
+    engine.sync_once()
+    returned = repository.find_source(adapter.provider_name, "a")
+    assert returned is not None
+    assert returned.id == original_id
+    assert returned.blob_id == original_blob_id
+    assert returned.is_active is True
+    assert returned.deleted_at is None
+    returned_blob = repository.get_blob(returned.blob_id)
+    assert returned_blob is not None
+    assert returned_blob.asset_id == original_asset_id
 
 
 def test_full_pagination_drift_prevents_missing_reconciliation(context):

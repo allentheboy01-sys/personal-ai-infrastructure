@@ -173,6 +173,11 @@ The scan-level difference belongs to the synchronization lifecycle, not to per-f
 
 Identity understands the meaning of deactivation. The Sync Engine owns the complete-scan context required to determine which Sources are missing.
 
+"Complete" and "authoritative" are always bounded by the Provider observation
+scope configured on the Adapter connection. They do not imply access to every
+physical record behind a Provider. An inactive Source records absence from that
+scope; it is not proof of permanent Provider deletion.
+
 The Repository only provides queries and executes Decisions.
 
 ## Failure Rules
@@ -230,7 +235,6 @@ not yet define:
 - resume after interruption;
 - parallel Provider synchronization;
 - cross-session conflict resolution;
-- Source reactivation;
 - one atomic transaction for an entire scan;
 - scheduler behavior.
 
@@ -249,6 +253,13 @@ pass or a mismatch between passes is transient Provider discovery
 inconsistency, not checkpoint corruption: durable first-pass facts may remain,
 while the checkpoint remains unchanged for replay. Even two matching passes do
 not provide database snapshot isolation.
+
+For Immich V0.1, that scope is the configured API key's visible metadata-search
+result. Locked assets are outside the scope PDI can promise to enumerate.
+Incremental absence leaves a Source active. Stable full-scope absence
+deactivates it without classifying permanent deletion versus visibility or
+access change. Returning the same external identity reactivates the same
+Source. Soft-trash assets remain in scope when returned by `withDeleted=true`.
 
 ## Related Documents
 

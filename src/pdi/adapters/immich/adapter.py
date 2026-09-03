@@ -43,7 +43,7 @@ class ImmichAdapter(Adapter):
         logger.info("Connected to Immich")
 
     def scan(self) -> Iterable[ProviderFact]:
-        """Scan every page returned by Immich metadata search."""
+        """Scan assets visible to the configured API-key search scope."""
 
         logger.info("Scanning Immich...")
 
