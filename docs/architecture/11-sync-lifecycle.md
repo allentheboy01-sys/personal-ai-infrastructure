@@ -261,6 +261,34 @@ deactivates it without classifying permanent deletion versus visibility or
 access change. Returning the same external identity reactivates the same
 Source. Soft-trash assets remain in scope when returned by `withDeleted=true`.
 
+Nextcloud's `activity_v2_hint_v1` checkpoint is the Activity API continuation
+ID. `0` is a synthetic sentinel proving only that no Activity existed when the
+bootstrap anchor was captured; it is not a real Activity cursor. An empty poll
+from `0` is a no-op, but the first later non-empty page cannot prove retained
+continuity and therefore latches explicit full recovery. A run consumes one
+ascending page of 200 events. The Provider's `X-Activity-Last-Given` header,
+not the rendered JSON activity IDs, is the raw-row continuation cursor and must
+be strictly greater than the prior real cursor. Grouping and parsing may make
+the rendered IDs differ from that cursor; they are candidate hints only. For a non-zero
+cursor, the presence of `X-Activity-First-Known` means the supplied `since` was
+unknown regardless of numeric ordering. Either continuity failure is invalid
+checkpoint state and requires explicit full recovery. HTTP or configuration
+unavailability is not cursor corruption.
+
+V0.1 does not send `If-None-Match`. A 304 without Last-Given is a true no-op. A
+304 with a valid advancing Last-Given represents consumed but unrendered raw
+rows and advances an empty-facts batch through normal CAS-last processing. A
+synthetic zero checkpoint cannot make that transition and latches full
+recovery. Bootstrap anchor capture does accept a positive Last-Given on 304.
+
+Activity entries only select candidates. Current-state authority comes from
+WebDAV SEARCH by `oc:fileid`, exact Depth-0 PROPFIND, and a targeted recursive
+scan when the current resource is a folder. A delete event is not a qualified
+tombstone. Incremental absence never deactivates a Source; only a later stable
+full traversal of the configured user's WebDAV-visible Files scope reconciles
+scope absence. Files WebDAV Activity hints must not be described as a DAV sync
+token or as a complete deletion journal.
+
 ## Related Documents
 
 - [03 - Provider Adapter](03-provider-adapter.md)

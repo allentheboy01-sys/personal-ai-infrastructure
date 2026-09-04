@@ -84,6 +84,34 @@ change have the same observable result. If the same Provider identity returns
 to scope, Identity reactivates its existing Source. Soft-trash assets returned
 through `withDeleted=true` remain active Provider resources.
 
+Nextcloud V0.1 uses `activity_v2_hint_v1` within the configured user's visible
+WebDAV Files scope. Activity V2 is a bounded change-hint stream, not an
+authoritative filesystem journal and not a `ProviderFact` source. Each consumed
+file hint is located by `oc:fileid` SEARCH and revalidated through current
+WebDAV properties; paths from Activity are fallback hints only. Folder hints
+trigger a recursive scan of that folder subtree. Delete hints and targeted 404
+or 410 responses do not create tombstones or deactivate Sources. Cursor gaps
+mark incremental state for explicit full recovery, while Activity endpoint
+unavailability leaves state unchanged. Periodic full traversal remains a
+correctness requirement for retention, permissions, shares, external-storage
+timing, and events the Activity app does not expose.
+
+The synthetic Nextcloud checkpoint `0` records only that the Activity stream
+was empty when bootstrap captured its anchor; it is not a real Activity row or
+a continuity cursor. An empty poll from `0` remains a no-op, while any later
+non-empty page requires explicit full recovery and a fresh real anchor. For a
+real cursor, any `X-Activity-First-Known` response means the supplied `since`
+was unknown, without numeric inference, and normal continuation must advance
+strictly beyond the prior checkpoint.
+
+`X-Activity-Last-Given` is the Provider-issued continuation cursor over raw
+Activity rows. Rendered JSON activity IDs are candidate hints, not a cursor
+ledger: grouping or parsing can make their tail differ from the raw cursor.
+PDI V0.1 sends no `If-None-Match`. A 304 without Last-Given is a no-op; a 304
+with an advancing Last-Given commits an empty-facts incremental batch. The
+synthetic zero anchor cannot take that advancement and instead requires full
+recovery.
+
 Adapters may stream facts. Valid per-fact Decisions may therefore commit before
 the traversal completes, but those commits do not make the provider snapshot
 authoritative.

@@ -230,6 +230,65 @@ def test_scan_discovers_complete_tree_with_stable_external_ids(
     assert all("creationdate" not in fact.raw for fact in facts)
 
 
+def test_search_by_fileid_is_scoped_and_exact_propfind_reuses_mapping(
+    monkeypatch,
+) -> None:
+    calls = []
+    search_xml = _multistatus(
+        _webdav_response(path="renamed/文 件.txt", external_id="oc-id")
+    )
+    exact_xml = _multistatus(
+        _webdav_response(path="renamed/文 件.txt", external_id="oc-id")
+    )
+
+    def fake_request(*, method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return FakeResponse(search_xml if method == "SEARCH" else exact_xml)
+
+    monkeypatch.setattr(
+        "pdi.adapters.nextcloud.adapter.requests.request", fake_request
+    )
+    adapter = _adapter()
+    located = adapter.search_by_fileid("123")
+    assert located is not None
+    assert located.attributes["path"] == "renamed/文 件.txt"
+    fact = adapter.propfind_exact(located.attributes["path"])
+    assert fact is not None
+    assert fact.external_id == located.external_id
+    assert calls[0][0:2] == (
+        "SEARCH", "https://nextcloud.example/remote.php/dav/"
+    )
+    assert "<d:href>/files/test-user</d:href>" in calls[0][2]["data"]
+    assert "<oc:fileid/>" in calls[0][2]["data"]
+    assert "<d:literal>123</d:literal>" in calls[0][2]["data"]
+    assert calls[1][0] == "PROPFIND"
+    assert calls[1][2]["headers"]["Depth"] == "0"
+    assert "%E6%96%87%20%E4%BB%B6.txt" in calls[1][1]
+    assert not calls[1][1].endswith("/")
+
+
+def test_fileid_search_rejects_multiple_results(monkeypatch) -> None:
+    response = _multistatus(
+        _webdav_response(path="A.txt", external_id="a"),
+        _webdav_response(path="B.txt", external_id="b"),
+    )
+    monkeypatch.setattr(
+        "pdi.adapters.nextcloud.adapter.requests.request",
+        lambda **kwargs: FakeResponse(response),
+    )
+    with pytest.raises(ValueError, match="multiple resources"):
+        _adapter().search_by_fileid("123")
+
+
+@pytest.mark.parametrize("status", [404, 410])
+def test_exact_propfind_missing_returns_none(monkeypatch, status) -> None:
+    monkeypatch.setattr(
+        "pdi.adapters.nextcloud.adapter.requests.request",
+        lambda **kwargs: FakeResponse("", status_code=status),
+    )
+    assert _adapter().propfind_exact("gone.txt") is None
+
+
 def test_scan_yields_before_requesting_later_directories(
     monkeypatch,
 ) -> None:

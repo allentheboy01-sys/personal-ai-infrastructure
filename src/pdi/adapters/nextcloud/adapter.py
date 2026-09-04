@@ -4,6 +4,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from collections import deque
 from typing import Iterable
+from xml.sax.saxutils import escape
 
 import requests
 
@@ -154,6 +155,58 @@ class NextcloudAdapter(Adapter):
 
     def _propfind(self, path: str) -> list[ProviderFact]:
         """向 Nextcloud WebDAV 发送 PROPFIND 请求。"""
+        return self._request_propfind(path, depth="1", include_self=False)
+
+    def propfind_exact(self, path: str) -> ProviderFact | None:
+        """Revalidate one current resource without traversing its subtree."""
+        facts = self._request_propfind(path, depth="0", include_self=True)
+        if not facts:
+            return None
+        if len(facts) != 1:
+            raise ValueError("Exact Nextcloud PROPFIND returned multiple resources")
+        return facts[0]
+
+    def search_by_fileid(self, file_id: str) -> ProviderFact | None:
+        """Locate a current WebDAV resource in the configured user scope."""
+        if not isinstance(file_id, str) or not file_id:
+            raise ValueError("Nextcloud fileid must be a non-empty string")
+        scope = f"/files/{self.username}"
+        body = f"""<?xml version="1.0" encoding="UTF-8"?>
+<d:searchrequest xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+  <d:basicsearch>
+    <d:select><d:prop><oc:id/><oc:fileid/><d:getcontentlength/>
+      <d:getcontenttype/><d:getetag/><d:getlastmodified/>
+      <d:resourcetype/></d:prop></d:select>
+    <d:from><d:scope><d:href>{scope}</d:href><d:depth>infinity</d:depth>
+      </d:scope></d:from>
+    <d:where><d:eq><d:prop><oc:fileid/></d:prop>
+      <d:literal>{escape(file_id)}</d:literal></d:eq></d:where>
+  </d:basicsearch>
+</d:searchrequest>
+"""
+        response = requests.request(
+            method="SEARCH",
+            url=f"{self.base_url}/remote.php/dav/",
+            headers={"Content-Type": "application/xml"},
+            data=body,
+            auth=(self.username, self.password),
+            timeout=10,
+        )
+        response.raise_for_status()
+        facts = self._parse_webdav_response(
+            response.text, current_path="", include_self=True
+        )
+        if len(facts) > 1:
+            raise ValueError("Nextcloud fileid SEARCH returned multiple resources")
+        return facts[0] if facts else None
+
+    def _request_propfind(
+        self,
+        path: str,
+        *,
+        depth: str,
+        include_self: bool,
+    ) -> list[ProviderFact]:
         normalized_path = self._normalize_traversal_path(path)
         encoded_path = urllib.parse.quote(
             normalized_path,
@@ -166,10 +219,12 @@ class NextcloudAdapter(Adapter):
         )
 
         if encoded_path:
-            url += encoded_path + "/"
+            url += encoded_path
+            if depth == "1":
+                url += "/"
 
         headers = {
-            "Depth": "1",
+            "Depth": depth,
             "Content-Type": "application/xml",
         }
 
@@ -198,17 +253,24 @@ class NextcloudAdapter(Adapter):
             timeout=10,
         )
 
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError:
+            if include_self and response.status_code in {404, 410}:
+                return []
+            raise
 
         return self._parse_webdav_response(
             response.text,
             current_path=normalized_path,
+            include_self=include_self,
         )
 
     def _parse_webdav_response(
         self,
         xml_text: str,
         current_path: str,
+        include_self: bool = False,
     ) -> list[ProviderFact]:
         """把 Nextcloud WebDAV XML 转换成统一的 ProviderFact。"""
         namespace = {
@@ -240,7 +302,7 @@ class NextcloudAdapter(Adapter):
                 )
 
             # 每次 Depth=1 PROPFIND 通常都会返回当前 collection 自身。
-            if self._normalize_traversal_path(
+            if not include_self and self._normalize_traversal_path(
                 path
             ) == self._normalize_traversal_path(current_path):
                 continue
@@ -385,7 +447,7 @@ class NextcloudAdapter(Adapter):
         if decoded.startswith(prefix):
             return decoded[len(prefix):]
 
-        return decoded
+        return None
 
     @staticmethod
     def _get_text(
