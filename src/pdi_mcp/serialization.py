@@ -55,6 +55,22 @@ def serialize_status_snapshot(snapshot: StatusSnapshot) -> dict[str, object]:
             }
             for pipeline in snapshot.pipelines
         ],
+        "provider_sync_states": [
+            {
+                "provider": state.provider,
+                "mechanism": state.mechanism,
+                "state_exists": state.state_exists,
+                "checkpoint_initialized": state.checkpoint_initialized,
+                "version": state.version,
+                "reconciliation_required": state.reconciliation_required,
+                "updated_at": (
+                    state.updated_at.isoformat()
+                    if state.updated_at is not None
+                    else None
+                ),
+            }
+            for state in snapshot.provider_sync_states
+        ],
     }
 
 

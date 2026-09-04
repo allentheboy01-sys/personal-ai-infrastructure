@@ -70,6 +70,43 @@ def test_success_recovers_after_lock_then_begins_and_completes(tmp_path) -> None
     assert engine.disposed is True
 
 
+@pytest.mark.parametrize(
+    "pipeline_key",
+    [
+        "provider.nextcloud.incremental",
+        "provider.nextcloud.bootstrap",
+        "provider.nextcloud.recovery",
+        "provider.immich.incremental",
+        "provider.immich.bootstrap",
+        "provider.immich.recovery",
+    ],
+)
+def test_all_provider_operations_use_same_formal_lock_and_ledger(
+    tmp_path, pipeline_key
+) -> None:
+    events = []
+    engine = FakeEngine()
+    repository = RecordingRepository(events)
+    result = run_formal_pipeline(
+        pipeline_key,
+        lock_timeout=0,
+        lock_path=tmp_path / "same-formal.lock",
+        engine_factory=lambda url: engine,
+        database_url_loader=lambda: "isolated-db",
+        repository_factory=lambda configured_engine: repository,
+        command_runner=lambda command: (
+            events.append(("command", tuple(command))) or 0
+        ),
+    )
+    assert result == 0
+    assert [event[0] for event in events] == [
+        "recover", "begin", "command", "complete"
+    ]
+    assert events[1][1] == pipeline_key
+    assert events[1][2] is PipelineKind.PROVIDER_SYNC
+    assert events[2][1][1:] == PIPELINE_COMMANDS[pipeline_key]
+
+
 def test_nonzero_and_exception_fail_with_sanitized_code(tmp_path) -> None:
     result, events, _ = _run(tmp_path, exit_code=9)
     assert result == 9

@@ -24,6 +24,7 @@ from pdi.repository import PostgreSQLRepository
 from pdi.rich_retrieval import RichRetrievalService
 from pdi.retrieval import RetrievalService
 from pdi.retrieval.providers import ImmichSemanticRetrievalAdapter
+from pdi.sync_state import PostgreSQLProviderSyncStateRepository
 
 from .server import create_server
 
@@ -71,7 +72,12 @@ def create_runtime_server(
         observation_service,
         retrieval_service,
         rich_retrieval_service,
-        DataStatusService(PipelineRunRepository(engine)),
+        DataStatusService(
+            PipelineRunRepository(engine),
+            sync_state_repository=PostgreSQLProviderSyncStateRepository(
+                engine
+            ),
+        ),
         ResourceQueryService(
             query_service,
             rich_retrieval_service,

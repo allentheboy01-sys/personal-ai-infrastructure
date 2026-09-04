@@ -19,7 +19,15 @@ PIPELINES = (
         PipelineKind.PROVIDER_SYNC,
     ),
     PipelineDefinition(
+        "provider.nextcloud.incremental",
+        PipelineKind.PROVIDER_SYNC,
+    ),
+    PipelineDefinition(
         "provider.immich.sync",
+        PipelineKind.PROVIDER_SYNC,
+    ),
+    PipelineDefinition(
+        "provider.immich.incremental",
         PipelineKind.PROVIDER_SYNC,
     ),
     PipelineDefinition(
@@ -74,6 +82,44 @@ PIPELINES = (
     ),
 )
 
+OPERATOR_ACTION_PIPELINES = (
+    PipelineDefinition(
+        "provider.nextcloud.bootstrap", PipelineKind.PROVIDER_SYNC
+    ),
+    PipelineDefinition(
+        "provider.nextcloud.recovery", PipelineKind.PROVIDER_SYNC
+    ),
+    PipelineDefinition(
+        "provider.immich.bootstrap", PipelineKind.PROVIDER_SYNC
+    ),
+    PipelineDefinition(
+        "provider.immich.recovery", PipelineKind.PROVIDER_SYNC
+    ),
+)
+
+FORMAL_PIPELINES = PIPELINES + OPERATOR_ACTION_PIPELINES
+
+PROVIDER_MUTATION_GROUPS = {
+    "provider.nextcloud.sync": (
+        "provider.nextcloud.sync",
+        "provider.nextcloud.incremental",
+        "provider.nextcloud.bootstrap",
+        "provider.nextcloud.recovery",
+    ),
+    "provider.immich.sync": (
+        "provider.immich.sync",
+        "provider.immich.incremental",
+        "provider.immich.bootstrap",
+        "provider.immich.recovery",
+    ),
+    "provider.gmail.sync": ("provider.gmail.sync",),
+}
+
+PROVIDER_SYNC_STATE_TARGETS = (
+    ("nextcloud", "activity_v2_hint_v1"),
+    ("immich", "metadata_updated_at_v1"),
+)
+
 
 def validate_registry(
     pipelines: tuple[PipelineDefinition, ...],
@@ -109,4 +155,8 @@ def validate_registry(
 
 
 validate_registry(PIPELINES)
+validate_registry(FORMAL_PIPELINES)
 PIPELINE_REGISTRY = {pipeline.pipeline_key: pipeline for pipeline in PIPELINES}
+FORMAL_PIPELINE_REGISTRY = {
+    pipeline.pipeline_key: pipeline for pipeline in FORMAL_PIPELINES
+}

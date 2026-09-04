@@ -1,9 +1,11 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 
 from pdi.data_status import (
+    FORMAL_PIPELINE_REGISTRY,
     PIPELINES,
     PipelineDefinition,
     PipelineErrorCode,
@@ -45,7 +47,9 @@ def test_registry_has_frozen_keys_kinds_dependencies_and_generators() -> None:
     by_key = {pipeline.pipeline_key: pipeline for pipeline in PIPELINES}
     assert tuple(by_key) == (
         "provider.nextcloud.sync",
+        "provider.nextcloud.incremental",
         "provider.immich.sync",
+        "provider.immich.incremental",
         "provider.gmail.sync",
         "enrichment.nextcloud_text",
         "enrichment.nextcloud_documents",
@@ -70,6 +74,14 @@ def test_registry_has_frozen_keys_kinds_dependencies_and_generators() -> None:
     assert by_key["enrichment.gmail_metadata"].dependencies == (
         "provider.gmail.sync",
     )
+    assert "provider.nextcloud.bootstrap" not in by_key
+    assert "provider.nextcloud.recovery" not in by_key
+    assert {
+        "provider.nextcloud.bootstrap",
+        "provider.nextcloud.recovery",
+        "provider.immich.bootstrap",
+        "provider.immich.recovery",
+    } <= set(FORMAL_PIPELINE_REGISTRY)
 
 
 @pytest.mark.parametrize(
@@ -108,9 +120,9 @@ def test_empty_status_snapshot_is_bounded_and_uses_two_batch_reads() -> None:
     repository = FakeRepository()
     snapshot = DataStatusService(repository, clock=lambda: NOW).get_status()
     assert snapshot.generated_at == NOW
-    assert len(snapshot.pipelines) == 10
+    assert len(snapshot.pipelines) == 12
     assert len(repository.calls) == 2
-    assert all(len(call[1]) == 10 for call in repository.calls)
+    assert all(len(call[1]) == 16 for call in repository.calls)
     roots = [item for item in snapshot.pipelines if not item.dependencies]
     dependents = [item for item in snapshot.pipelines if item.dependencies]
     assert all(item.latest_status is None for item in snapshot.pipelines)
@@ -130,7 +142,15 @@ def test_age_dependency_and_latest_failure_are_independent() -> None:
         PipelineErrorCode.EXECUTION_FAILED,
     )
     repository = FakeRepository(
-        latest={"enrichment.nextcloud_text": failed},
+        latest={
+            "provider.nextcloud.sync": _run(
+                "provider.nextcloud.sync",
+                PipelineStatus.COMPLETED,
+                nextcloud_success - timedelta(minutes=1),
+                nextcloud_success,
+            ),
+            "enrichment.nextcloud_text": failed,
+        },
         successes={
             "provider.nextcloud.sync": nextcloud_success,
             "enrichment.nextcloud_text": text_success,
@@ -146,6 +166,149 @@ def test_age_dependency_and_latest_failure_are_independent() -> None:
     assert text.last_success_at == text_success
     assert text.success_age_seconds == 3600
     assert text.validated_after_dependencies is True
+
+
+def test_provider_mutation_attempts_conservatively_invalidate_enrichment() -> None:
+    full_success = NOW - timedelta(hours=2)
+    enrichment_success = NOW - timedelta(minutes=90)
+    incremental_success = NOW - timedelta(hours=1)
+    repository = FakeRepository(
+        latest={
+            "provider.nextcloud.incremental": _run(
+                "provider.nextcloud.incremental",
+                PipelineStatus.COMPLETED,
+                incremental_success - timedelta(minutes=1),
+                incremental_success,
+            )
+        },
+        successes={
+            "provider.nextcloud.sync": full_success,
+            "provider.nextcloud.incremental": incremental_success,
+            "enrichment.nextcloud_text": enrichment_success,
+        },
+    )
+    snapshot = DataStatusService(repository, clock=lambda: NOW).get_status()
+    text = next(
+        item for item in snapshot.pipelines
+        if item.pipeline_key == "enrichment.nextcloud_text"
+    )
+    assert text.validated_after_dependencies is False
+
+    repository.successes["enrichment.nextcloud_text"] = NOW
+    snapshot = DataStatusService(repository, clock=lambda: NOW).get_status()
+    text = next(
+        item for item in snapshot.pipelines
+        if item.pipeline_key == "enrichment.nextcloud_text"
+    )
+    assert text.validated_after_dependencies is True
+
+
+@pytest.mark.parametrize(
+    ("key", "status"),
+    [
+        ("provider.nextcloud.incremental", PipelineStatus.RUNNING),
+        ("provider.nextcloud.incremental", PipelineStatus.FAILED),
+        ("provider.nextcloud.bootstrap", PipelineStatus.COMPLETED),
+        ("provider.nextcloud.recovery", PipelineStatus.COMPLETED),
+        ("provider.nextcloud.bootstrap", PipelineStatus.FAILED),
+        ("provider.nextcloud.recovery", PipelineStatus.FAILED),
+    ],
+)
+def test_latest_provider_mutation_watermark_includes_all_formal_attempts(
+    key, status
+) -> None:
+    attempt_at = NOW - timedelta(minutes=10)
+    enrichment_success = NOW - timedelta(minutes=20)
+    finished = None if status is PipelineStatus.RUNNING else attempt_at
+    successes = {
+        "provider.nextcloud.sync": NOW - timedelta(hours=2),
+        "enrichment.nextcloud_text": enrichment_success,
+    }
+    if status is PipelineStatus.COMPLETED:
+        successes[key] = attempt_at
+    repository = FakeRepository(
+        latest={
+            key: _run(key, status, attempt_at, finished)
+        },
+        successes=successes,
+    )
+    snapshot = DataStatusService(repository, clock=lambda: NOW).get_status()
+    text = next(
+        item for item in snapshot.pipelines
+        if item.pipeline_key == "enrichment.nextcloud_text"
+    )
+    assert text.validated_after_dependencies is False
+
+
+def test_provider_group_requires_at_least_one_formal_success() -> None:
+    repository = FakeRepository(
+        latest={
+            "provider.nextcloud.incremental": _run(
+                "provider.nextcloud.incremental",
+                PipelineStatus.FAILED,
+                NOW - timedelta(minutes=10),
+                NOW - timedelta(minutes=9),
+            )
+        },
+        successes={"enrichment.nextcloud_text": NOW},
+    )
+    snapshot = DataStatusService(repository, clock=lambda: NOW).get_status()
+    text = next(
+        item for item in snapshot.pipelines
+        if item.pipeline_key == "enrichment.nextcloud_text"
+    )
+    assert text.validated_after_dependencies is False
+
+
+def test_provider_sync_state_health_is_bounded_and_checkpoint_redacted() -> None:
+    class StateRepository:
+        def read(self, provider, mechanism):
+            if provider == "nextcloud":
+                return None
+            return SimpleNamespace(
+                checkpoint="secret-opaque-watermark",
+                version=7,
+                reconciliation_required=True,
+                updated_at=NOW - timedelta(minutes=2),
+            )
+
+    snapshot = DataStatusService(
+        FakeRepository(),
+        sync_state_repository=StateRepository(),
+        clock=lambda: NOW,
+    ).get_status()
+    nextcloud, immich = snapshot.provider_sync_states
+    assert nextcloud.state_exists is False
+    assert nextcloud.checkpoint_initialized is False
+    assert nextcloud.version is None
+    assert nextcloud.reconciliation_required is None
+    assert immich.state_exists is True
+    assert immich.checkpoint_initialized is True
+    assert immich.version == 7
+    assert immich.reconciliation_required is True
+    assert not hasattr(immich, "checkpoint")
+
+
+def test_null_checkpoint_is_existing_but_uninitialized() -> None:
+    class StateRepository:
+        def read(self, provider, mechanism):
+            return SimpleNamespace(
+                checkpoint=None,
+                version=0,
+                reconciliation_required=False,
+                updated_at=NOW,
+            )
+
+    snapshot = DataStatusService(
+        FakeRepository(),
+        sync_state_repository=StateRepository(),
+        clock=lambda: NOW,
+    ).get_status()
+    assert all(state.state_exists for state in snapshot.provider_sync_states)
+    assert all(
+        not state.checkpoint_initialized
+        for state in snapshot.provider_sync_states
+    )
 
 
 def test_future_success_has_null_age_and_raw_timestamp() -> None:

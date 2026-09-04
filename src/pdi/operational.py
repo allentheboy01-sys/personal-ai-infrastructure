@@ -15,7 +15,7 @@ from sqlalchemy import Engine
 
 from pdi.config.settings import load_database_url
 from pdi.data_status import (
-    PIPELINE_REGISTRY,
+    FORMAL_PIPELINE_REGISTRY,
     PipelineErrorCode,
     PipelineRunRepository,
 )
@@ -29,9 +29,33 @@ CHILD_TERMINATION_GRACE_SECONDS = 10.0
 
 
 PIPELINE_COMMANDS: dict[str, tuple[str, ...]] = {
-    "provider.nextcloud.sync": ("-m", "pdi.main", "--provider", "nextcloud"),
-    "provider.immich.sync": ("-m", "pdi.main", "--provider", "immich"),
-    "provider.gmail.sync": ("-m", "pdi.main", "--provider", "gmail"),
+    "provider.nextcloud.sync": (
+        "-m", "pdi.main", "--provider", "nextcloud", "--operation", "full",
+    ),
+    "provider.nextcloud.incremental": (
+        "-m", "pdi.main", "--provider", "nextcloud", "--operation", "incremental",
+    ),
+    "provider.nextcloud.bootstrap": (
+        "-m", "pdi.main", "--provider", "nextcloud", "--operation", "bootstrap",
+    ),
+    "provider.nextcloud.recovery": (
+        "-m", "pdi.main", "--provider", "nextcloud", "--operation", "recover",
+    ),
+    "provider.immich.sync": (
+        "-m", "pdi.main", "--provider", "immich", "--operation", "full",
+    ),
+    "provider.immich.incremental": (
+        "-m", "pdi.main", "--provider", "immich", "--operation", "incremental",
+    ),
+    "provider.immich.bootstrap": (
+        "-m", "pdi.main", "--provider", "immich", "--operation", "bootstrap",
+    ),
+    "provider.immich.recovery": (
+        "-m", "pdi.main", "--provider", "immich", "--operation", "recover",
+    ),
+    "provider.gmail.sync": (
+        "-m", "pdi.main", "--provider", "gmail", "--operation", "full",
+    ),
     "enrichment.nextcloud_text": (
         "-m", "pdi.enrichment", "--extractor", "nextcloud-text",
         "--batch-size", "100",
@@ -61,7 +85,7 @@ PIPELINE_COMMANDS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-if set(PIPELINE_COMMANDS) != set(PIPELINE_REGISTRY):
+if set(PIPELINE_COMMANDS) != set(FORMAL_PIPELINE_REGISTRY):
     raise RuntimeError("formal command map must match pipeline registry")
 
 
@@ -163,7 +187,7 @@ def _execute_with_ledger(
 ) -> int:
     if not isinstance(lock, _AcquiredFormalLock):
         raise RuntimeError("interrupted recovery requires an acquired formal lock")
-    definition = PIPELINE_REGISTRY[pipeline_key]
+    definition = FORMAL_PIPELINE_REGISTRY[pipeline_key]
     repository.fail_interrupted_run(pipeline_key)
     run = repository.begin_run(pipeline_key, definition.kind)
     try:
@@ -190,7 +214,7 @@ def run_formal_pipeline(
     ),
     command_runner: Callable[[Sequence[str]], int] = run_child_process,
 ) -> int:
-    if pipeline_key not in PIPELINE_REGISTRY:
+    if pipeline_key not in FORMAL_PIPELINE_REGISTRY:
         raise ValueError(f"unknown formal pipeline: {pipeline_key}")
     try:
         with acquire_formal_lock(lock_path, lock_timeout) as lock:
@@ -217,7 +241,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pipeline-key",
         required=True,
-        choices=tuple(PIPELINE_REGISTRY),
+        choices=tuple(FORMAL_PIPELINE_REGISTRY),
     )
     parser.add_argument("--lock-timeout", type=float, required=True)
     return parser

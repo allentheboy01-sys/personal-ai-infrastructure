@@ -118,9 +118,23 @@ Immich supports the same operation names. Every non-full operation requires an
 explicit `nextcloud` or `immich` provider; Gmail remains full-only. Ordinary
 full never installs or repairs an incremental checkpoint, and incremental never
 falls back to full. These direct commands are manual/debug entrypoints: they do
-not acquire the formal global lock or write the PipelineRun ledger. Formal
-unattended incremental scheduling and locking are deferred; do not substitute
-these direct commands for the existing `pdi.operational` execution boundary.
+not acquire the formal global lock or write the PipelineRun ledger. Unattended
+operations must use the existing `pdi.operational` execution boundary.
+
+Before enabling either incremental timer, establish trusted Provider state
+with an explicit formal bootstrap while the timer remains disabled:
+
+```bash
+sudo -u pdi /opt/pdi/.venv/bin/python -m pdi.operational \
+  --pipeline-key provider.nextcloud.bootstrap --lock-timeout 3600
+sudo -u pdi /opt/pdi/.venv/bin/python -m pdi.operational \
+  --pipeline-key provider.immich.bootstrap --lock-timeout 3600
+```
+
+If DataStatus reports `reconciliation_required`, leave incremental operation
+fail-closed and invoke the matching formal action explicitly:
+`provider.nextcloud.recovery` or `provider.immich.recovery`. Neither an
+incremental run nor an ordinary full run automatically repairs the latch.
 
 ## 6. Connect an MCP consumer
 
@@ -159,6 +173,19 @@ enablement procedures.
 The scheduled services use `pdi.operational` to retain the formal global lock
 and PipelineRun ledger. Gmail has no timer. The units are reference assets, not
 an installer, and installing them is optional for manual use.
+
+The existing Nextcloud 02:15 and Immich 05:15 daily timers remain periodic full
+reconciliation. Optional reference incremental timers run approximately every
+five minutes with staggered offsets and a 300-second formal-lock timeout. A
+busy full or enrichment run can therefore make an incremental activation exit
+75; the next timer activation tries again. Do not enable an incremental timer
+until its explicit formal bootstrap has completed successfully.
+
+DataStatus lists full and incremental pipelines separately. Enrichment
+dependency validation uses the Provider mutation watermark across formal full,
+incremental, bootstrap, and recovery attempts. A running or failed attempt can
+make older enrichment conservatively unvalidated. Incremental state health is
+reported without exposing the opaque checkpoint.
 
 ## Network and security boundary
 

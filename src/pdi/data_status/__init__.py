@@ -5,9 +5,18 @@ from .models import (
     PipelineRun,
     PipelineStatus,
     PipelineStatusView,
+    ProviderSyncStateView,
     StatusSnapshot,
 )
-from .registry import PIPELINES, PIPELINE_REGISTRY, PipelineDefinition
+from .registry import (
+    FORMAL_PIPELINES,
+    FORMAL_PIPELINE_REGISTRY,
+    PIPELINES,
+    PIPELINE_REGISTRY,
+    PROVIDER_MUTATION_GROUPS,
+    PROVIDER_SYNC_STATE_TARGETS,
+    PipelineDefinition,
+)
 from .repository import PipelineRunLifecycleError, PipelineRunRepository
 from .service import DataStatusService
 
@@ -17,6 +26,10 @@ __all__ = [
     "DataStatusUnavailableError",
     "PIPELINES",
     "PIPELINE_REGISTRY",
+    "FORMAL_PIPELINES",
+    "FORMAL_PIPELINE_REGISTRY",
+    "PROVIDER_MUTATION_GROUPS",
+    "PROVIDER_SYNC_STATE_TARGETS",
     "PipelineDefinition",
     "PipelineErrorCode",
     "PipelineKind",
@@ -25,5 +38,6 @@ __all__ = [
     "PipelineRunRepository",
     "PipelineStatus",
     "PipelineStatusView",
+    "ProviderSyncStateView",
     "StatusSnapshot",
 ]

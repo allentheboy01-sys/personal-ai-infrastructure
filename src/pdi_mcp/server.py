@@ -606,7 +606,8 @@ def create_server(
         completed its observation/sync; it does not guarantee the Provider is
         currently identical to PDI. Dependency validation only means the
         latest successful dependent execution happened at or after every
-        latest upstream success; it does not mean fresh=true.
+        formal Provider mutation watermark; it does not mean fresh=true.
+        Incremental state is bounded and excludes raw checkpoints.
         """
         if data_status_service is None:
             return {

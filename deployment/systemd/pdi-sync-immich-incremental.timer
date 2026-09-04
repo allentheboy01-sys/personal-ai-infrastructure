@@ -1,0 +1,10 @@
+[Unit]
+Description=Run PDI Immich incremental synchronization every five minutes
+
+[Timer]
+OnCalendar=*:2/5
+Persistent=true
+Unit=pdi-sync-immich-incremental.service
+
+[Install]
+WantedBy=timers.target

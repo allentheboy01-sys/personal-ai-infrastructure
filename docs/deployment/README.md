@@ -59,8 +59,15 @@ The sync operation defaults to `full`; `--operation full` is an equivalent
 explicit spelling. `incremental`, `bootstrap`, and `recover` are supported only
 with an explicit Nextcloud or Immich `--provider`. Gmail rejects those
 operations. Direct `pdi sync` execution remains a manual/debug surface without
-the formal lock or PipelineRun ledger. Incremental-aware formal commands and
-systemd schedules are deferred and are not claimed by the current units.
+the formal lock or PipelineRun ledger. Formal unattended full, incremental,
+bootstrap, and recovery operations use `pdi.operational`.
+
+The existing daily full timers remain unchanged: Nextcloud at 02:15 and Immich
+at 05:15. Optional reference incremental timers run at staggered approximately
+five-minute offsets and use a 300-second lock timeout. Do not enable either
+incremental timer before its explicit formal bootstrap succeeds. A
+reconciliation latch requires the corresponding explicit formal recovery;
+timers never bootstrap or recover automatically.
 
 MCP needs only the database. Immich configuration optionally enables semantic
 retrieval and bounded image-preview Resource access. Without Immich

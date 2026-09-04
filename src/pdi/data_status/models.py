@@ -46,6 +46,18 @@ class PipelineStatusView:
 
 
 @dataclass(frozen=True)
+class ProviderSyncStateView:
+    provider: str
+    mechanism: str
+    state_exists: bool
+    checkpoint_initialized: bool
+    version: int | None
+    reconciliation_required: bool | None
+    updated_at: datetime | None
+
+
+@dataclass(frozen=True)
 class StatusSnapshot:
     generated_at: datetime
     pipelines: tuple[PipelineStatusView, ...]
+    provider_sync_states: tuple[ProviderSyncStateView, ...] = ()

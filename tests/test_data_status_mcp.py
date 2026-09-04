@@ -8,6 +8,7 @@ from pdi.data_status import (
     PipelineKind,
     PipelineStatus,
     PipelineStatusView,
+    ProviderSyncStateView,
     StatusSnapshot,
 )
 from pdi.query import QueryService
@@ -34,6 +35,17 @@ class FakeDataStatusService:
                     success_age_seconds=86400,
                     dependencies=(),
                     validated_after_dependencies=None,
+                ),
+            ),
+            (
+                ProviderSyncStateView(
+                    provider="immich",
+                    mechanism="metadata_updated_at_v1",
+                    state_exists=True,
+                    checkpoint_initialized=True,
+                    version=8,
+                    reconciliation_required=False,
+                    updated_at=NOW,
                 ),
             ),
         )
@@ -70,10 +82,22 @@ def test_data_status_tool_has_no_parameters_and_bounded_safe_output() -> None:
                     "validated_after_dependencies": None,
                 }
             ],
+            "provider_sync_states": [
+                {
+                    "provider": "immich",
+                    "mechanism": "metadata_updated_at_v1",
+                    "state_exists": True,
+                    "checkpoint_initialized": True,
+                    "version": 8,
+                    "reconciliation_required": False,
+                    "updated_at": "2026-08-18T06:00:00+00:00",
+                }
+            ],
         }
         encoded = str(payload)
         for forbidden in (
-            "run_id", "error_message", "traceback", "systemd", "journal"
+            "run_id", "error_message", "traceback", "systemd", "journal",
+            "secret-opaque-watermark", "checkpoint\":",
         ):
             assert forbidden not in encoded
 

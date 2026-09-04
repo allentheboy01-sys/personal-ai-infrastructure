@@ -1,9 +1,22 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from pdi.sync_state import ProviderSyncStateRepository
+
 from .errors import DataStatusUnavailableError
-from .models import PipelineStatusView, StatusSnapshot
-from .registry import PIPELINES, PipelineDefinition
+from .models import (
+    PipelineStatus,
+    PipelineStatusView,
+    ProviderSyncStateView,
+    StatusSnapshot,
+)
+from .registry import (
+    FORMAL_PIPELINES,
+    PIPELINES,
+    PROVIDER_MUTATION_GROUPS,
+    PROVIDER_SYNC_STATE_TARGETS,
+    PipelineDefinition,
+)
 from .repository import PipelineRunRepository
 
 
@@ -13,10 +26,12 @@ class DataStatusService:
         repository: PipelineRunRepository,
         *,
         pipelines: tuple[PipelineDefinition, ...] = PIPELINES,
+        sync_state_repository: ProviderSyncStateRepository | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._repository = repository
         self._pipelines = pipelines
+        self._sync_state_repository = sync_state_repository
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def get_status(self) -> StatusSnapshot:
@@ -24,7 +39,13 @@ class DataStatusService:
         if generated_at.tzinfo is None or generated_at.utcoffset() is None:
             raise ValueError("generated_at must be timezone-aware")
         generated_at = generated_at.astimezone(UTC)
-        keys = tuple(pipeline.pipeline_key for pipeline in self._pipelines)
+        health_keys = tuple(
+            pipeline.pipeline_key for pipeline in self._pipelines
+        )
+        formal_keys = tuple(
+            pipeline.pipeline_key for pipeline in FORMAL_PIPELINES
+        )
+        keys = tuple(dict.fromkeys((*health_keys, *formal_keys)))
         try:
             latest = self._repository.get_latest_runs(keys)
             successes = self._repository.get_last_successes(keys)
@@ -42,17 +63,38 @@ class DataStatusService:
             if not pipeline.dependencies:
                 validated = None
             else:
-                dependency_successes = [
-                    successes.get(dependency)
-                    for dependency in pipeline.dependencies
-                ]
+                dependency_states = []
+                for dependency in pipeline.dependencies:
+                    group = PROVIDER_MUTATION_GROUPS.get(
+                        dependency, (dependency,)
+                    )
+                    group_successes = [
+                        successes[key] for key in group if key in successes
+                    ]
+                    candidates = []
+                    for key in group:
+                        run = latest.get(key)
+                        if run is None:
+                            continue
+                        candidate = (
+                            run.started_at
+                            if run.status is PipelineStatus.RUNNING
+                            else run.finished_at
+                        )
+                        if candidate is not None:
+                            candidates.append(candidate)
+                    dependency_states.append(
+                        (
+                            bool(group_successes),
+                            max(candidates) if candidates else None,
+                        )
+                    )
                 validated = bool(
                     last_success is not None
-                    and all(value is not None for value in dependency_successes)
+                    and all(established for established, _ in dependency_states)
                     and all(
-                        last_success >= value
-                        for value in dependency_successes
-                        if value is not None
+                        watermark is not None and last_success >= watermark
+                        for _, watermark in dependency_states
                     )
                 )
             views.append(
@@ -75,4 +117,37 @@ class DataStatusService:
                     validated_after_dependencies=validated,
                 )
             )
-        return StatusSnapshot(generated_at, tuple(views))
+        try:
+            state_views = []
+            for provider, mechanism in PROVIDER_SYNC_STATE_TARGETS:
+                state = (
+                    None
+                    if self._sync_state_repository is None
+                    else self._sync_state_repository.read(provider, mechanism)
+                )
+                state_views.append(
+                    ProviderSyncStateView(
+                        provider=provider,
+                        mechanism=mechanism,
+                        state_exists=state is not None,
+                        checkpoint_initialized=(
+                            state is not None and state.checkpoint is not None
+                        ),
+                        version=None if state is None else state.version,
+                        reconciliation_required=(
+                            None
+                            if state is None
+                            else state.reconciliation_required
+                        ),
+                        updated_at=(
+                            None if state is None else state.updated_at
+                        ),
+                    )
+                )
+        except Exception as error:
+            raise DataStatusUnavailableError(
+                "PDI data status is unavailable"
+            ) from error
+        return StatusSnapshot(
+            generated_at, tuple(views), tuple(state_views)
+        )

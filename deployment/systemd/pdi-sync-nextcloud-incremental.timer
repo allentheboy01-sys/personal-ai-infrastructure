@@ -1,0 +1,10 @@
+[Unit]
+Description=Run PDI Nextcloud incremental synchronization every five minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+Unit=pdi-sync-nextcloud-incremental.service
+
+[Install]
+WantedBy=timers.target

@@ -12,8 +12,11 @@ objective signals `last_success_at`, `success_age_seconds`, and
 
 ## Pipeline identity and ledger
 
-Eight static logical keys identify the two Provider sync and six enrichment
-pipelines independently of systemd or any future scheduler. The registry owns
+The ordinary health catalog identifies Provider full and incremental syncs and
+the enrichment pipelines independently of systemd. A separate formal registry
+also admits explicit bootstrap and recovery operator actions. Those actions
+receive the shared lock and PipelineRun audit history, but are not recurring
+health entries and have no timers. The registry owns
 kind, dependencies, and current enrichment generator identity. It validates
 unique keys, registered dependencies, no self dependency, and no cycles. It is
 not a scheduler or workflow engine.
@@ -82,14 +85,28 @@ lock-owning formal run.
 ## Snapshot and MCP semantics
 
 `DataStatusService` takes one aware UTC `generated_at`, performs one batched
-latest-run read and one batched last-success read, and returns all registry
-entries. `last_success_at` is the latest completed `finished_at`.
+latest-run read and one batched last-success read plus bounded reads of the two
+incremental state targets, and returns all health registry entries.
+`last_success_at` is the latest completed `finished_at`.
 `success_age_seconds` is derived; if success is in the future, the raw timestamp
 is preserved and age is `null`.
 
-Dependency validation is `null` without dependencies. Otherwise it is true only
-when the pipeline and every dependency have a success and the pipeline success
-is at or after all upstream successes. It is not a `fresh` assertion.
+Dependency validation is `null` without dependencies. A Provider dependency is
+established only after at least one successful formal mutation. Its mutation
+watermark is the newest timestamp among the latest full, incremental,
+bootstrap, and recovery attempts: `started_at` for running attempts and
+`finished_at` for completed or failed attempts. An enrichment validates only
+when its last success is at or after every dependency watermark. Running and
+failed attempts conservatively invalidate older enrichment because they may
+have durably changed the world model before completion or failure. This is not
+a `fresh` assertion. Direct manual/debug commands are absent from this formal
+ledger and therefore cannot contribute to the guarantee.
+
+The snapshot separately exposes Nextcloud and Immich incremental state as a
+bounded health view: Provider, mechanism, row existence, checkpoint
+initialization, version, reconciliation latch, and update time. Opaque raw
+checkpoint values are never returned. A missing row and a row with a null,
+uninitialized checkpoint remain distinct.
 
 `pdi_get_data_status()` exposes only the bounded snapshot. Provider sync success
 means PDI last completed observation/sync, not guaranteed current identity with

@@ -1,0 +1,16 @@
+[Unit]
+Description=PDI Immich incremental provider synchronization
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=pdi
+Group=pdi
+WorkingDirectory=/opt/pdi
+EnvironmentFile=/etc/pdi/pdi.env
+ExecStart=/opt/pdi/.venv/bin/python -m pdi.operational --pipeline-key provider.immich.incremental --lock-timeout 300
+TimeoutStartSec=1h
+UMask=0077
+StandardOutput=journal
+StandardError=journal

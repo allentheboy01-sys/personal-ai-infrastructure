@@ -9,6 +9,7 @@ from sqlalchemy.pool import NullPool
 from uuid import uuid4
 
 from pdi.data_status import (
+    DataStatusService,
     PipelineErrorCode,
     PipelineKind,
     PipelineRunLifecycleError,
@@ -16,6 +17,7 @@ from pdi.data_status import (
     PipelineStatus,
 )
 from pdi.operational import run_formal_pipeline
+from pdi.sync_state import PostgreSQLProviderSyncStateRepository
 from tests.integration.database_guard import require_safe_test_database_url
 
 
@@ -33,11 +35,13 @@ def ledger():
         command.upgrade(config, "head")
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM pipeline_runs"))
+        connection.execute(text("DELETE FROM provider_sync_state"))
     try:
         yield engine, PipelineRunRepository(engine)
     finally:
         with engine.begin() as connection:
             connection.execute(text("DELETE FROM pipeline_runs"))
+            connection.execute(text("DELETE FROM provider_sync_state"))
         engine.dispose()
 
 
@@ -69,6 +73,68 @@ def test_begin_complete_fail_history_latest_and_last_success(ledger) -> None:
     assert repository.get_last_successes(
         ["provider.nextcloud.sync"]
     ) == {"provider.nextcloud.sync": completed.finished_at}
+
+
+@pytest.mark.parametrize(
+    "pipeline_key",
+    [
+        "provider.nextcloud.incremental",
+        "provider.nextcloud.bootstrap",
+        "provider.nextcloud.recovery",
+        "provider.immich.incremental",
+        "provider.immich.bootstrap",
+        "provider.immich.recovery",
+    ],
+)
+def test_ledger_accepts_new_formal_provider_operation_keys(
+    ledger, pipeline_key
+) -> None:
+    _, repository = ledger
+    run = repository.begin_run(
+        pipeline_key, PipelineKind.PROVIDER_SYNC, started_at=NOW
+    )
+    completed = repository.complete_run(run.id, finished_at=NOW)
+    assert completed.pipeline_key == pipeline_key
+    assert completed.status is PipelineStatus.COMPLETED
+
+
+def test_new_formal_provider_operation_key_can_fail(ledger) -> None:
+    _, repository = ledger
+    run = repository.begin_run(
+        "provider.immich.recovery",
+        PipelineKind.PROVIDER_SYNC,
+        started_at=NOW,
+    )
+    failed = repository.fail_run(
+        run.id,
+        PipelineErrorCode.EXECUTION_FAILED,
+        finished_at=NOW,
+    )
+    assert failed.status is PipelineStatus.FAILED
+
+
+def test_real_provider_sync_state_projection_redacts_checkpoint(ledger) -> None:
+    engine, runs = ledger
+    states = PostgreSQLProviderSyncStateRepository(engine)
+    created = states.get_or_create("nextcloud", "activity_v2_hint_v1")
+    advanced = states.compare_and_swap_checkpoint(
+        "nextcloud",
+        "activity_v2_hint_v1",
+        expected_version=created.version,
+        checkpoint="private-cursor-123",
+    )
+    assert advanced is not None
+    snapshot = DataStatusService(
+        runs, sync_state_repository=states, clock=lambda: NOW
+    ).get_status()
+    view = next(
+        state for state in snapshot.provider_sync_states
+        if state.provider == "nextcloud"
+    )
+    assert view.state_exists is True
+    assert view.checkpoint_initialized is True
+    assert view.version == 1
+    assert not hasattr(view, "checkpoint")
 
 
 def test_running_uniqueness_and_different_pipeline_concurrency(ledger) -> None:
