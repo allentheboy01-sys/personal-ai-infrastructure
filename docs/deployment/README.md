@@ -55,6 +55,13 @@ optional globally and required only when that Provider is selected:
 - `pdi sync` implicitly includes configured Nextcloud and Immich Providers,
   never Gmail, and fails if no eligible Provider is configured.
 
+The sync operation defaults to `full`; `--operation full` is an equivalent
+explicit spelling. `incremental`, `bootstrap`, and `recover` are supported only
+with an explicit Nextcloud or Immich `--provider`. Gmail rejects those
+operations. Direct `pdi sync` execution remains a manual/debug surface without
+the formal lock or PipelineRun ledger. Incremental-aware formal commands and
+systemd schedules are deferred and are not claimed by the current units.
+
 MCP needs only the database. Immich configuration optionally enables semantic
 retrieval and bounded image-preview Resource access. Without Immich
 configuration, the image-preview Tool remains registered and returns a stable

@@ -28,6 +28,63 @@ def test_implicit_sync_routes_without_selecting_gmail(monkeypatch) -> None:
     assert calls == [[]]
 
 
+@pytest.mark.parametrize(
+    ("provider", "operation"),
+    [
+        (None, "full"),
+        ("nextcloud", "full"),
+        ("nextcloud", "incremental"),
+        ("nextcloud", "bootstrap"),
+        ("nextcloud", "recover"),
+        ("immich", "incremental"),
+        ("immich", "bootstrap"),
+        ("immich", "recover"),
+        ("gmail", "full"),
+    ],
+)
+def test_sync_operation_routes_to_main(monkeypatch, provider, operation) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "pdi.main.main",
+        lambda argv: calls.append(list(argv)),
+    )
+    argv = ["sync"]
+    expected = []
+    if provider is not None:
+        argv.extend(("--provider", provider))
+        expected.extend(("--provider", provider))
+    argv.extend(("--operation", operation))
+    expected.extend(("--operation", operation))
+    assert cli.main(argv) == 0
+    assert calls == [expected]
+
+
+@pytest.mark.parametrize(
+    "operation", ["incremental", "bootstrap", "recover"]
+)
+def test_non_full_requires_supported_explicit_provider(
+    capsys, operation
+) -> None:
+    with pytest.raises(SystemExit) as missing:
+        cli.main(["sync", "--operation", operation])
+    assert missing.value.code == 2
+    assert "explicit" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit) as gmail:
+        cli.main([
+            "sync", "--provider", "gmail", "--operation", operation
+        ])
+    assert gmail.value.code == 2
+    assert "Nextcloud or Immich" in capsys.readouterr().err
+
+
+def test_unknown_sync_operation_is_rejected(capsys) -> None:
+    with pytest.raises(SystemExit) as error:
+        cli.main(["sync", "--operation", "unknown"])
+    assert error.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+
+
 def test_mcp_routes_to_existing_stdio_entrypoint(monkeypatch) -> None:
     calls: list[None] = []
     monkeypatch.setattr(

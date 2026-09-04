@@ -1,20 +1,29 @@
 import argparse
 import logging
 from collections.abc import Sequence
+from enum import StrEnum
 
 from pdi.adapters.base import Adapter
 from pdi.adapters.gmail import GmailAdapter
-from pdi.adapters.immich import ImmichAdapter
-from pdi.adapters.nextcloud.adapter import NextcloudAdapter
 from pdi.config import PDIConfigurationError, Settings, load_settings
 from pdi.database import create_postgres_engine
 from pdi.engine import SyncEngine
 from pdi.identity import Matcher
 from pdi.observability import configure_logging
 from pdi.repository import PostgreSQLRepository
+from pdi.sync_state import PostgreSQLProviderSyncStateRepository
+from pdi.adapters.immich.adapter import ImmichAdapter
+from pdi.adapters.nextcloud.adapter import NextcloudAdapter
 
 
 logger = logging.getLogger(__name__)
+
+
+class SyncOperation(StrEnum):
+    FULL = "full"
+    INCREMENTAL = "incremental"
+    BOOTSTRAP = "bootstrap"
+    RECOVER = "recover"
 
 
 def _parse_args(
@@ -32,7 +41,64 @@ def _parse_args(
             "are synchronized; Gmail remains explicit-only."
         ),
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--operation",
+        choices=tuple(operation.value for operation in SyncOperation),
+        default=SyncOperation.FULL.value,
+        help="Provider sync operation; defaults to full.",
+    )
+    args = parser.parse_args(argv)
+    operation = SyncOperation(args.operation)
+    if (
+        operation is not SyncOperation.FULL
+        and args.provider not in {"nextcloud", "immich"}
+    ):
+        parser.error(
+            "non-full operations require --provider nextcloud or immich"
+        )
+    args.operation = operation
+    return args
+
+
+def _run_operation(
+    adapter: Adapter,
+    operation: SyncOperation,
+    sync_engine: SyncEngine,
+    sync_state_repository: PostgreSQLProviderSyncStateRepository | None,
+) -> None:
+    if operation is SyncOperation.FULL:
+        sync_engine.sync_once()
+        return
+    if sync_state_repository is None:
+        raise RuntimeError("Non-full sync requires Provider state persistence")
+    if adapter.provider_name == "nextcloud":
+        from pdi.adapters.nextcloud.incremental import (
+            NextcloudActivityIncrementalSync,
+        )
+
+        service = NextcloudActivityIncrementalSync(
+            adapter,
+            sync_engine,
+            sync_state_repository,
+        )
+    elif adapter.provider_name == "immich":
+        from pdi.adapters.immich.incremental import ImmichIncrementalSync
+
+        service = ImmichIncrementalSync(
+            adapter,
+            sync_engine,
+            sync_state_repository,
+        )
+    else:
+        raise PDIConfigurationError(
+            f"Provider {adapter.provider_name} supports full sync only"
+        )
+    if operation is SyncOperation.INCREMENTAL:
+        service.run_incremental()
+    elif operation is SyncOperation.BOOTSTRAP:
+        service.bootstrap()
+    else:
+        service.recover()
 
 
 def _build_adapters(
@@ -119,18 +185,37 @@ def main(
     )
 
     matcher = Matcher()
+    sync_state_repository = (
+        None
+        if args.operation is SyncOperation.FULL
+        else PostgreSQLProviderSyncStateRepository(db_engine)
+    )
 
     try:
         for adapter in adapters:
+            engine_arguments = {
+                "adapter": adapter,
+                "matcher": matcher,
+                "repository": repository,
+            }
+            if sync_state_repository is not None:
+                engine_arguments["sync_state_repository"] = (
+                    sync_state_repository
+                )
             sync_engine = SyncEngine(
-                adapter=adapter,
-                matcher=matcher,
-                repository=repository,
+                **engine_arguments,
             )
-            sync_engine.sync_once()
+            _run_operation(
+                adapter,
+                args.operation,
+                sync_engine,
+                sync_state_repository,
+            )
     except Exception:
         logger.exception("PDI sync failed")
         raise
+    finally:
+        db_engine.dispose()
 
     logger.info("PDI stopped successfully")
 

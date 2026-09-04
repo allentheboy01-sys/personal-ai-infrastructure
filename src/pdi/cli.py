@@ -29,6 +29,11 @@ def build_parser() -> argparse.ArgumentParser:
             "explicit-only."
         ),
     )
+    sync.add_argument(
+        "--operation",
+        choices=("full", "incremental", "bootstrap", "recover"),
+        help="Provider sync operation; defaults to full.",
+    )
 
     subcommands.add_parser(
         "mcp",
@@ -38,16 +43,26 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if (
+        args.command == "sync"
+        and args.operation not in {None, "full"}
+        and args.provider not in {"nextcloud", "immich"}
+    ):
+        parser.error(
+            "non-full sync operations require an explicit "
+            "Nextcloud or Immich provider"
+        )
     try:
         if args.command == "sync":
             from pdi.main import main as sync_main
 
-            sync_argv = (
-                ["--provider", args.provider]
-                if args.provider is not None
-                else []
-            )
+            sync_argv = []
+            if args.provider is not None:
+                sync_argv.extend(("--provider", args.provider))
+            if args.operation is not None:
+                sync_argv.extend(("--operation", args.operation))
             sync_main(sync_argv)
         else:
             from pdi_mcp.bootstrap import main as mcp_main

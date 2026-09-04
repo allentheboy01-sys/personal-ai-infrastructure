@@ -104,6 +104,24 @@ For an Immich-only deployment, configure only the Immich group and replace
 configured Nextcloud and Immich Providers, but never Gmail. It fails clearly
 when neither eligible Provider is configured.
 
+`pdi sync` defaults to a complete Provider-scope reconciliation. The explicit
+`--operation full` spelling is equivalent. Nextcloud and Immich also expose
+manual incremental-state lifecycle operations:
+
+```bash
+.venv/bin/pdi sync --provider nextcloud --operation incremental
+.venv/bin/pdi sync --provider nextcloud --operation bootstrap
+.venv/bin/pdi sync --provider nextcloud --operation recover
+```
+
+Immich supports the same operation names. Every non-full operation requires an
+explicit `nextcloud` or `immich` provider; Gmail remains full-only. Ordinary
+full never installs or repairs an incremental checkpoint, and incremental never
+falls back to full. These direct commands are manual/debug entrypoints: they do
+not acquire the formal global lock or write the PipelineRun ledger. Formal
+unattended incremental scheduling and locking are deferred; do not substitute
+these direct commands for the existing `pdi.operational` execution boundary.
+
 ## 6. Connect an MCP consumer
 
 `pdi mcp` runs the read-only MCP server over stdio; it opens no network
